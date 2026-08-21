@@ -679,13 +679,14 @@
       "classification": "practitioner",
       "verdict": "provisional",
       "source_ids": [
-        "meta-ad-library-access-community"
+        "meta-ad-library-access-community",
+        "meta-ad-library-access-practitioner"
       ],
       "load_bearing": false,
       "last_verified": "2026-08-20",
       "refresh_due": "2026-09-19",
       "owner": "repository-maintainers",
-      "notes": "Community-tier evidence only; the canonical facebook.com/ads/library/api page did not respond during retrieval. Reverify against the official page before any release-current claim depends on it."
+      "notes": "Reconfirmed 2026-08-20 across independent practitioner guides. The official facebook.com/ads/library/api page did not respond on two retrieval attempts, and the ads_archive reference is explicitly silent on access prerequisites, so no tier-1 source supports this. Remains practitioner-tier and cannot alone establish mandatory behavior."
     },
     {
       "id": "CLM-0214",
@@ -701,6 +702,21 @@
       "refresh_due": "2026-09-19",
       "owner": "repository-maintainers",
       "notes": "Direct retrieval on 2026-08-20 confirmed the page is silent on this. An empty non-EU special-category result must be reported as unconfirmed coverage, never as absence of ads. Resolve with a live query once a token exists."
+    },
+    {
+      "id": "CLM-0215",
+      "statement": "Ad Library API access requires no App Review and no reviewed permission; a development-mode app with a user access token suffices once identity confirmation has completed. Identity confirmation is the critical path.",
+      "scope": "Meta Ad Library API app review and app mode requirements",
+      "classification": "practitioner",
+      "verdict": "provisional",
+      "source_ids": [
+        "meta-ad-library-access-practitioner"
+      ],
+      "load_bearing": false,
+      "last_verified": "2026-08-20",
+      "refresh_due": "2026-09-19",
+      "owner": "repository-maintainers",
+      "notes": "No tier-1 source located; the ads_archive reference documents no permission or review requirement, which is consistent with but does not confirm this. Resolve by attempting a live call from a development-mode app."
     }
   ]
 }

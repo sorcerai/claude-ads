@@ -38,6 +38,25 @@ non-secret reference only, for example:
 Secret values belong in environment variables, an OS keychain, or an approved
 secret manager. Never print, echo, log, or commit them.
 
+## Meta Ad Library API access
+
+`scripts/fetch_ad_library.py` reads `META_AD_LIBRARY_TOKEN`. Obtaining it has one
+slow step and several fast ones, so start the slow one first:
+
+1. Confirm identity and location at `facebook.com/ID`, the same process used to
+   run ads about social issues, elections, or politics. This is the critical
+   path and can take days. It gates the API even for commercial EU queries,
+   because the archive carries political data.
+2. Create a Meta for Developers account and an app. The app may stay in
+   development mode; no App Review or reviewed permission is required
+   (CLM-0213, practitioner evidence only).
+3. Generate a user access token for that app and export it as
+   `META_AD_LIBRARY_TOKEN`. Record presence only in the profile:
+   `{"configured": true, "source": "environment", "secret_ref": "META_AD_LIBRARY_TOKEN"}`.
+
+The competitor fanout in `ads-competitor` runs without this token against public
+transparency surfaces. Do not block competitor research on step 1.
+
 Refuse remote pipe-to-shell installation, including `curl | bash` and `wget | sh`.
 Prefer the host-native plugin installer. Otherwise use an authenticated local
 checkout or a tagged archive whose SHA-256 checksum is verified against a trusted

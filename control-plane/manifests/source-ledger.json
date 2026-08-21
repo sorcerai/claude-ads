@@ -994,6 +994,22 @@
       "claim_ids": [
         "CLM-0213"
       ]
+    },
+    {
+      "id": "meta-ad-library-access-practitioner",
+      "title": "Practitioner guides on Meta Ad Library API access prerequisites",
+      "locator": "https://swipekit.app/articles/meta-ad-library-api",
+      "source_type": "third-party",
+      "authority_tier": 3,
+      "retrieved_at": "2026-08-20",
+      "refresh_due": "2026-09-19",
+      "confidence": "medium",
+      "license": "Referenced by link only",
+      "redistribution": "metadata-only",
+      "claim_ids": [
+        "CLM-0213",
+        "CLM-0215"
+      ]
     }
   ]
 }
