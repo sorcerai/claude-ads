@@ -959,8 +959,10 @@
       "redistribution": "metadata-only",
       "claim_ids": [
         "CLM-0210",
-        "CLM-0212"
-      ]
+        "CLM-0212",
+        "CLM-0214"
+      ],
+      "version": "v26.0"
     },
     {
       "id": "meta-ad-library-archived-ad-official",
@@ -975,7 +977,8 @@
       "redistribution": "metadata-only",
       "claim_ids": [
         "CLM-0211"
-      ]
+      ],
+      "version": "v26.0"
     },
     {
       "id": "meta-ad-library-access-community",

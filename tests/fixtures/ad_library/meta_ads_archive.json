@@ -29,6 +29,6 @@
     }
   ],
   "paging": {
-    "next": "https://graph.facebook.com/v21.0/ads_archive?after=FIXTURECURSOR"
+    "next": "https://graph.facebook.com/v26.0/ads_archive?after=FIXTURECURSOR"
   }
 }

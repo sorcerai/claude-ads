@@ -35,7 +35,7 @@ except ImportError:
     print("Error: requests library required. Install with: pip install -r requirements.txt")
     sys.exit(1)
 
-API_VERSION = "v21.0"
+API_VERSION = "v26.0"
 API_HOST = "graph.facebook.com"
 ENDPOINT = f"https://{API_HOST}/{API_VERSION}/ads_archive"
 
@@ -78,6 +78,12 @@ EU_FIELDS = (
     "total_reach_by_location",
 )
 
+# Meta's US special ad categories. Grouped separately because the reference
+# documents no geographic limit for them either way.
+SPECIAL_AD_CATEGORIES = frozenset(
+    {"EMPLOYMENT_ADS", "FINANCIAL_PRODUCTS_AND_SERVICES_ADS", "HOUSING_ADS"}
+)
+
 AD_TYPES = (
     "ALL",
     "EMPLOYMENT_ADS",
@@ -113,8 +119,20 @@ def scope_warning(ad_type: str, countries: list[str]) -> str | None:
         return None
     if any(country.upper() in EU_COUNTRIES for country in countries):
         return None
+
+    scope = ",".join(countries)
+    if ad_type in SPECIAL_AD_CATEGORIES:
+        # The reference states the EU rule for "social issues, elections or
+        # politics" but says nothing about country availability for the special
+        # ad categories. Flag the uncertainty instead of asserting an empty
+        # result an operator might act on. See CLM-0214.
+        return (
+            f"ad_type={ad_type} with no EU country in {scope}: the reference does not "
+            "state whether special ad category disclosure extends outside the EU. "
+            "Treat an empty result as unconfirmed coverage, not as absence of ads."
+        )
     return (
-        f"ad_type={ad_type} with no EU country in {','.join(countries)}: Meta returns "
+        f"ad_type={ad_type} with no EU country in {scope}: Meta returns "
         "only social issue, election, and political ads outside the EU, so commercial "
         "results are expected to be empty. Add an EU country or use "
         "--ad-type POLITICAL_AND_ISSUE_ADS."

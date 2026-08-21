@@ -686,6 +686,21 @@
       "refresh_due": "2026-09-19",
       "owner": "repository-maintainers",
       "notes": "Community-tier evidence only; the canonical facebook.com/ads/library/api page did not respond during retrieval. Reverify against the official page before any release-current claim depends on it."
+    },
+    {
+      "id": "CLM-0214",
+      "statement": "The ads_archive reference states the EU disclosure limit for social issue, election, and political ads but does not state whether EMPLOYMENT_ADS, HOUSING_ADS, or FINANCIAL_PRODUCTS_AND_SERVICES_ADS are disclosed outside the EU. Special ad category coverage outside the EU is therefore unknown.",
+      "scope": "Meta Ad Library special ad category geographic disclosure",
+      "classification": "contested",
+      "verdict": "provisional",
+      "source_ids": [
+        "meta-ad-library-ads-archive-official"
+      ],
+      "load_bearing": false,
+      "last_verified": "2026-08-20",
+      "refresh_due": "2026-09-19",
+      "owner": "repository-maintainers",
+      "notes": "Direct retrieval on 2026-08-20 confirmed the page is silent on this. An empty non-EU special-category result must be reported as unconfirmed coverage, never as absence of ads. Resolve with a live query once a token exists."
     }
   ]
 }

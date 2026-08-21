@@ -5,6 +5,48 @@ All notable changes to claude-ads are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+* **Meta Ad Library search** (`scripts/fetch_ad_library.py`): queries the
+  official `ads_archive` endpoint (Graph API v26.0) for public ad creative,
+  closing the gap between the existing export-ingestion path and competitor
+  research, which previously had prompt guidance but no retrieval tool. The
+  request routes through `url_utils.guarded_request`, so DNS pinning, redirect
+  refusal, TLS enforcement, and credential redaction apply unchanged. The token
+  is read from `META_AD_LIBRARY_TOKEN` and sent as a Bearer header so it never
+  enters a URL, log line, or error string, and server-supplied paging cursors
+  are re-validated against the Graph API host before that header is resent.
+* **Coverage disclosure before dispatch**: outside the EU the archive returns
+  only social issue, election, and political ads, so a commercial query
+  legitimately yields zero rows. The script warns first, because an unexplained
+  empty list reads as "this competitor runs no ads". Special ad categories get
+  a separate, weaker warning: the reference documents no geographic limit for
+  them either way, so their empty result is reported as unconfirmed coverage
+  rather than absence (CLM-0214).
+* **Tiered field sets**: political-only and UK/EU-only fields are opt-in via
+  `--include-political-fields` and `--include-eu-fields`, keeping undisclosed
+  fields out of the default request so an absent field is never mistaken for a
+  competitor having zero spend or no targeting.
+* **Competitor fanout contract** (`skills/ads-competitor/SKILL.md`): bounded
+  `research-worker` slices per competitor x country x source across the Ad
+  Library, Google Ads Transparency, and public web, with the conductor owning
+  deduplication and the final artifact. Adds an untrusted-creative rule, since
+  anyone can buy an ad and ad copy must never reach an instruction position,
+  and a NotebookLM egress rule limiting any pushed corpus to public
+  transparency output and official documentation.
+* **Evidence**: CLM-0210 through CLM-0214 against dated official Meta
+  references pinned to v26.0, including an open contradiction on whether the
+  UK/EU targeting fields also populate for Brazil political ads.
+
+### Notes
+
+* The `ad-library-search` capability is marked `fixture-verified`, not
+  `live-verified`: it has an implementation, a sanitized fixture, and tests,
+  but has never run against the live API. Access requires identity
+  confirmation plus a developer app and token (CLM-0213, provisional).
+
 ## [2.0.1] - 2026-07-13
 
 Documentation and metadata patch on top of v2.0.0 for the public mirror

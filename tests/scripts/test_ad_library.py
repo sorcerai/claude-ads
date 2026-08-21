@@ -41,6 +41,27 @@ def test_non_eu_commercial_search_is_disclosed_as_out_of_scope():
     assert "EU" in warning
 
 
+def test_special_ad_categories_are_flagged_as_unconfirmed_not_empty():
+    """The reference documents no country limit for these; do not assert absence."""
+    warning = fetch_ad_library.scope_warning("HOUSING_ADS", ["US"])
+    assert warning is not None
+    assert "unconfirmed coverage" in warning
+    assert "expected to be empty" not in warning
+
+
+def test_graph_api_host_passes_the_ssrf_guard():
+    """The guard was written for landing pages; confirm it admits the API host.
+
+    Every other test monkeypatches guarded_request, so without this the guard
+    path never executes and a policy rejection would surface only in production.
+    """
+    from url_utils import _validate_and_resolve_url
+
+    validated, parsed, addresses = _validate_and_resolve_url(fetch_ad_library.ENDPOINT)
+    assert parsed.hostname == fetch_ad_library.API_HOST
+    assert addresses
+
+
 def test_eu_country_or_political_type_is_in_scope():
     assert fetch_ad_library.scope_warning("ALL", ["DE"]) is None
     assert fetch_ad_library.scope_warning("POLITICAL_AND_ISSUE_ADS", ["US"]) is None
@@ -49,11 +70,11 @@ def test_eu_country_or_political_type_is_in_scope():
 def test_paging_cursor_off_host_is_refused():
     """A server-supplied cursor must not redirect our bearer token to another host."""
     with pytest.raises(ValueError, match="refusing to send credentials"):
-        fetch_ad_library._validate_next_url("https://evil.test/v21.0/ads_archive?after=x")
+        fetch_ad_library._validate_next_url("https://evil.test/v26.0/ads_archive?after=x")
 
 
 def test_paging_cursor_on_host_is_accepted():
-    cursor = "https://graph.facebook.com/v21.0/ads_archive?after=FIXTURECURSOR"
+    cursor = "https://graph.facebook.com/v26.0/ads_archive?after=FIXTURECURSOR"
     assert fetch_ad_library._validate_next_url(cursor) == cursor
 
 
@@ -77,6 +98,8 @@ def test_search_pages_through_results_and_respects_max_pages(monkeypatch):
     assert result["pages_fetched"] == 2
     assert len(result["ads"]) == 4  # two fixture ads per page
     assert calls[1]["url"].startswith("https://graph.facebook.com/")
+    # The cursor already carries the query; re-sending params would double-apply them.
+    assert calls[1]["params"] is None
 
 
 def test_token_travels_in_header_never_in_params(monkeypatch):
