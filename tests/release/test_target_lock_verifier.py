@@ -22,7 +22,19 @@ def target_case(tmp_path, monkeypatch):
     target = next(item for item in inventory["targets"] if item["id"] == "runtime-linux-cp311")
     monkeypatch.setattr(verifier.release, "_load_dependency_inventory", lambda root: inventory)
     monkeypatch.setattr(verifier, "native_target_id", lambda profile: "runtime-linux-cp311")
-    monkeypatch.setattr(verifier.subprocess, "run", lambda *a, **k: SimpleNamespace(returncode=0, stdout="a" * 40 + "\n"))
+    # Scope the stub to the verifier's own git call. `verifier.subprocess` is the
+    # stdlib module, so an unconditional patch also rewires subprocess.run for
+    # check_output, which platform.platform() reaches through architecture() on
+    # macOS and which expects bytes rather than this stub's str stdout.
+    real_run = verifier.subprocess.run
+
+    def fake_run(*args, **kwargs):
+        argv = args[0] if args else kwargs.get("args")
+        if isinstance(argv, (list, tuple)) and list(argv[:2]) == ["git", "rev-parse"]:
+            return SimpleNamespace(returncode=0, stdout="a" * 40 + "\n")
+        return real_run(*args, **kwargs)
+
+    monkeypatch.setattr(verifier.subprocess, "run", fake_run)
     report = {"pip_version": __import__("pip").__version__, "install": []}
     wheels = tmp_path / "wheels"; wheels.mkdir()
     expected_hashes = {}
