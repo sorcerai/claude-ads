@@ -1,6 +1,6 @@
 {
   "schema_version": "1.0.0",
-  "generated_at": "2026-07-11",
+  "generated_at": "2026-08-20",
   "sources": [
     {
       "id": "claude-ads-v181-tree",
@@ -14,7 +14,9 @@
       "confidence": "high",
       "license": "MIT",
       "redistribution": "public-safe",
-      "claim_ids": ["CLM-0001"]
+      "claim_ids": [
+        "CLM-0001"
+      ]
     },
     {
       "id": "claude-ads-product-contract",
@@ -28,7 +30,10 @@
       "confidence": "high",
       "license": "MIT",
       "redistribution": "public-safe",
-      "claim_ids": ["CLM-0002", "CLM-0003"]
+      "claim_ids": [
+        "CLM-0002",
+        "CLM-0003"
+      ]
     },
     {
       "id": "claude-ads-v2-export-adapter",
@@ -42,7 +47,9 @@
       "confidence": "high",
       "license": "MIT",
       "redistribution": "public-safe",
-      "claim_ids": ["CLM-0006"],
+      "claim_ids": [
+        "CLM-0006"
+      ],
       "notes": "The adapter consumes the documented portable CSV shape after platform exports are mapped to its required headers; it is not a live platform API connector."
     },
     {
@@ -69,7 +76,9 @@
       "confidence": "high",
       "license": "Google Help content terms; citation only",
       "redistribution": "metadata-only",
-      "claim_ids": ["CLM-0007"]
+      "claim_ids": [
+        "CLM-0007"
+      ]
     },
     {
       "id": "google-ads-enhanced-conversions-official",
@@ -82,7 +91,9 @@
       "confidence": "high",
       "license": "Google Help content terms; citation only",
       "redistribution": "metadata-only",
-      "claim_ids": ["CLM-0007"]
+      "claim_ids": [
+        "CLM-0007"
+      ]
     },
     {
       "id": "public-claude-ads-pulls",
@@ -108,7 +119,9 @@
       "confidence": "high",
       "license": "Meta Business Help Center terms; citation only",
       "redistribution": "metadata-only",
-      "claim_ids": ["CLM-0008"]
+      "claim_ids": [
+        "CLM-0008"
+      ]
     },
     {
       "id": "google-ads-api-official",
@@ -121,7 +134,9 @@
       "confidence": "high",
       "license": "Google Developers content CC BY 4.0 and samples Apache-2.0 unless noted",
       "redistribution": "metadata-only",
-      "claim_ids": ["CLM-0007"]
+      "claim_ids": [
+        "CLM-0007"
+      ]
     },
     {
       "id": "linkedin-conversion-tracking-official",
@@ -134,7 +149,9 @@
       "confidence": "high",
       "license": "LinkedIn API Terms and Microsoft documentation terms; citation only",
       "redistribution": "metadata-only",
-      "claim_ids": ["CLM-0009"]
+      "claim_ids": [
+        "CLM-0009"
+      ]
     },
     {
       "id": "linkedin-conversions-api-official",
@@ -147,7 +164,9 @@
       "confidence": "high",
       "license": "LinkedIn API Terms and Microsoft documentation terms; citation only",
       "redistribution": "metadata-only",
-      "claim_ids": ["CLM-0009"]
+      "claim_ids": [
+        "CLM-0009"
+      ]
     },
     {
       "id": "meta-marketing-api-official",
@@ -160,7 +179,9 @@
       "confidence": "high",
       "license": "Meta Platform Terms; citation only",
       "redistribution": "metadata-only",
-      "claim_ids": ["CLM-0008"]
+      "claim_ids": [
+        "CLM-0008"
+      ]
     },
     {
       "id": "tiktok-events-api-official",
@@ -173,7 +194,10 @@
       "confidence": "high",
       "license": "TikTok for Business documentation terms; citation only",
       "redistribution": "metadata-only",
-      "claim_ids": ["CLM-0010", "CLM-0105"]
+      "claim_ids": [
+        "CLM-0010",
+        "CLM-0105"
+      ]
     },
     {
       "id": "tiktok-pixel-official",
@@ -186,7 +210,9 @@
       "confidence": "high",
       "license": "TikTok for Business documentation terms; citation only",
       "redistribution": "metadata-only",
-      "claim_ids": ["CLM-0010"]
+      "claim_ids": [
+        "CLM-0010"
+      ]
     },
     {
       "id": "youtube-google-ads-video-official",
@@ -199,7 +225,10 @@
       "confidence": "high",
       "license": "Google Developers content CC BY 4.0 and samples Apache-2.0 unless noted",
       "redistribution": "metadata-only",
-      "claim_ids": ["CLM-0012", "CLM-0201"]
+      "claim_ids": [
+        "CLM-0012",
+        "CLM-0201"
+      ]
     },
     {
       "id": "microsoft-uet-official",
@@ -212,7 +241,9 @@
       "confidence": "high",
       "license": "Microsoft documentation terms; citation only",
       "redistribution": "metadata-only",
-      "claim_ids": ["CLM-0011"]
+      "claim_ids": [
+        "CLM-0011"
+      ]
     },
     {
       "id": "microsoft-conversions-api-official",
@@ -225,7 +256,9 @@
       "confidence": "high",
       "license": "Microsoft documentation terms; citation only",
       "redistribution": "metadata-only",
-      "claim_ids": ["CLM-0011"]
+      "claim_ids": [
+        "CLM-0011"
+      ]
     },
     {
       "id": "microsoft-google-import-official",
@@ -238,7 +271,9 @@
       "confidence": "high",
       "license": "Microsoft documentation terms; citation only",
       "redistribution": "metadata-only",
-      "claim_ids": ["CLM-0011"]
+      "claim_ids": [
+        "CLM-0011"
+      ]
     },
     {
       "id": "linkedin-marketing-api-official",
@@ -251,7 +286,9 @@
       "confidence": "high",
       "license": "LinkedIn API Terms and Microsoft documentation terms; citation only",
       "redistribution": "metadata-only",
-      "claim_ids": ["CLM-0009"]
+      "claim_ids": [
+        "CLM-0009"
+      ]
     },
     {
       "id": "tiktok-business-api-official",
@@ -264,7 +301,9 @@
       "confidence": "high",
       "license": "TikTok for Business developer terms; citation only",
       "redistribution": "metadata-only",
-      "claim_ids": ["CLM-0010"]
+      "claim_ids": [
+        "CLM-0010"
+      ]
     },
     {
       "id": "microsoft-advertising-api-official",
@@ -277,7 +316,9 @@
       "confidence": "high",
       "license": "Microsoft documentation terms; citation only",
       "redistribution": "metadata-only",
-      "claim_ids": ["CLM-0011"]
+      "claim_ids": [
+        "CLM-0011"
+      ]
     },
     {
       "id": "apple-ads-api-official",
@@ -290,7 +331,9 @@
       "confidence": "high",
       "license": "Apple Developer documentation terms; citation only",
       "redistribution": "metadata-only",
-      "claim_ids": ["CLM-0013"]
+      "claim_ids": [
+        "CLM-0013"
+      ]
     },
     {
       "id": "amazon-ads-api-official",
@@ -303,7 +346,9 @@
       "confidence": "high",
       "license": "Amazon Ads site and API terms; citation only",
       "redistribution": "metadata-only",
-      "claim_ids": ["CLM-0014"]
+      "claim_ids": [
+        "CLM-0014"
+      ]
     },
     {
       "id": "reddit-business-help",
@@ -316,7 +361,9 @@
       "confidence": "high",
       "license": "Reddit documentation terms; citation only",
       "redistribution": "metadata-only",
-      "claim_ids": ["CLM-0015"],
+      "claim_ids": [
+        "CLM-0015"
+      ],
       "notes": "The Reddit audit reference links the related catalogs and dynamic product ads pages."
     },
     {
@@ -330,7 +377,9 @@
       "confidence": "high",
       "license": "Pinterest documentation terms; citation only",
       "redistribution": "metadata-only",
-      "claim_ids": ["CLM-0016"],
+      "claim_ids": [
+        "CLM-0016"
+      ],
       "notes": "The Pinterest audit reference links the related catalogs, Performance+, and collections pages."
     },
     {
@@ -344,7 +393,9 @@
       "confidence": "high",
       "license": "Snap documentation terms; citation only",
       "redistribution": "metadata-only",
-      "claim_ids": ["CLM-0017"],
+      "claim_ids": [
+        "CLM-0017"
+      ],
       "notes": "The Snapchat audit reference links Ads API, measurement, and Pixel documentation."
     },
     {
@@ -358,7 +409,9 @@
       "confidence": "high",
       "license": "X documentation terms; citation only",
       "redistribution": "metadata-only",
-      "claim_ids": ["CLM-0018"],
+      "claim_ids": [
+        "CLM-0018"
+      ],
       "notes": "The X audit reference links the related measurement and Ads business pages."
     },
     {
@@ -373,7 +426,9 @@
       "confidence": "high",
       "license": "Apache-2.0",
       "redistribution": "metadata-only",
-      "claim_ids": ["CLM-0005"],
+      "claim_ids": [
+        "CLM-0005"
+      ],
       "notes": "The consulted checkout is private. Only original domain-specific synthesis and license-compliant patterns enter this repository."
     },
     {
@@ -387,7 +442,9 @@
       "confidence": "medium",
       "license": "custom; no prompt or corpus redistribution",
       "redistribution": "metadata-only",
-      "claim_ids": ["CLM-0004"],
+      "claim_ids": [
+        "CLM-0004"
+      ],
       "notes": "Only abstract operating principles may inform original work. No captured text or close paraphrase enters the repository."
     },
     {
@@ -401,7 +458,9 @@
       "confidence": "high",
       "license": "Google Help terms; citation only",
       "redistribution": "metadata-only",
-      "claim_ids": ["CLM-0100"]
+      "claim_ids": [
+        "CLM-0100"
+      ]
     },
     {
       "id": "meta-video-ads-official",
@@ -453,7 +512,9 @@
       "confidence": "high",
       "license": "Microsoft documentation terms; citation only",
       "redistribution": "metadata-only",
-      "claim_ids": ["CLM-0101"]
+      "claim_ids": [
+        "CLM-0101"
+      ]
     },
     {
       "id": "apple-ads-creative-official",
@@ -544,7 +605,9 @@
       "confidence": "high",
       "license": "Google Help terms; citation only",
       "redistribution": "metadata-only",
-      "claim_ids": ["CLM-0102"]
+      "claim_ids": [
+        "CLM-0102"
+      ]
     },
     {
       "id": "google-target-roas-official",
@@ -557,7 +620,9 @@
       "confidence": "high",
       "license": "Google Help terms; citation only",
       "redistribution": "metadata-only",
-      "claim_ids": ["CLM-0103"]
+      "claim_ids": [
+        "CLM-0103"
+      ]
     },
     {
       "id": "google-consent-modeling-official",
@@ -570,7 +635,9 @@
       "confidence": "high",
       "license": "Google Help terms; citation only",
       "redistribution": "metadata-only",
-      "claim_ids": ["CLM-0104"]
+      "claim_ids": [
+        "CLM-0104"
+      ]
     },
     {
       "id": "eu-ai-act-article-50-official",
@@ -583,7 +650,9 @@
       "confidence": "high",
       "license": "European Commission reuse policy; citation only",
       "redistribution": "metadata-only",
-      "claim_ids": ["CLM-0106"],
+      "claim_ids": [
+        "CLM-0106"
+      ],
       "notes": "Supporting legal text: https://eur-lex.europa.eu/eli/reg/2024/1689/oj"
     },
     {
@@ -597,7 +666,9 @@
       "confidence": "high",
       "license": "European Commission reuse policy; citation only",
       "redistribution": "metadata-only",
-      "claim_ids": ["CLM-0107"]
+      "claim_ids": [
+        "CLM-0107"
+      ]
     },
     {
       "id": "cppa-regulations-official",
@@ -610,7 +681,9 @@
       "confidence": "high",
       "license": "California public agency material; citation only",
       "redistribution": "metadata-only",
-      "claim_ids": ["CLM-0108"]
+      "claim_ids": [
+        "CLM-0108"
+      ]
     },
     {
       "id": "hhs-tracking-guidance-official",
@@ -623,7 +696,9 @@
       "confidence": "high",
       "license": "US government work; citation only",
       "redistribution": "metadata-only",
-      "claim_ids": ["CLM-0109"]
+      "claim_ids": [
+        "CLM-0109"
+      ]
     },
     {
       "id": "ftc-endorsement-guides-official",
@@ -636,7 +711,9 @@
       "confidence": "high",
       "license": "US government work; citation only",
       "redistribution": "metadata-only",
-      "claim_ids": ["CLM-0110"]
+      "claim_ids": [
+        "CLM-0110"
+      ]
     },
     {
       "id": "google-ads-mcp-official",
@@ -649,7 +726,9 @@
       "confidence": "high",
       "license": "Apache-2.0",
       "redistribution": "metadata-only",
-      "claim_ids": ["CLM-0111"]
+      "claim_ids": [
+        "CLM-0111"
+      ]
     },
     {
       "id": "amazon-ads-mcp-official",
@@ -663,7 +742,9 @@
       "confidence": "high",
       "license": "Amazon terms; citation only",
       "redistribution": "metadata-only",
-      "claim_ids": ["CLM-0112"]
+      "claim_ids": [
+        "CLM-0112"
+      ]
     },
     {
       "id": "tiktok-ads-mcp-official",
@@ -676,7 +757,9 @@
       "confidence": "high",
       "license": "TikTok terms; citation only",
       "redistribution": "metadata-only",
-      "claim_ids": ["CLM-0113"]
+      "claim_ids": [
+        "CLM-0113"
+      ]
     },
     {
       "id": "microsoft-ads-mcp-official",
@@ -689,7 +772,9 @@
       "confidence": "high",
       "license": "Microsoft terms; citation only",
       "redistribution": "metadata-only",
-      "claim_ids": ["CLM-0114"]
+      "claim_ids": [
+        "CLM-0114"
+      ]
     },
     {
       "id": "meta-andromeda-engineering-official",
@@ -703,7 +788,9 @@
       "confidence": "high",
       "license": "Meta terms; citation only",
       "redistribution": "metadata-only",
-      "claim_ids": ["CLM-0115"]
+      "claim_ids": [
+        "CLM-0115"
+      ]
     },
     {
       "id": "meta-ai-ads-ranking-official",
@@ -717,7 +804,9 @@
       "confidence": "high",
       "license": "Meta terms; citation only",
       "redistribution": "metadata-only",
-      "claim_ids": ["CLM-0116"],
+      "claim_ids": [
+        "CLM-0116"
+      ],
       "notes": "Performance figures are vendor-supplied and not independently verified."
     },
     {
@@ -731,7 +820,9 @@
       "confidence": "high",
       "license": "Google Developers content CC BY 4.0 and samples Apache-2.0 unless noted",
       "redistribution": "metadata-only",
-      "claim_ids": ["CLM-0201"]
+      "claim_ids": [
+        "CLM-0201"
+      ]
     },
     {
       "id": "meta-insights-reporting-official",
@@ -744,7 +835,9 @@
       "confidence": "high",
       "license": "Meta Platform Terms; citation only",
       "redistribution": "metadata-only",
-      "claim_ids": ["CLM-0202"]
+      "claim_ids": [
+        "CLM-0202"
+      ]
     },
     {
       "id": "linkedin-ad-analytics-reporting-official",
@@ -757,7 +850,9 @@
       "confidence": "high",
       "license": "LinkedIn API Terms and Microsoft documentation terms; citation only",
       "redistribution": "metadata-only",
-      "claim_ids": ["CLM-0203"]
+      "claim_ids": [
+        "CLM-0203"
+      ]
     },
     {
       "id": "tiktok-integrated-reporting-official",
@@ -770,7 +865,9 @@
       "confidence": "high",
       "license": "TikTok for Business developer terms; citation only",
       "redistribution": "metadata-only",
-      "claim_ids": ["CLM-0204"]
+      "claim_ids": [
+        "CLM-0204"
+      ]
     },
     {
       "id": "microsoft-ad-performance-report-official",
@@ -784,7 +881,9 @@
       "confidence": "high",
       "license": "Microsoft documentation terms; citation only",
       "redistribution": "metadata-only",
-      "claim_ids": ["CLM-0205"]
+      "claim_ids": [
+        "CLM-0205"
+      ]
     },
     {
       "id": "apple-campaign-reporting-official",
@@ -797,7 +896,9 @@
       "confidence": "high",
       "license": "Apple Developer documentation terms; citation only",
       "redistribution": "metadata-only",
-      "claim_ids": ["CLM-0206"]
+      "claim_ids": [
+        "CLM-0206"
+      ]
     },
     {
       "id": "reddit-ads-reporting-v3-official",
@@ -811,7 +912,9 @@
       "confidence": "high",
       "license": "Reddit Ads API documentation terms; citation only",
       "redistribution": "metadata-only",
-      "claim_ids": ["CLM-0207"]
+      "claim_ids": [
+        "CLM-0207"
+      ]
     },
     {
       "id": "pinterest-ads-reporting-official",
@@ -824,7 +927,9 @@
       "confidence": "high",
       "license": "Pinterest developer documentation terms; citation only",
       "redistribution": "metadata-only",
-      "claim_ids": ["CLM-0208"]
+      "claim_ids": [
+        "CLM-0208"
+      ]
     },
     {
       "id": "snap-ads-measurement-official",
@@ -837,7 +942,55 @@
       "confidence": "high",
       "license": "Snap developer documentation terms; citation only",
       "redistribution": "metadata-only",
-      "claim_ids": ["CLM-0209"]
+      "claim_ids": [
+        "CLM-0209"
+      ]
+    },
+    {
+      "id": "meta-ad-library-ads-archive-official",
+      "title": "Meta Graph API reference: ads_archive",
+      "locator": "https://developers.facebook.com/docs/graph-api/reference/ads_archive/",
+      "source_type": "api-doc",
+      "authority_tier": 1,
+      "retrieved_at": "2026-08-20",
+      "refresh_due": "2026-09-19",
+      "confidence": "high",
+      "license": "Meta Platform Terms; documentation quoted within fair-use limits",
+      "redistribution": "metadata-only",
+      "claim_ids": [
+        "CLM-0210",
+        "CLM-0212"
+      ]
+    },
+    {
+      "id": "meta-ad-library-archived-ad-official",
+      "title": "Meta Graph API reference: ArchivedAd node fields",
+      "locator": "https://developers.facebook.com/docs/graph-api/reference/archived-ad/",
+      "source_type": "api-doc",
+      "authority_tier": 1,
+      "retrieved_at": "2026-08-20",
+      "refresh_due": "2026-09-19",
+      "confidence": "high",
+      "license": "Meta Platform Terms; documentation quoted within fair-use limits",
+      "redistribution": "metadata-only",
+      "claim_ids": [
+        "CLM-0211"
+      ]
+    },
+    {
+      "id": "meta-ad-library-access-community",
+      "title": "Meta developer community guidance on Ad Library API authorization",
+      "locator": "https://developers.facebook.com/community/threads/2444232312475848/",
+      "source_type": "third-party",
+      "authority_tier": 3,
+      "retrieved_at": "2026-08-20",
+      "refresh_due": "2026-09-19",
+      "confidence": "medium",
+      "license": "Meta Platform Terms; referenced by link only",
+      "redistribution": "metadata-only",
+      "claim_ids": [
+        "CLM-0213"
+      ]
     }
   ]
 }

@@ -1,6 +1,6 @@
 {
   "schema_version": "1.0.0",
-  "generated_at": "2026-07-11",
+  "generated_at": "2026-08-20",
   "claims": [
     {
       "id": "CLM-0001",
@@ -8,7 +8,9 @@
       "scope": "repository inventory at git commit 86690b6",
       "classification": "evidence-based",
       "verdict": "verified",
-      "source_ids": ["claude-ads-v181-tree"],
+      "source_ids": [
+        "claude-ads-v181-tree"
+      ],
       "load_bearing": true,
       "last_verified": "2026-07-11",
       "refresh_due": "2026-08-10",
@@ -20,7 +22,9 @@
       "scope": "v2 product decision, not a current capability claim",
       "classification": "evidence-based",
       "verdict": "verified",
-      "source_ids": ["claude-ads-product-contract"],
+      "source_ids": [
+        "claude-ads-product-contract"
+      ],
       "load_bearing": true,
       "last_verified": "2026-07-11",
       "refresh_due": "2026-08-10",
@@ -32,7 +36,9 @@
       "scope": "v2 safety decision",
       "classification": "evidence-based",
       "verdict": "verified",
-      "source_ids": ["claude-ads-product-contract"],
+      "source_ids": [
+        "claude-ads-product-contract"
+      ],
       "load_bearing": true,
       "last_verified": "2026-07-11",
       "refresh_due": "2026-08-10",
@@ -44,7 +50,9 @@
       "scope": "instruction design provenance",
       "classification": "practitioner",
       "verdict": "verified",
-      "source_ids": ["fable-private-cleanroom"],
+      "source_ids": [
+        "fable-private-cleanroom"
+      ],
       "load_bearing": false,
       "last_verified": "2026-07-11",
       "refresh_due": "2026-08-10",
@@ -56,7 +64,9 @@
       "scope": "control-plane design provenance",
       "classification": "practitioner",
       "verdict": "verified",
-      "source_ids": ["brainstein-private-doctrine"],
+      "source_ids": [
+        "brainstein-private-doctrine"
+      ],
       "load_bearing": false,
       "last_verified": "2026-07-11",
       "refresh_due": "2026-10-09",
@@ -68,7 +78,9 @@
       "scope": "portable CSV export ingestion at git commit df8ebb1",
       "classification": "evidence-based",
       "verdict": "verified",
-      "source_ids": ["claude-ads-v2-export-adapter"],
+      "source_ids": [
+        "claude-ads-v2-export-adapter"
+      ],
       "load_bearing": true,
       "last_verified": "2026-07-11",
       "refresh_due": "2026-08-10",
@@ -80,7 +92,11 @@
       "scope": "Google Ads runtime measurement controls; feature eligibility and diagnostics remain account-specific",
       "classification": "evidence-based",
       "verdict": "verified",
-      "source_ids": ["google-ads-api-official", "google-ads-conversion-goals-official", "google-ads-enhanced-conversions-official"],
+      "source_ids": [
+        "google-ads-api-official",
+        "google-ads-conversion-goals-official",
+        "google-ads-enhanced-conversions-official"
+      ],
       "load_bearing": true,
       "last_verified": "2026-07-11",
       "refresh_due": "2026-08-10",
@@ -92,7 +108,10 @@
       "scope": "Meta runtime measurement controls; no universal performance lift or EMQ threshold is asserted",
       "classification": "evidence-based",
       "verdict": "verified",
-      "source_ids": ["meta-marketing-api-official", "meta-conversions-api-official"],
+      "source_ids": [
+        "meta-marketing-api-official",
+        "meta-conversions-api-official"
+      ],
       "load_bearing": true,
       "last_verified": "2026-07-11",
       "refresh_due": "2026-08-10",
@@ -104,7 +123,11 @@
       "scope": "LinkedIn runtime measurement controls; access, permissions, version, and account eligibility remain discoverable inputs",
       "classification": "evidence-based",
       "verdict": "verified",
-      "source_ids": ["linkedin-marketing-api-official", "linkedin-conversion-tracking-official", "linkedin-conversions-api-official"],
+      "source_ids": [
+        "linkedin-marketing-api-official",
+        "linkedin-conversion-tracking-official",
+        "linkedin-conversions-api-official"
+      ],
       "load_bearing": true,
       "last_verified": "2026-07-11",
       "refresh_due": "2026-08-10",
@@ -116,7 +139,11 @@
       "scope": "TikTok runtime measurement controls; market, objective, event, and account eligibility remain discoverable inputs",
       "classification": "evidence-based",
       "verdict": "verified",
-      "source_ids": ["tiktok-business-api-official", "tiktok-events-api-official", "tiktok-pixel-official"],
+      "source_ids": [
+        "tiktok-business-api-official",
+        "tiktok-events-api-official",
+        "tiktok-pixel-official"
+      ],
       "load_bearing": true,
       "last_verified": "2026-07-11",
       "refresh_due": "2026-08-10",
@@ -128,7 +155,12 @@
       "scope": "Microsoft runtime measurement and import controls; imported fields and pilots must be checked against current account evidence",
       "classification": "evidence-based",
       "verdict": "verified",
-      "source_ids": ["microsoft-advertising-api-official", "microsoft-uet-official", "microsoft-conversions-api-official", "microsoft-google-import-official"],
+      "source_ids": [
+        "microsoft-advertising-api-official",
+        "microsoft-uet-official",
+        "microsoft-conversions-api-official",
+        "microsoft-google-import-official"
+      ],
       "load_bearing": true,
       "last_verified": "2026-07-11",
       "refresh_due": "2026-08-10",
@@ -140,7 +172,9 @@
       "scope": "Google Ads API Video campaign surface retrieved 2026-07-11; Demand Gen and Google Ads scripts are separate surfaces",
       "classification": "evidence-based",
       "verdict": "verified",
-      "source_ids": ["youtube-google-ads-video-official"],
+      "source_ids": [
+        "youtube-google-ads-video-official"
+      ],
       "load_bearing": true,
       "last_verified": "2026-07-11",
       "refresh_due": "2026-08-10",
@@ -152,7 +186,9 @@
       "scope": "Apple Ads API documentation entry point; no live capability is claimed",
       "classification": "evidence-based",
       "verdict": "verified",
-      "source_ids": ["apple-ads-api-official"],
+      "source_ids": [
+        "apple-ads-api-official"
+      ],
       "load_bearing": true,
       "last_verified": "2026-07-11",
       "refresh_due": "2026-08-10",
@@ -164,7 +200,9 @@
       "scope": "Amazon Ads API overview; no account access or live adapter is implied",
       "classification": "evidence-based",
       "verdict": "verified",
-      "source_ids": ["amazon-ads-api-official"],
+      "source_ids": [
+        "amazon-ads-api-official"
+      ],
       "load_bearing": true,
       "last_verified": "2026-07-11",
       "refresh_due": "2026-08-10",
@@ -176,7 +214,9 @@
       "scope": "Reddit website conversion-event measurement guidance",
       "classification": "evidence-based",
       "verdict": "verified",
-      "source_ids": ["reddit-business-help"],
+      "source_ids": [
+        "reddit-business-help"
+      ],
       "load_bearing": true,
       "last_verified": "2026-07-11",
       "refresh_due": "2026-08-10",
@@ -188,7 +228,9 @@
       "scope": "Pinterest conversion-measurement guidance; broader Pinterest API access is separate",
       "classification": "evidence-based",
       "verdict": "verified",
-      "source_ids": ["pinterest-conversions-api"],
+      "source_ids": [
+        "pinterest-conversions-api"
+      ],
       "load_bearing": true,
       "last_verified": "2026-07-11",
       "refresh_due": "2026-08-10",
@@ -200,7 +242,9 @@
       "scope": "Snap Marketing API documentation entry point; no configured account access is implied",
       "classification": "evidence-based",
       "verdict": "verified",
-      "source_ids": ["snap-marketing-api"],
+      "source_ids": [
+        "snap-marketing-api"
+      ],
       "load_bearing": true,
       "last_verified": "2026-07-11",
       "refresh_due": "2026-08-10",
@@ -212,7 +256,9 @@
       "scope": "X website conversion tracking; app and offline measurement are outside this claim",
       "classification": "evidence-based",
       "verdict": "verified",
-      "source_ids": ["x-conversion-tracking"],
+      "source_ids": [
+        "x-conversion-tracking"
+      ],
       "load_bearing": true,
       "last_verified": "2026-07-11",
       "refresh_due": "2026-08-10",
@@ -224,7 +270,9 @@
       "scope": "Google Ads RSA documentation retrieved 2026-07-11",
       "classification": "evidence-based",
       "verdict": "verified",
-      "source_ids": ["google-rsa-official"],
+      "source_ids": [
+        "google-rsa-official"
+      ],
       "load_bearing": false,
       "last_verified": "2026-07-11",
       "refresh_due": "2026-08-10",
@@ -236,7 +284,9 @@
       "scope": "Microsoft Advertising RSA documentation retrieved 2026-07-11",
       "classification": "evidence-based",
       "verdict": "verified",
-      "source_ids": ["microsoft-ad-types-official"],
+      "source_ids": [
+        "microsoft-ad-types-official"
+      ],
       "load_bearing": false,
       "last_verified": "2026-07-11",
       "refresh_due": "2026-08-10",
@@ -248,7 +298,9 @@
       "scope": "Google Ads; labels and eligibility vary by campaign type",
       "classification": "evidence-based",
       "verdict": "verified",
-      "source_ids": ["google-smart-bidding-official"],
+      "source_ids": [
+        "google-smart-bidding-official"
+      ],
       "load_bearing": false,
       "last_verified": "2026-07-11",
       "refresh_due": "2026-08-10",
@@ -260,7 +312,9 @@
       "scope": "Google Target ROAS guidance, not a guaranteed outcome",
       "classification": "evidence-based",
       "verdict": "verified",
-      "source_ids": ["google-target-roas-official"],
+      "source_ids": [
+        "google-target-roas-official"
+      ],
       "load_bearing": false,
       "last_verified": "2026-07-11",
       "refresh_due": "2026-08-10",
@@ -272,7 +326,9 @@
       "scope": "Eligibility for Google consent-mode modeling only",
       "classification": "evidence-based",
       "verdict": "verified",
-      "source_ids": ["google-consent-modeling-official"],
+      "source_ids": [
+        "google-consent-modeling-official"
+      ],
       "load_bearing": false,
       "last_verified": "2026-07-11",
       "refresh_due": "2026-08-10",
@@ -284,7 +340,9 @@
       "scope": "TikTok web conversion measurement guidance",
       "classification": "evidence-based",
       "verdict": "verified",
-      "source_ids": ["tiktok-events-api-official"],
+      "source_ids": [
+        "tiktok-events-api-official"
+      ],
       "load_bearing": false,
       "last_verified": "2026-07-11",
       "refresh_due": "2026-08-10",
@@ -296,7 +354,9 @@
       "scope": "EU AI Act Article 50; final applicability remains fact-specific",
       "classification": "evidence-based",
       "verdict": "verified",
-      "source_ids": ["eu-ai-act-article-50-official"],
+      "source_ids": [
+        "eu-ai-act-article-50-official"
+      ],
       "load_bearing": false,
       "last_verified": "2026-07-11",
       "refresh_due": "2026-08-10",
@@ -308,7 +368,9 @@
       "scope": "DSA platform duties; obligations vary by service type",
       "classification": "evidence-based",
       "verdict": "verified",
-      "source_ids": ["eu-dsa-official"],
+      "source_ids": [
+        "eu-dsa-official"
+      ],
       "load_bearing": false,
       "last_verified": "2026-07-11",
       "refresh_due": "2026-08-10",
@@ -320,7 +382,9 @@
       "scope": "California privacy regulation status page",
       "classification": "evidence-based",
       "verdict": "verified",
-      "source_ids": ["cppa-regulations-official"],
+      "source_ids": [
+        "cppa-regulations-official"
+      ],
       "load_bearing": false,
       "last_verified": "2026-07-11",
       "refresh_due": "2026-08-10",
@@ -332,7 +396,9 @@
       "scope": "HIPAA covered entities and business associates; applicability remains fact-specific",
       "classification": "evidence-based",
       "verdict": "verified",
-      "source_ids": ["hhs-tracking-guidance-official"],
+      "source_ids": [
+        "hhs-tracking-guidance-official"
+      ],
       "load_bearing": false,
       "last_verified": "2026-07-11",
       "refresh_due": "2026-08-10",
@@ -344,7 +410,9 @@
       "scope": "US endorsement guidance, not a safe harbor",
       "classification": "evidence-based",
       "verdict": "verified",
-      "source_ids": ["ftc-endorsement-guides-official"],
+      "source_ids": [
+        "ftc-endorsement-guides-official"
+      ],
       "load_bearing": false,
       "last_verified": "2026-07-11",
       "refresh_due": "2026-08-10",
@@ -356,7 +424,9 @@
       "scope": "Repository README at retrieval date; no installed capability implied",
       "classification": "evidence-based",
       "verdict": "verified",
-      "source_ids": ["google-ads-mcp-official"],
+      "source_ids": [
+        "google-ads-mcp-official"
+      ],
       "load_bearing": false,
       "last_verified": "2026-07-11",
       "refresh_due": "2026-08-10",
@@ -368,7 +438,9 @@
       "scope": "Amazon provider announcement; availability remains account-specific",
       "classification": "evidence-based",
       "verdict": "verified",
-      "source_ids": ["amazon-ads-mcp-official"],
+      "source_ids": [
+        "amazon-ads-mcp-official"
+      ],
       "load_bearing": false,
       "last_verified": "2026-07-11",
       "refresh_due": "2026-08-10",
@@ -380,7 +452,9 @@
       "scope": "TikTok provider announcement; no installed or live capability implied",
       "classification": "evidence-based",
       "verdict": "verified",
-      "source_ids": ["tiktok-ads-mcp-official"],
+      "source_ids": [
+        "tiktok-ads-mcp-official"
+      ],
       "load_bearing": false,
       "last_verified": "2026-07-11",
       "refresh_due": "2026-08-10",
@@ -392,7 +466,9 @@
       "scope": "Provider page; availability must be verified per account",
       "classification": "evidence-based",
       "verdict": "verified",
-      "source_ids": ["microsoft-ads-mcp-official"],
+      "source_ids": [
+        "microsoft-ads-mcp-official"
+      ],
       "load_bearing": false,
       "last_verified": "2026-07-11",
       "refresh_due": "2026-08-10",
@@ -404,7 +480,9 @@
       "scope": "Meta-authored architecture description",
       "classification": "evidence-based",
       "verdict": "verified",
-      "source_ids": ["meta-andromeda-engineering-official"],
+      "source_ids": [
+        "meta-andromeda-engineering-official"
+      ],
       "load_bearing": false,
       "last_verified": "2026-07-11",
       "refresh_due": "2026-08-10",
@@ -416,7 +494,9 @@
       "scope": "Meta-authored architecture description; performance claims excluded",
       "classification": "evidence-based",
       "verdict": "verified",
-      "source_ids": ["meta-ai-ads-ranking-official"],
+      "source_ids": [
+        "meta-ai-ads-ranking-official"
+      ],
       "load_bearing": false,
       "last_verified": "2026-07-11",
       "refresh_due": "2026-08-10",
@@ -428,7 +508,10 @@
       "scope": "Exact fields and VIDEO routing implemented by google-ads-api-campaign-daily-v1 and youtube-google-ads-api-video-campaign-daily-v1",
       "classification": "evidence-based",
       "verdict": "verified",
-      "source_ids": ["google-ads-campaign-fields-official", "youtube-google-ads-video-official"],
+      "source_ids": [
+        "google-ads-campaign-fields-official",
+        "youtube-google-ads-video-official"
+      ],
       "load_bearing": true,
       "last_verified": "2026-07-11",
       "refresh_due": "2026-08-10",
@@ -440,7 +523,9 @@
       "scope": "meta-marketing-api-insights-campaign-daily-v1 only",
       "classification": "evidence-based",
       "verdict": "verified",
-      "source_ids": ["meta-insights-reporting-official"],
+      "source_ids": [
+        "meta-insights-reporting-official"
+      ],
       "load_bearing": true,
       "last_verified": "2026-07-11",
       "refresh_due": "2026-08-10",
@@ -452,7 +537,9 @@
       "scope": "linkedin-ad-analytics-campaign-daily-v1 with CAMPAIGN pivot",
       "classification": "evidence-based",
       "verdict": "verified",
-      "source_ids": ["linkedin-ad-analytics-reporting-official"],
+      "source_ids": [
+        "linkedin-ad-analytics-reporting-official"
+      ],
       "load_bearing": true,
       "last_verified": "2026-07-11",
       "refresh_due": "2026-08-10",
@@ -464,7 +551,9 @@
       "scope": "tiktok-integrated-report-ad-daily-v1 only",
       "classification": "evidence-based",
       "verdict": "verified",
-      "source_ids": ["tiktok-integrated-reporting-official"],
+      "source_ids": [
+        "tiktok-integrated-reporting-official"
+      ],
       "load_bearing": true,
       "last_verified": "2026-07-11",
       "refresh_due": "2026-08-10",
@@ -476,7 +565,9 @@
       "scope": "microsoft-ad-performance-daily-csv-v1 only",
       "classification": "evidence-based",
       "verdict": "verified",
-      "source_ids": ["microsoft-ad-performance-report-official"],
+      "source_ids": [
+        "microsoft-ad-performance-report-official"
+      ],
       "load_bearing": true,
       "last_verified": "2026-07-11",
       "refresh_due": "2026-08-10",
@@ -488,7 +579,9 @@
       "scope": "apple-ads-api-v5-campaign-daily-v1 only",
       "classification": "evidence-based",
       "verdict": "verified",
-      "source_ids": ["apple-campaign-reporting-official"],
+      "source_ids": [
+        "apple-campaign-reporting-official"
+      ],
       "load_bearing": true,
       "last_verified": "2026-07-11",
       "refresh_due": "2026-08-10",
@@ -500,7 +593,9 @@
       "scope": "reddit-ads-api-v3-ad-daily-v1 only",
       "classification": "evidence-based",
       "verdict": "verified",
-      "source_ids": ["reddit-ads-reporting-v3-official"],
+      "source_ids": [
+        "reddit-ads-reporting-v3-official"
+      ],
       "load_bearing": true,
       "last_verified": "2026-07-11",
       "refresh_due": "2026-08-10",
@@ -512,7 +607,9 @@
       "scope": "pinterest-campaign-analytics-daily-v1 only",
       "classification": "evidence-based",
       "verdict": "verified",
-      "source_ids": ["pinterest-ads-reporting-official"],
+      "source_ids": [
+        "pinterest-ads-reporting-official"
+      ],
       "load_bearing": true,
       "last_verified": "2026-07-11",
       "refresh_due": "2026-08-10",
@@ -524,11 +621,71 @@
       "scope": "snap-campaign-stats-daily-v1 only",
       "classification": "evidence-based",
       "verdict": "verified",
-      "source_ids": ["snap-ads-measurement-official"],
+      "source_ids": [
+        "snap-ads-measurement-official"
+      ],
       "load_bearing": true,
       "last_verified": "2026-07-11",
       "refresh_due": "2026-08-10",
       "owner": "native-export-owner"
+    },
+    {
+      "id": "CLM-0210",
+      "statement": "The ads_archive endpoint requires ad_reached_countries, and ads that did not reach an EU location return only when they concern social issues, elections, or politics. Commercial competitor search is therefore EU-scoped.",
+      "scope": "Meta Ad Library API search coverage",
+      "classification": "evidence-based",
+      "verdict": "verified",
+      "source_ids": [
+        "meta-ad-library-ads-archive-official"
+      ],
+      "load_bearing": true,
+      "last_verified": "2026-08-20",
+      "refresh_due": "2026-09-19",
+      "owner": "repository-maintainers"
+    },
+    {
+      "id": "CLM-0211",
+      "statement": "ArchivedAd exposes creative text, page identity, platforms, languages, and delivery dates for every disclosed ad; spend, impressions, bylines, currency, and demographic distribution for political and issue ads only; and target_ages, target_gender, target_locations, eu_total_reach, and beneficiary_payers for UK and EU delivery only.",
+      "scope": "Meta Ad Library ArchivedAd field availability tiers",
+      "classification": "evidence-based",
+      "verdict": "verified",
+      "source_ids": [
+        "meta-ad-library-archived-ad-official"
+      ],
+      "load_bearing": true,
+      "last_verified": "2026-08-20",
+      "refresh_due": "2026-09-19",
+      "owner": "repository-maintainers",
+      "notes": "Contradiction open: a NotebookLM read of the same ArchivedAd page on 2026-08-20 reported that age_country_gender_reach_breakdown, target_ages, target_gender, and target_locations also populate for Brazil political and issue ads, alongside br_total_reach. Direct retrieval recorded these as UK/EU only. Reverify the Brazil scope against the official page before any reporting logic depends on the boundary."
+    },
+    {
+      "id": "CLM-0212",
+      "statement": "ad_type accepts ALL, EMPLOYMENT_ADS, FINANCIAL_PRODUCTS_AND_SERVICES_ADS, HOUSING_ADS, and POLITICAL_AND_ISSUE_ADS.",
+      "scope": "Meta Ad Library ad_type enumeration",
+      "classification": "evidence-based",
+      "verdict": "verified",
+      "source_ids": [
+        "meta-ad-library-ads-archive-official"
+      ],
+      "load_bearing": true,
+      "last_verified": "2026-08-20",
+      "refresh_due": "2026-09-19",
+      "owner": "repository-maintainers"
+    },
+    {
+      "id": "CLM-0213",
+      "statement": "Ad Library API access requires identity and location confirmation through the process used for social issue, election, and political advertising, plus a developer account, an app, and an access token.",
+      "scope": "Meta Ad Library API onboarding prerequisites",
+      "classification": "practitioner",
+      "verdict": "provisional",
+      "source_ids": [
+        "meta-ad-library-access-community"
+      ],
+      "load_bearing": false,
+      "last_verified": "2026-08-20",
+      "refresh_due": "2026-09-19",
+      "owner": "repository-maintainers",
+      "notes": "Community-tier evidence only; the canonical facebook.com/ads/library/api page did not respond during retrieval. Reverify against the official page before any release-current claim depends on it."
     }
   ]
 }
