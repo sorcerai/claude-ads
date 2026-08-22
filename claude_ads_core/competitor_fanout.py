@@ -199,3 +199,70 @@ def coverage_summary(results: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
         "by_status": counts,
         "complete": total > 0 and counts["ok"] == total,
     }
+
+
+# Fields Meta populates only for political and issue ads. Present-but-absent here
+# means "not disclosed for this ad", never "this advertiser spent nothing".
+POLITICAL_ONLY_FIELDS = (
+    "bylines",
+    "currency",
+    "spend",
+    "impressions",
+    "demographic_distribution",
+    "delivery_by_region",
+    "estimated_audience_size",
+)
+
+PROVENANCE = ("ad-library-api", "operator-supplied")
+
+
+def normalize_archived_ads(
+    ads: Iterable[Mapping[str, Any]],
+    *,
+    captured_at: str,
+    provenance: str,
+) -> list[dict[str, Any]]:
+    """Fold ArchivedAd rows into one canonical competitor observation shape.
+
+    Both supported routes land here: the API client's `ads` list, and rows an
+    operator transcribed by hand from the public Ad Library. Downstream
+    clustering and reporting therefore never branch on where evidence came from,
+    only on how well attested it is.
+
+    Creative text is advertiser-authored and stays under `untrusted_creative`, so
+    no caller can mistake it for instructions or for verified claims.
+    """
+    if provenance not in PROVENANCE:
+        raise ValueError(f"provenance must be one of {PROVENANCE}, got {provenance!r}")
+
+    observations: list[dict[str, Any]] = []
+    for ad in ads:
+        ad_id = str(ad.get("id") or "").strip()
+        if not ad_id:
+            raise ValueError("every ArchivedAd row requires an id")
+
+        disclosed = {key: ad[key] for key in POLITICAL_ONLY_FIELDS if key in ad}
+        observations.append(
+            {
+                "observation_id": f"meta-ad-library.{ad_id}",
+                "platform": "meta",
+                "advertiser": ad.get("page_name"),
+                "advertiser_page_id": ad.get("page_id"),
+                "snapshot_url": ad.get("ad_snapshot_url"),
+                "publisher_platforms": list(ad.get("publisher_platforms") or []),
+                "languages": list(ad.get("languages") or []),
+                "delivery_start": ad.get("ad_delivery_start_time"),
+                "delivery_stop": ad.get("ad_delivery_stop_time") or None,
+                "untrusted_creative": {
+                    "bodies": list(ad.get("ad_creative_bodies") or []),
+                    "titles": list(ad.get("ad_creative_link_titles") or []),
+                    "descriptions": list(ad.get("ad_creative_link_descriptions") or []),
+                    "captions": list(ad.get("ad_creative_link_captions") or []),
+                },
+                # Absent keys are undisclosed for this ad's category, not zero.
+                "disclosed_political_metrics": disclosed or None,
+                "captured_at": captured_at,
+                "provenance": provenance,
+            }
+        )
+    return observations

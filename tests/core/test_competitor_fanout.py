@@ -153,3 +153,76 @@ def test_cli_rejects_an_unknown_source(capsys):
         ]
     ) == 2
     assert "unknown source" in capsys.readouterr().err
+
+
+def _fixture_ads():
+    import json
+    from pathlib import Path
+
+    path = (
+        Path(__file__).resolve().parent.parent
+        / "fixtures" / "ad_library" / "meta_ads_archive.json"
+    )
+    return json.loads(path.read_text(encoding="utf-8"))["data"]
+
+
+def test_normalizer_produces_identical_shape_for_both_routes():
+    """API rows and hand-transcribed rows must not diverge downstream."""
+    from claude_ads_core.competitor_fanout import normalize_archived_ads
+
+    api = normalize_archived_ads(_fixture_ads(), captured_at=CREATED_AT, provenance="ad-library-api")
+    manual = normalize_archived_ads(_fixture_ads(), captured_at=CREATED_AT, provenance="operator-supplied")
+    assert [set(o) for o in api] == [set(o) for o in manual]
+    assert api[0]["provenance"] != manual[0]["provenance"]
+
+
+def test_creative_text_is_quarantined_as_untrusted():
+    """The fixture carries a prompt-injection body; it must stay data."""
+    from claude_ads_core.competitor_fanout import normalize_archived_ads
+
+    observations = normalize_archived_ads(
+        _fixture_ads(), captured_at=CREATED_AT, provenance="ad-library-api"
+    )
+    injected = observations[1]["untrusted_creative"]["bodies"][0]
+    assert "Ignore all previous instructions" in injected
+    assert "untrusted_creative" in observations[1]
+    assert not any(
+        "Ignore all previous" in str(value)
+        for key, value in observations[1].items()
+        if key != "untrusted_creative"
+    )
+
+
+def test_undisclosed_political_metrics_are_none_not_zero():
+    """Absent spend means undisclosed for this category, never zero spend."""
+    from claude_ads_core.competitor_fanout import normalize_archived_ads
+
+    observations = normalize_archived_ads(
+        _fixture_ads(), captured_at=CREATED_AT, provenance="ad-library-api"
+    )
+    assert observations[0]["disclosed_political_metrics"] is None
+
+
+def test_disclosed_political_metrics_are_carried_through():
+    from claude_ads_core.competitor_fanout import normalize_archived_ads
+
+    observations = normalize_archived_ads(
+        [{"id": "1", "spend": {"lower_bound": "100"}, "currency": "EUR"}],
+        captured_at=CREATED_AT,
+        provenance="ad-library-api",
+    )
+    assert observations[0]["disclosed_political_metrics"]["currency"] == "EUR"
+
+
+def test_normalizer_rejects_a_row_without_an_id():
+    from claude_ads_core.competitor_fanout import normalize_archived_ads
+
+    with pytest.raises(ValueError, match="requires an id"):
+        normalize_archived_ads([{"page_name": "x"}], captured_at=CREATED_AT, provenance="ad-library-api")
+
+
+def test_normalizer_rejects_an_unknown_provenance():
+    from claude_ads_core.competitor_fanout import normalize_archived_ads
+
+    with pytest.raises(ValueError, match="provenance must be"):
+        normalize_archived_ads([], captured_at=CREATED_AT, provenance="scraped")

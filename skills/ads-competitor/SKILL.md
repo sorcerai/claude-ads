@@ -37,6 +37,31 @@ languages, and delivery dates are always disclosed. `spend`, `impressions`,
 Targeting and reach fields are UK/EU-only (`--include-eu-fields`). Never report an
 absent tiered field as a competitor having zero spend or no targeting.
 
+## Routes to Meta ad evidence
+
+Scraping the Ad Library UI is prohibited, not merely discouraged.
+`facebook.com/robots.txt` ends in `User-agent: * / Disallow: /` and its header
+states that automated collection requires express written permission. Never
+fetch, crawl, or render Ad Library pages programmatically, and never accept
+scraped output as a source. `provenance` has no `scraped` value by design.
+
+Three sanctioned routes remain:
+
+1. **Ad Library API** via `scripts/fetch_ad_library.py`. The only automated
+   route. Requires the token in `ads-setup`, whose identity-confirmation step
+   takes days. Start it before it is needed.
+2. **Operator capture.** A person browsing the public Ad Library is not
+   automated collection. The operator reads what they need and supplies the
+   fields; normalize with `normalize_archived_ads(..., provenance=
+   "operator-supplied")`. Available immediately, no credential, no ToS risk.
+   Coverage is whatever the human looked at, so record the queries they ran.
+3. **Licensed third-party ad intelligence.** Vendors operating under their own
+   agreement with Meta. Treat as third-party estimates, label the vendor, and
+   check redistribution terms before quoting creative.
+
+Both normalized routes produce one observation shape, so clustering and
+reporting never branch on origin, only on attestation quality.
+
 ## Fanout
 
 Plan slices deterministically, then dispatch:

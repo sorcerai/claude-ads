@@ -52,6 +52,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `mcp__search-ops__find_serp_competitors` with `resultTypes: ['paid']`, usable
   today without any advertising-platform token. Output is labeled a third-party
   estimate, never a competitor account fact.
+* **Source-agnostic observation normalizer** (`normalize_archived_ads`): folds
+  ArchivedAd rows from either sanctioned route into one shape, so downstream
+  clustering never branches on origin. Advertiser-authored copy is quarantined
+  under `untrusted_creative`, and undisclosed political metrics normalize to
+  `None` rather than zero, so an undisclosed budget can never be read as a
+  competitor spending nothing.
+* **Documented that Ad Library scraping is prohibited**, not merely
+  discouraged: `facebook.com/robots.txt` ends in `User-agent: * / Disallow: /`
+  and its header requires express written permission for automated collection.
+  `provenance` accepts `ad-library-api` and `operator-supplied` only; there is
+  deliberately no `scraped` value.
 * **Meta coverage rules now have one definition**, in the core module, imported
   by `fetch_ad_library.py`. The client and the planner previously duplicated the
   EU and special-ad-category logic and could have drifted apart.
