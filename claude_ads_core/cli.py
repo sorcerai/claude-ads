@@ -11,10 +11,12 @@ from typing import Any, Sequence
 
 from . import __version__
 from .adapters import AdapterError, GenericCSVExportAdapter
+from .competitor_fanout import SOURCES, plan_slices
 from .contracts import CONTRACT_NAMES, ContractError, load_contract, validate_contract
 from .reporting import ReportRenderError, write_report_bundle
 from .product_status import ProductStatusError, evaluate_product_status
 from .scoring import ScoringError, score_account, score_portfolio
+from .workflow_contracts import WorkflowContractError, validate_workflow_contract
 
 
 def _read_json(path: str) -> Any:
@@ -65,6 +67,21 @@ def build_parser() -> argparse.ArgumentParser:
     render.add_argument("--format", choices=("markdown", "html", "pdf"), default="markdown")
     render.add_argument("--root", default=".claude-ads/runs", help="safe root for report artifacts")
     render.add_argument("--output", help="relative output path; defaults to <run-id>/report.<extension>")
+
+    fanout = commands.add_parser(
+        "plan-fanout",
+        help="plan competitor research slices as orchestration-task packets",
+    )
+    fanout.add_argument("--run-id", required=True)
+    fanout.add_argument("--competitors", required=True, help="comma-separated names")
+    fanout.add_argument("--countries", required=True, help="comma-separated ISO codes")
+    fanout.add_argument(
+        "--sources",
+        default=",".join(sorted(SOURCES)),
+        help="comma-separated source ids; defaults to all",
+    )
+    fanout.add_argument("--ad-type", default="ALL")
+    fanout.add_argument("--created-at", required=True, help="ISO 8601 timestamp")
 
     ingest = commands.add_parser("ingest-export", help="normalize a generic CSV export")
     ingest.add_argument("--platform", required=True)
@@ -147,9 +164,32 @@ def main(argv: Sequence[str] | None = None) -> int:
                     "status": "rendered",
                 }
             )
+        elif args.command == "plan-fanout":
+            def _split(value: str) -> list[str]:
+                return [item.strip() for item in value.split(",") if item.strip()]
+
+            tasks = plan_slices(
+                run_id=args.run_id,
+                competitors=_split(args.competitors),
+                countries=_split(args.countries),
+                sources=_split(args.sources),
+                created_at=args.created_at,
+                ad_type=args.ad_type,
+            )
+            for task in tasks:
+                validate_workflow_contract("orchestration-task", task)
+            _emit({"run_id": args.run_id, "slices": len(tasks), "tasks": tasks})
         elif args.command == "ingest-export":
             _emit(GenericCSVExportAdapter(args.platform).read_snapshot(args.path))
-    except (AdapterError, ContractError, ProductStatusError, ReportRenderError, ScoringError) as exc:
+    except (
+        AdapterError,
+        ContractError,
+        ProductStatusError,
+        ReportRenderError,
+        ScoringError,
+        WorkflowContractError,
+        ValueError,
+    ) as exc:
         print(json.dumps({"status": "invalid", "error": str(exc)}, sort_keys=True), file=sys.stderr)
         return 2
     return 0

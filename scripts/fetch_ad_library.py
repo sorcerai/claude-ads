@@ -29,6 +29,10 @@ from url_utils import (
     sanitize_error,
 )
 
+# The planner and this client must agree on when an empty result is a coverage
+# limit rather than absence of ads, so the rule has exactly one definition.
+from claude_ads_core.competitor_fanout import meta_coverage_note as scope_warning
+
 try:
     import requests
 except ImportError:
@@ -78,23 +82,12 @@ EU_FIELDS = (
     "total_reach_by_location",
 )
 
-# Meta's US special ad categories. Grouped separately because the reference
-# documents no geographic limit for them either way.
-SPECIAL_AD_CATEGORIES = frozenset(
-    {"EMPLOYMENT_ADS", "FINANCIAL_PRODUCTS_AND_SERVICES_ADS", "HOUSING_ADS"}
-)
-
 AD_TYPES = (
     "ALL",
     "EMPLOYMENT_ADS",
     "FINANCIAL_PRODUCTS_AND_SERVICES_ADS",
     "HOUSING_ADS",
     "POLITICAL_AND_ISSUE_ADS",
-)
-
-EU_COUNTRIES = frozenset(
-    """AT BE BG HR CY CZ DK EE FI FR DE GR HU IE IT LV LT LU MT NL PL PT RO SK
-    SI ES SE""".split()
 )
 
 
@@ -106,37 +99,6 @@ def build_fields(include_political: bool, include_eu: bool) -> list[str]:
     if include_eu:
         fields.extend(EU_FIELDS)
     return fields
-
-
-def scope_warning(ad_type: str, countries: list[str]) -> str | None:
-    """Return the documented empty-result explanation, or None if in scope.
-
-    Meta restricts non-political disclosure to EU-reached ads. Callers hit this
-    as a silent empty list, so name the cause before the request rather than
-    letting an operator read zero rows as "this competitor runs no ads".
-    """
-    if ad_type == "POLITICAL_AND_ISSUE_ADS":
-        return None
-    if any(country.upper() in EU_COUNTRIES for country in countries):
-        return None
-
-    scope = ",".join(countries)
-    if ad_type in SPECIAL_AD_CATEGORIES:
-        # The reference states the EU rule for "social issues, elections or
-        # politics" but says nothing about country availability for the special
-        # ad categories. Flag the uncertainty instead of asserting an empty
-        # result an operator might act on. See CLM-0214.
-        return (
-            f"ad_type={ad_type} with no EU country in {scope}: the reference does not "
-            "state whether special ad category disclosure extends outside the EU. "
-            "Treat an empty result as unconfirmed coverage, not as absence of ads."
-        )
-    return (
-        f"ad_type={ad_type} with no EU country in {scope}: Meta returns "
-        "only social issue, election, and political ads outside the EU, so commercial "
-        "results are expected to be empty. Add an EU country or use "
-        "--ad-type POLITICAL_AND_ISSUE_ADS."
-    )
 
 
 def _validate_next_url(url: str) -> str:

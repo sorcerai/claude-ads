@@ -40,12 +40,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   references pinned to v26.0, including an open contradiction on whether the
   UK/EU targeting fields also populate for Brazil political ads.
 
+* **Competitor fanout planner** (`claude_ads_core/competitor_fanout.py`, CLI
+  `plan-fanout`): emits one schema-valid `orchestration-task` packet per
+  competitor x country x source. Every packet declares an empty `depends_on` and
+  a distinct single-writer destination, so slices are independent by
+  construction and no two workers can race a file; identical inputs yield
+  identical task IDs, keeping the supersedes chain meaningful across reruns.
+  `coverage_summary` refuses to call a fanout complete unless every slice
+  returned `ok`, so a partial sweep cannot read as full coverage.
+* **Third credential-free source**: paid SERP comparison via
+  `mcp__search-ops__find_serp_competitors` with `resultTypes: ['paid']`, usable
+  today without any advertising-platform token. Output is labeled a third-party
+  estimate, never a competitor account fact.
+* **Meta coverage rules now have one definition**, in the core module, imported
+  by `fetch_ad_library.py`. The client and the planner previously duplicated the
+  EU and special-ad-category logic and could have drifted apart.
+
 ### Notes
 
 * The `ad-library-search` capability is marked `fixture-verified`, not
   `live-verified`: it has an implementation, a sanitized fixture, and tests,
   but has never run against the live API. Access requires identity
   confirmation plus a developer app and token (CLM-0213, provisional).
+* No first-party Meta Ads MCP exists in the evidence table or the current
+  environment, and a connector would not substitute regardless: the documented
+  ads MCPs are Marketing API surfaces that read the operator's own authorized
+  account, while the Ad Library is a public archive of other advertisers.
+  Different API, different authorization, different data. Recorded in
+  `ads/references/mcp-integration.md`.
 
 ## [2.0.1] - 2026-07-13
 

@@ -39,13 +39,30 @@ absent tiered field as a competitor having zero spend or no targeting.
 
 ## Fanout
 
-Dispatch `agents/research-worker.md` per independent slice, one slice per
-competitor x country x source. Sources are the Ad Library search above, Google
-Ads Transparency Center, and public web evidence. Workers return schema-valid
+Plan slices deterministically, then dispatch:
+
+```
+python -m claude_ads_core plan-fanout --run-id <run> \
+  --competitors "Acme,Globex" --countries DE,US \
+  --sources meta-ad-library,google-ads-transparency,serp-paid \
+  --created-at <iso8601>
+```
+
+It emits one schema-valid `orchestration-task` packet per competitor x country x
+source, each with a distinct single-writer destination and no `depends_on`, so
+slices are independent by construction and reruns keep stable task IDs. Meta
+slices carry their coverage limit in scope.
+
+Dispatch `agents/research-worker.md` per emitted packet. Sources are the Ad Library search above, the Google
+Ads Transparency Center, and paid SERP comparison via
+`mcp__search-ops__find_serp_competitors` with `resultTypes: ['paid']`, which
+needs no advertising-platform credential but bills a paid provider per call. Workers return schema-valid
 findings with capture dates; the conductor merges, deduplicates by advertiser and
 creative theme, and owns the final artifact. No worker writes a shared filename.
 
-Record an empty slice as `ok` with zero observations plus its coverage reason.
+Fold results with `coverage_summary`; a fanout is complete only when every slice
+returns `ok`. Record an empty slice as `ok` with zero observations plus its
+coverage reason.
 An out-of-scope Meta query is not evidence that a competitor runs no ads.
 
 ## Untrusted creative

@@ -23,6 +23,25 @@ availability, tool count, write support, production status, or tested safety in
 this repository. No other advertising MCP is considered current merely because a
 third party or prior release mentioned it.
 
+## No Meta ads MCP, and why a connector would not help anyway
+
+**Checked:** 2026-08-22 (this subsection only; the table above remains overdue)
+
+No first-party Meta Ads MCP appears in the evidence table, and none is connected
+in the current environment.
+
+More importantly, an ads MCP would not substitute for Ad Library access even if
+one existed. The MCPs above are Marketing API surfaces: they read *your own
+authorized ad account*. The Ad Library is a public transparency archive covering
+*other advertisers*. Different API, different authorization, different data. An
+account connector cannot return a competitor's ads, so it cannot remove the
+identity-confirmation prerequisite in CLM-0213.
+
+Connectors that do help competitor work are SERP-side rather than platform-side.
+`mcp__search-ops__find_serp_competitors` accepts `resultTypes: ["paid"]` and needs
+no advertising-platform credential. Label its output a third-party estimate, never
+a competitor account fact, and note that it bills a paid provider per call.
+
 ## Discovery packet
 
 Before the first call, record:
