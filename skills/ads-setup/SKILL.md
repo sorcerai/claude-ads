@@ -53,6 +53,19 @@ slow step and several fast ones, so start the slow one first:
 3. Generate a user access token for that app and export it as
    `META_AD_LIBRARY_TOKEN`. Record presence only in the profile:
    `{"configured": true, "source": "environment", "secret_ref": "META_AD_LIBRARY_TOKEN"}`.
+4. Verify with one EU query, which needs no political-ads eligibility:
+
+   ```
+   python scripts/fetch_ad_library.py --search-terms "<competitor>" --countries DE
+   ```
+
+   HTTP 401 means the token is invalid or identity confirmation has not cleared.
+   An empty `ads` list with no `warning` means the token works and that query
+   genuinely matched nothing.
+
+The scripts import `claude_ads_core`, so install the package first
+(`pip install -e .` from a checkout, or the packaged install). Running a script
+from a bare checkout without it fails with `ModuleNotFoundError`.
 
 The competitor fanout in `ads-competitor` runs without this token against public
 transparency surfaces. Do not block competitor research on step 1.
