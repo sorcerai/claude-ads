@@ -54,7 +54,9 @@ def test_meta_slice_outside_the_eu_carries_its_coverage_limit():
     tasks = _plan(competitors=["Acme"], countries=["US"], sources=["meta-ad-library"])
     scope = " ".join(tasks[0]["scope"])
     assert "Coverage limit" in scope
-    assert "expected to be empty" in scope
+    # Live-verified 2026-08-23: non-EU queries return real but partial rows.
+    assert "partial results" in scope
+    assert "expected to be empty" not in scope
 
 
 def test_meta_slice_inside_the_eu_carries_no_coverage_limit():
@@ -62,7 +64,8 @@ def test_meta_slice_inside_the_eu_carries_no_coverage_limit():
     assert not any("Coverage limit" in item for item in tasks[0]["scope"])
 
 
-def test_special_category_slice_is_unconfirmed_not_empty():
+def test_special_categories_follow_the_same_rule_as_all():
+    """Live-verified: HOUSING_ADS/US returned rows, all EU/UK-reaching."""
     tasks = _plan(
         competitors=["Acme"],
         countries=["US"],
@@ -70,8 +73,7 @@ def test_special_category_slice_is_unconfirmed_not_empty():
         ad_type="HOUSING_ADS",
     )
     scope = " ".join(tasks[0]["scope"])
-    assert "unconfirmed coverage" in scope
-    assert "expected to be empty" not in scope
+    assert "partial results" in scope
 
 
 def test_token_backed_source_recovers_as_needs_input():

@@ -39,14 +39,14 @@ def test_non_eu_commercial_search_is_disclosed_as_out_of_scope():
     warning = fetch_ad_library.scope_warning("ALL", ["US"])
     assert warning is not None
     assert "EU" in warning
+    assert "partial results" in warning
 
 
-def test_special_ad_categories_are_flagged_as_unconfirmed_not_empty():
-    """The reference documents no country limit for these; do not assert absence."""
+def test_special_ad_categories_follow_the_same_rule_as_all():
+    """Live-verified 2026-08-23: HOUSING_ADS/US returns EU/UK-reaching rows."""
     warning = fetch_ad_library.scope_warning("HOUSING_ADS", ["US"])
     assert warning is not None
-    assert "unconfirmed coverage" in warning
-    assert "expected to be empty" not in warning
+    assert "partial results" in warning
 
 
 def test_graph_api_host_passes_the_ssrf_guard():

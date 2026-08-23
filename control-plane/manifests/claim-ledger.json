@@ -631,32 +631,35 @@
     },
     {
       "id": "CLM-0210",
-      "statement": "The ads_archive endpoint requires ad_reached_countries, and ads that did not reach an EU location return only when they concern social issues, elections, or politics. Commercial competitor search is therefore EU-scoped.",
+      "statement": "The ads_archive endpoint requires ad_reached_countries. Outside the EU the archive discloses commercial ads only where the ad also reached the EU or UK, plus social issue, election, and political ads. A non-EU commercial query therefore returns real but partial results biased toward advertisers with EU/UK delivery, not zero results.",
       "scope": "Meta Ad Library API search coverage",
       "classification": "evidence-based",
       "verdict": "verified",
       "source_ids": [
-        "meta-ad-library-ads-archive-official"
+        "meta-ad-library-ads-archive-official",
+        "meta-ad-library-live-verification"
       ],
       "load_bearing": true,
-      "last_verified": "2026-08-20",
-      "refresh_due": "2026-09-19",
-      "owner": "repository-maintainers"
+      "last_verified": "2026-08-23",
+      "refresh_due": "2026-09-22",
+      "owner": "repository-maintainers",
+      "notes": "Corrected on 2026-08-23. The earlier reading treated the documented sentence as meaning a non-EU commercial query returns nothing. A live US query for 'crm software' returned 15 rows, all carrying total_reach_by_location with EU or GB keys, which identifies the disclosure mechanism. The prior framing was wrong in the more dangerous direction because it invited operators to skip the query or read partial coverage as complete."
     },
     {
       "id": "CLM-0211",
-      "statement": "ArchivedAd exposes creative text, page identity, platforms, languages, and delivery dates for every disclosed ad; spend, impressions, bylines, currency, and demographic distribution for political and issue ads only; and target_ages, target_gender, target_locations, eu_total_reach, and beneficiary_payers for UK and EU delivery only.",
+      "statement": "ArchivedAd exposes creative text, page identity, platforms, languages, and delivery dates for every disclosed ad; spend, impressions, bylines, currency, and demographic distribution for political and issue ads only; and target_ages, target_gender, target_locations, and reach breakdowns for UK, EU, and Brazil delivery.",
       "scope": "Meta Ad Library ArchivedAd field availability tiers",
       "classification": "evidence-based",
       "verdict": "verified",
       "source_ids": [
-        "meta-ad-library-archived-ad-official"
+        "meta-ad-library-archived-ad-official",
+        "meta-ad-library-live-verification"
       ],
       "load_bearing": true,
-      "last_verified": "2026-08-20",
-      "refresh_due": "2026-09-19",
+      "last_verified": "2026-08-23",
+      "refresh_due": "2026-09-22",
       "owner": "repository-maintainers",
-      "notes": "Contradiction open: a NotebookLM read of the same ArchivedAd page on 2026-08-20 reported that age_country_gender_reach_breakdown, target_ages, target_gender, and target_locations also populate for Brazil political and issue ads, alongside br_total_reach. Direct retrieval recorded these as UK/EU only. Reverify the Brazil scope against the official page before any reporting logic depends on the boundary."
+      "notes": "Brazil contradiction resolved on 2026-08-23 in favor of the NotebookLM reading. A live BR political query returned ads populating target_gender and target_ages with total_reach_by_location keyed BR, so the targeting fields are not UK/EU-exclusive."
     },
     {
       "id": "CLM-0212",
@@ -676,47 +679,49 @@
       "id": "CLM-0213",
       "statement": "Ad Library API access requires identity and location confirmation through the process used for social issue, election, and political advertising, plus a developer account, an app, and an access token.",
       "scope": "Meta Ad Library API onboarding prerequisites",
-      "classification": "practitioner",
-      "verdict": "provisional",
+      "classification": "evidence-based",
+      "verdict": "verified",
       "source_ids": [
         "meta-ad-library-access-community",
-        "meta-ad-library-access-practitioner"
+        "meta-ad-library-access-practitioner",
+        "meta-ad-library-live-verification"
       ],
-      "load_bearing": false,
-      "last_verified": "2026-08-20",
-      "refresh_due": "2026-09-19",
+      "load_bearing": true,
+      "last_verified": "2026-08-23",
+      "refresh_due": "2026-09-22",
       "owner": "repository-maintainers",
-      "notes": "Reconfirmed 2026-08-20 across independent practitioner guides. The official facebook.com/ads/library/api page did not respond on two retrieval attempts, and the ads_archive reference is explicitly silent on access prerequisites, so no tier-1 source supports this. Remains practitioner-tier and cannot alone establish mandatory behavior."
+      "notes": "Confirmed by live use on 2026-08-23. A user access token from an identity-confirmed account succeeded. App access tokens are rejected with error_code 10 subcode 2332004, 'App role required', because the identity confirmation binds to the user, not the app."
     },
     {
       "id": "CLM-0214",
-      "statement": "The ads_archive reference states the EU disclosure limit for social issue, election, and political ads but does not state whether EMPLOYMENT_ADS, HOUSING_ADS, or FINANCIAL_PRODUCTS_AND_SERVICES_ADS are disclosed outside the EU. Special ad category coverage outside the EU is therefore unknown.",
+      "statement": "EMPLOYMENT_ADS, HOUSING_ADS, and FINANCIAL_PRODUCTS_AND_SERVICES_ADS follow the same disclosure rule as ALL: outside the EU they return only where the ad also reached the EU or UK. They carry no additional geographic restriction.",
       "scope": "Meta Ad Library special ad category geographic disclosure",
-      "classification": "contested",
-      "verdict": "provisional",
+      "classification": "evidence-based",
+      "verdict": "verified",
       "source_ids": [
-        "meta-ad-library-ads-archive-official"
+        "meta-ad-library-live-verification"
       ],
       "load_bearing": false,
-      "last_verified": "2026-08-20",
-      "refresh_due": "2026-09-19",
+      "last_verified": "2026-08-23",
+      "refresh_due": "2026-09-22",
       "owner": "repository-maintainers",
-      "notes": "Direct retrieval on 2026-08-20 confirmed the page is silent on this. An empty non-EU special-category result must be reported as unconfirmed coverage, never as absence of ads. Resolve with a live query once a token exists."
+      "notes": "Resolved on 2026-08-23. A live HOUSING_ADS query against US returned 10 rows, all carrying total_reach_by_location with EU or GB keys, matching ALL behavior exactly."
     },
     {
       "id": "CLM-0215",
       "statement": "Ad Library API access requires no App Review and no reviewed permission; a development-mode app with a user access token suffices once identity confirmation has completed. Identity confirmation is the critical path.",
       "scope": "Meta Ad Library API app review and app mode requirements",
-      "classification": "practitioner",
-      "verdict": "provisional",
+      "classification": "evidence-based",
+      "verdict": "verified",
       "source_ids": [
-        "meta-ad-library-access-practitioner"
+        "meta-ad-library-access-practitioner",
+        "meta-ad-library-live-verification"
       ],
       "load_bearing": false,
-      "last_verified": "2026-08-20",
-      "refresh_due": "2026-09-19",
+      "last_verified": "2026-08-23",
+      "refresh_due": "2026-09-22",
       "owner": "repository-maintainers",
-      "notes": "No tier-1 source located; the ads_archive reference documents no permission or review requirement, which is consistent with but does not confirm this. Resolve by attempting a live call from a development-mode app."
+      "notes": "Confirmed on 2026-08-23: a development-mode app with no App Review produced a working user token. The app console additionally requires selecting use cases before Facebook Login provisions; until then the login dialog returns 'Feature unavailable' at both the Graph API Explorer and the raw OAuth endpoint."
     }
   ]
 }

@@ -23,18 +23,28 @@ privacy. Do not bypass authentication or scrape private account surfaces.
 
 `scripts/fetch_ad_library.py` queries the official `ads_archive` endpoint. The
 token lives in `META_AD_LIBRARY_TOKEN` and travels as a Bearer header; never place
-it in a URL, profile, or repository file.
+it in a URL, profile, or repository file. It must be a **user** access token from
+an identity-confirmed account. App tokens are rejected with `error_code 10`
+subcode `2332004`, "App role required", because the confirmation binds to the
+person, not the app (CLM-0213).
 
-Coverage is set by Meta and is not a defect to work around (CLM-0210):
+Coverage is set by Meta and is not a defect to work around (CLM-0210,
+live-verified 2026-08-23):
 
-- An EU country in `--countries` returns commercial ads.
-- Outside the EU only social issue, election, and political ads return, so a
-  commercial query yields an empty list. The script warns before dispatch.
+- An EU country in `--countries` returns commercial ads in full.
+- Outside the EU the archive still returns commercial ads, but only those that
+  also reached the EU or UK, plus political and issue ads. Results are real but
+  partial and skew toward advertisers with EU/UK delivery. The script warns
+  before dispatch. Never treat a non-EU result set as that market's full
+  advertising picture, and never treat a thin one as a competitor being absent.
+- Special ad categories (`HOUSING_ADS`, `EMPLOYMENT_ADS`,
+  `FINANCIAL_PRODUCTS_AND_SERVICES_ADS`) follow the identical rule (CLM-0214).
 
 Field availability is tiered (CLM-0211). Creative text, page identity, platforms,
 languages, and delivery dates are always disclosed. `spend`, `impressions`,
 `bylines`, and demographic distribution are political-only (`--include-political-fields`).
-Targeting and reach fields are UK/EU-only (`--include-eu-fields`). Never report an
+Targeting and reach fields cover UK, EU, and Brazil delivery (`--include-eu-fields`);
+`total_reach_by_location` is the reliable signal for why a non-EU row was disclosed. Never report an
 absent tiered field as a competitor having zero spend or no targeting.
 
 ## Routes to Meta ad evidence

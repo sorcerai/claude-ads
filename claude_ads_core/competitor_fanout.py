@@ -24,8 +24,8 @@ EU_COUNTRIES = frozenset(
     SI ES SE""".split()
 )
 
-# Meta's US special ad categories. The reference documents no geographic limit
-# for them either way, so an empty result is unconfirmed coverage, not absence.
+# Meta's US special ad categories. Live verification on 2026-08-23 showed they
+# follow the same EU-reach disclosure rule as ALL, so they need no separate branch.
 SPECIAL_AD_CATEGORIES = frozenset(
     {"EMPLOYMENT_ADS", "FINANCIAL_PRODUCTS_AND_SERVICES_ADS", "HOUSING_ADS"}
 )
@@ -71,10 +71,15 @@ def slugify(value: str) -> str:
 
 
 def meta_coverage_note(ad_type: str, countries: Iterable[str]) -> str | None:
-    """Explain why a Meta slice may return nothing, or None when fully in scope.
+    """Explain what a non-EU query does and does not cover, or None when full.
 
-    An unexplained empty list reads as "this competitor runs no ads", which is the
-    single most expensive misreading in competitor work.
+    Live verification on 2026-08-23 corrected an earlier reading of the docs. A
+    non-EU query does NOT return nothing: the archive discloses commercial ads
+    that also reached the EU or UK, so a US search returns real rows, biased
+    toward advertisers who also run EU/UK delivery. Special ad categories behave
+    identically. Calling that "expected to be empty" was wrong in the more
+    dangerous direction, since it invites an operator to skip the query or to
+    read partial coverage as a complete picture.
     """
     upper = [str(country).upper() for country in countries]
     if ad_type == "POLITICAL_AND_ISSUE_ADS":
@@ -82,17 +87,11 @@ def meta_coverage_note(ad_type: str, countries: Iterable[str]) -> str | None:
     if any(country in EU_COUNTRIES for country in upper):
         return None
 
-    scope = ",".join(upper)
-    if ad_type in SPECIAL_AD_CATEGORIES:
-        return (
-            f"ad_type={ad_type} with no EU country in {scope}: the reference does not "
-            "state whether special ad category disclosure extends outside the EU. "
-            "Treat an empty result as unconfirmed coverage, not as absence of ads."
-        )
     return (
-        f"ad_type={ad_type} with no EU country in {scope}: Meta returns only social "
-        "issue, election, and political ads outside the EU, so commercial results are "
-        "expected to be empty. Add an EU country or use POLITICAL_AND_ISSUE_ADS."
+        f"ad_type={ad_type} with no EU country in {','.join(upper)}: outside the EU the "
+        "archive discloses commercial ads only where they also reached the EU or UK, plus "
+        "social issue, election, and political ads. Expect real but partial results biased "
+        "toward advertisers with EU/UK delivery; this is not a complete view of that market."
     )
 
 

@@ -67,12 +67,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   by `fetch_ad_library.py`. The client and the planner previously duplicated the
   EU and special-ad-category logic and could have drifted apart.
 
+### Fixed
+
+* **Corrected the non-EU coverage rule from live evidence** (CLM-0210). The
+  earlier reading treated Meta's documented sentence as meaning a non-EU
+  commercial query returns nothing. A live US query returned 15 rows, every one
+  carrying `total_reach_by_location` with `EU` or `GB` keys — the archive
+  discloses commercial ads outside the EU where the ad *also* reached the EU or
+  UK. Results are real but partial and skew toward advertisers with EU/UK
+  delivery. The prior wording failed in the more dangerous direction: it invited
+  operators to skip the query entirely, or to read partial coverage as complete.
+* **Special ad categories carry no extra restriction** (CLM-0214, was
+  contested). A live `HOUSING_ADS` query against US returned 10 rows with the
+  same EU/GB reach signature as `ALL`, so the separate branch is gone.
+* **Brazil populates the targeting fields** (CLM-0211, contradiction resolved).
+  A live BR political query returned ads with `target_gender` and `target_ages`
+  populated and reach keyed `BR`, confirming the NotebookLM reading over the
+  direct one. The fields are not UK/EU-exclusive.
+* **App tokens cannot read the archive** (CLM-0213). Rejected with `error_code
+  10` subcode `2332004`, "App role required" — identity confirmation binds to
+  the user, not the app, so only a user access token works.
+
 ### Notes
 
-* The `ad-library-search` capability is marked `fixture-verified`, not
-  `live-verified`: it has an implementation, a sanitized fixture, and tests,
-  but has never run against the live API. Access requires identity
-  confirmation plus a developer app and token (CLM-0213, provisional).
+* The `ad-library-search` capability is `live-verified` as of 2026-08-23,
+  against Graph API v26.0 with a user access token from an identity-confirmed
+  account. Live queries covered EU commercial, non-EU commercial, special ad
+  category, and political surfaces.
+* Getting a working token additionally requires selecting the app's **use
+  cases** in the current console; without it the login dialog returns "Feature
+  unavailable" at both the Explorer and the raw OAuth endpoint (CLM-0215).
 * No first-party Meta Ads MCP exists in the evidence table or the current
   environment, and a connector would not substitute regardless: the documented
   ads MCPs are Marketing API surfaces that read the operator's own authorized

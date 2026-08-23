@@ -1,6 +1,6 @@
 {
   "schema_version": "1.0.0",
-  "snapshot_at": "2026-08-20",
+  "snapshot_at": "2026-08-23",
   "default_mutation_mode": "read-only",
   "platforms": [
     {
@@ -174,7 +174,7 @@
         {
           "id": "ad-library-search",
           "mode": "live-read",
-          "status": "fixture-verified",
+          "status": "live-verified",
           "implementation_paths": [
             "scripts/fetch_ad_library.py"
           ],
@@ -186,7 +186,8 @@
           ],
           "source_ids": [
             "meta-ad-library-ads-archive-official",
-            "meta-ad-library-archived-ad-official"
+            "meta-ad-library-archived-ad-official",
+            "meta-ad-library-live-verification"
           ]
         }
       ]

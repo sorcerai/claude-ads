@@ -49,8 +49,11 @@ slow step and several fast ones, so start the slow one first:
    because the archive carries political data.
 2. Create a Meta for Developers account and an app. The app may stay in
    development mode; no App Review or reviewed permission is required
-   (CLM-0213, practitioner evidence only).
-3. Generate a user access token for that app and export it as
+   (CLM-0215, live-verified). The current console also requires selecting the
+   app's **use cases** before Facebook Login is provisioned. Until that is done,
+   the login dialog returns "Feature unavailable" at both the Graph API Explorer
+   and the raw OAuth endpoint, and no amount of Basic Settings editing fixes it.
+3. Generate a **user** access token for that app and export it as
    `META_AD_LIBRARY_TOKEN`. Record presence only in the profile:
    `{"configured": true, "source": "environment", "secret_ref": "META_AD_LIBRARY_TOKEN"}`.
 4. Verify with one EU query, which needs no political-ads eligibility:

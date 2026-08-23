@@ -1,6 +1,6 @@
 {
   "schema_version": "1.0.0",
-  "generated_at": "2026-08-20",
+  "generated_at": "2026-08-23",
   "sources": [
     {
       "id": "claude-ads-v181-tree",
@@ -959,8 +959,7 @@
       "redistribution": "metadata-only",
       "claim_ids": [
         "CLM-0210",
-        "CLM-0212",
-        "CLM-0214"
+        "CLM-0212"
       ],
       "version": "v26.0"
     },
@@ -1008,6 +1007,26 @@
       "redistribution": "metadata-only",
       "claim_ids": [
         "CLM-0213",
+        "CLM-0215"
+      ]
+    },
+    {
+      "id": "meta-ad-library-live-verification",
+      "title": "Live ads_archive verification run against Graph API v26.0",
+      "locator": "primary-observation:ads_archive v26.0 queries, 2026-08-23",
+      "source_type": "primary-research",
+      "authority_tier": 1,
+      "retrieved_at": "2026-08-23",
+      "refresh_due": "2026-09-22",
+      "version": "v26.0",
+      "confidence": "high",
+      "license": "First-party observation of authorized API responses",
+      "redistribution": "metadata-only",
+      "claim_ids": [
+        "CLM-0210",
+        "CLM-0211",
+        "CLM-0213",
+        "CLM-0214",
         "CLM-0215"
       ]
     }
