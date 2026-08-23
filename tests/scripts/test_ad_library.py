@@ -146,7 +146,31 @@ def test_non_200_reports_verification_hint(monkeypatch):
         token="t", countries=["DE"], search_terms="x"
     )
     assert "401" in result["error"]
-    assert "facebook.com/ID" in result["error"]
+    assert "user access token" in result["error"]
+
+
+def test_api_error_body_is_surfaced(monkeypatch):
+    """A live app token returned 400 with the real cause only in the body."""
+    payload = {
+        "error": {
+            "message": "Application does not have permission for this action",
+            "code": 10,
+            "error_subcode": 2332004,
+            "error_user_title": "App role required",
+        }
+    }
+    monkeypatch.setattr(
+        fetch_ad_library,
+        "guarded_request",
+        lambda *a, **k: _Response(payload, status_code=400),
+    )
+    result = fetch_ad_library.search_ad_library(
+        token="t", countries=["DE"], search_terms="x"
+    )
+    assert "App role required" in result["error"]
+    # `code=` collides with the OAuth-code redaction pattern in url_utils.
+    assert "error_code 10" in result["error"]
+    assert "subcode 2332004" in result["error"]
 
 
 def test_field_sets_are_opt_in():

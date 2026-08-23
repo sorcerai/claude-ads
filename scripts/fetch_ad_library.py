@@ -184,9 +184,30 @@ def search_ad_library(
                 timeout=timeout,
             )
             if response.status_code != 200:
+                # Meta puts the actionable part in the body: an app token yields
+                # "App role required" (code 10) while a bad token yields a plain
+                # 401. Collapsing both into one hint sent us debugging the wrong
+                # thing, so surface the API's own message.
+                detail = ""
+                try:
+                    error = (response.json() or {}).get("error") or {}
+                    parts = [
+                        str(error.get(key))
+                        for key in ("message", "error_user_title", "error_user_msg")
+                        if error.get(key)
+                    ]
+                    if error.get("code") is not None:
+                        parts.append(
+                            f"error_code {error['code']} subcode {error.get('error_subcode')}"
+                        )
+                    detail = " ".join(parts)
+                except ValueError:
+                    detail = ""
                 result["error"] = (
                     f"Ad Library API returned HTTP {response.status_code}. "
-                    "Confirm identity verification at facebook.com/ID and token validity."
+                    + (f"{sanitize_error(ValueError(detail))} " if detail else "")
+                    + "The archive requires a user access token from an "
+                    "identity-confirmed account; app tokens are rejected."
                 )
                 return result
 
