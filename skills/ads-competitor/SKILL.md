@@ -86,6 +86,25 @@ operator opens `ad_snapshot_url` in a browser and supplies what they observe,
 recorded as `operator-supplied`. Never imply visual findings were derived from
 API evidence.
 
+## TikTok has no sanctioned automated route
+
+Do not promise TikTok competitor retrieval (CLM-0217):
+
+- **Commercial Content API** is the true Ad Library analogue, but access is
+  limited to approved researchers in the US or EU under a non-commercial-use
+  commitment. A commercial paid-media operator does not qualify, so applying is
+  not a path forward. Do not advise an operator to apply.
+- **library.tiktok.com** disallows `/ads`, `/api`, and
+  `/other-commercial-content` in robots.txt, then disallows all paths. Manual
+  browsing only.
+- **ads.tiktok.com** permits crawling, but Creative Center renders ads
+  client-side and shows curated top ads, not an exhaustive archive. It is an
+  inspiration surface, not a competitor census.
+
+Operator capture is the available route. Record TikTok observations as
+`operator-supplied` with the query and surface the operator used, and state the
+coverage limit in any deliverable rather than implying parity with Meta.
+
 ## Fanout
 
 Plan slices deterministically, then dispatch:

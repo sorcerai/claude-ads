@@ -107,6 +107,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   reproduced locally and reimplemented against the `unknown` status in
   `finding.schema.json`.
 
+* **Recorded that TikTok has no sanctioned automated competitor route**
+  (CLM-0217). The Commercial Content API is gated to approved researchers under
+  a non-commercial-use commitment that a paid-media operator cannot honestly
+  make; `library.tiktok.com` disallows its ad and API paths and then all paths;
+  and `ads.tiktok.com` Creative Center renders client-side and returned 77KB
+  containing no ad records. Documented so no deliverable implies TikTok parity
+  with Meta.
+
 ### Notes
 
 * The `ad-library-search` capability is `live-verified` as of 2026-08-23,
