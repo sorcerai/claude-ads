@@ -975,7 +975,8 @@
       "license": "Meta Platform Terms; documentation quoted within fair-use limits",
       "redistribution": "metadata-only",
       "claim_ids": [
-        "CLM-0211"
+        "CLM-0211",
+        "CLM-0216"
       ],
       "version": "v26.0"
     },
@@ -1027,7 +1028,8 @@
         "CLM-0211",
         "CLM-0213",
         "CLM-0214",
-        "CLM-0215"
+        "CLM-0215",
+        "CLM-0216"
       ]
     }
   ]

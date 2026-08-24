@@ -72,6 +72,20 @@ Three sanctioned routes remain:
 Both normalized routes produce one observation shape, so clustering and
 reporting never branch on origin, only on attestation quality.
 
+## No creative media from the API
+
+The archive returns text only (CLM-0216). There is no image or video field, and
+`ad_snapshot_url` renders its creative client-side, so fetching it yields
+interface assets and no ad media. Rendering it headlessly would be automated
+collection of `facebook.com`, which is prohibited, so it is not an option.
+
+Consequences for creative work: message, offer, hook, format mix, placement, and
+longevity are all analyzable from the API. Visual treatment, thumbnail, colour,
+talent, and on-screen text are not. When visual analysis is required, the
+operator opens `ad_snapshot_url` in a browser and supplies what they observe,
+recorded as `operator-supplied`. Never imply visual findings were derived from
+API evidence.
+
 ## Fanout
 
 Plan slices deterministically, then dispatch:

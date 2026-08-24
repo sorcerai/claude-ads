@@ -722,6 +722,22 @@
       "refresh_due": "2026-09-22",
       "owner": "repository-maintainers",
       "notes": "Confirmed on 2026-08-23: a development-mode app with no App Review produced a working user token. The app console additionally requires selecting use cases before Facebook Login provisions; until then the login dialog returns 'Feature unavailable' at both the Graph API Explorer and the raw OAuth endpoint."
+    },
+    {
+      "id": "CLM-0216",
+      "statement": "The Ad Library API returns no image or video assets. ArchivedAd exposes creative text and ad_snapshot_url only; the snapshot page renders creative client-side, so an unrendered fetch yields interface assets and no ad media. Meta creative analysis through the API is text-only.",
+      "scope": "Meta Ad Library creative media availability",
+      "classification": "evidence-based",
+      "verdict": "verified",
+      "source_ids": [
+        "meta-ad-library-archived-ad-official",
+        "meta-ad-library-live-verification"
+      ],
+      "load_bearing": true,
+      "last_verified": "2026-08-24",
+      "refresh_due": "2026-09-23",
+      "owner": "repository-maintainers",
+      "notes": "Verified 2026-08-24. A live 100-ad response contained no media-shaped field. Fetching ad_snapshot_url returned HTTP 200 with 172KB of HTML containing 93 static.xx.fbcdn.net interface assets, zero scontent image URLs, and zero video URLs. Rendering the snapshot with a headless browser would be automated collection of facebook.com, which robots.txt and the automated-collection terms prohibit, so it is not a sanctioned route."
     }
   ]
 }

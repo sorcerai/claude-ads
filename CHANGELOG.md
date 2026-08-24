@@ -88,6 +88,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   10` subcode `2332004`, "App role required" — identity confirmation binds to
   the user, not the app, so only a user access token works.
 
+* **Documented that the API returns no creative media** (CLM-0216). ArchivedAd
+  has no image or video field, and `ad_snapshot_url` renders client-side — a
+  live fetch returned 172KB of HTML with 93 static interface assets, zero
+  `scontent` image URLs, and zero video URLs. Headless rendering would be
+  automated collection of `facebook.com` and is prohibited. Message, offer,
+  format mix, placement, and longevity remain analyzable; visual treatment does
+  not, and must be sourced as `operator-supplied`.
+
 ### Notes
 
 * The `ad-library-search` capability is `live-verified` as of 2026-08-23,
