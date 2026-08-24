@@ -220,3 +220,78 @@ def test_rate_limit_error_is_named_as_throttling_not_a_penalty(monkeypatch):
     assert "Rate limited" in result["error"]
     assert "not a penalty" in result["error"]
     assert "app tokens are rejected" not in result["error"]
+
+
+def test_transient_error_is_retried_exactly_once(monkeypatch):
+    """ads/SKILL.md allows one retry, not the source pattern's four."""
+    calls = []
+    payload_err = {"error": {"message": "temporary", "code": 2, "is_transient": True}}
+    payload_ok = {"data": [{"id": "1"}], "paging": {}}
+
+    def fake(session, method, url, **kwargs):
+        calls.append(url)
+        if len(calls) == 1:
+            return _ResponseWithHeaders(payload_err, 500, {})
+        return _ResponseWithHeaders(payload_ok, 200, {})
+
+    monkeypatch.setattr(fetch_ad_library, "guarded_request", fake)
+    result = fetch_ad_library.search_ad_library(
+        token="t", countries=["DE"], search_terms="x", sleep=lambda _: None
+    )
+    assert len(calls) == 2
+    assert result["error"] is None
+    assert len(result["ads"]) == 1
+
+
+def test_throttle_code_is_never_retried(monkeypatch):
+    """Retrying a rate limit deepens the throttle it is reporting."""
+    calls = []
+
+    def fake(session, method, url, **kwargs):
+        calls.append(url)
+        return _ResponseWithHeaders(
+            {"error": {"message": "rate limit", "code": 613, "is_transient": True}}, 400, {}
+        )
+
+    monkeypatch.setattr(fetch_ad_library, "guarded_request", fake)
+    result = fetch_ad_library.search_ad_library(
+        token="t", countries=["DE"], search_terms="x", sleep=lambda _: None
+    )
+    assert len(calls) == 1, "a 613 must not be retried"
+    assert "Rate limited" in result["error"]
+
+
+def test_auth_failure_is_not_retried(monkeypatch):
+    """Authentication failures are excluded from retry by contract."""
+    calls = []
+
+    def fake(session, method, url, **kwargs):
+        calls.append(url)
+        return _ResponseWithHeaders(
+            {"error": {"message": "bad token", "code": 190, "is_transient": False}}, 401, {}
+        )
+
+    monkeypatch.setattr(fetch_ad_library, "guarded_request", fake)
+    fetch_ad_library.search_ad_library(
+        token="t", countries=["DE"], search_terms="x", sleep=lambda _: None
+    )
+    assert len(calls) == 1
+
+
+def test_retry_does_not_double_count_pages_or_resend_params(monkeypatch):
+    """A retried page must not inflate pages_fetched or re-apply params."""
+    seen = []
+    ok = {"data": [{"id": "1"}], "paging": {}}
+
+    def fake(session, method, url, **kwargs):
+        seen.append(kwargs.get("params"))
+        if len(seen) == 1:
+            return _ResponseWithHeaders({"error": {"code": 2, "is_transient": True}}, 500, {})
+        return _ResponseWithHeaders(ok, 200, {})
+
+    monkeypatch.setattr(fetch_ad_library, "guarded_request", fake)
+    result = fetch_ad_library.search_ad_library(
+        token="t", countries=["DE"], search_terms="x", sleep=lambda _: None
+    )
+    assert result["pages_fetched"] == 1
+    assert seen[0] is not None and seen[1] is not None  # same first page, params kept

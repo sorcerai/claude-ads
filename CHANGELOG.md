@@ -115,6 +115,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   containing no ad records. Documented so no deliverable implies TikTok parity
   with Meta.
 
+* **Single transient retry** on the Ad Library client, adapted from the
+  MIT-licensed `krusemediallc/arcads-claude-code` `meta_api.py`. Its four-attempt
+  loop was reduced to the one retry `ads/SKILL.md` permits, and narrowed to
+  exclude throttle codes 4, 17, 32, and 613 — Meta can mark a rate limit
+  transient, and retrying one deepens the condition the error is reporting.
+  Authentication, authorization, schema, policy, and validation failures are
+  never retried. The retried page does not double-count `pages_fetched` and
+  keeps its original params rather than re-applying them to a cursor URL. The
+  sleep is injectable so the tests do not add wall-clock time.
+
 ### Notes
 
 * The `ad-library-search` capability is `live-verified` as of 2026-08-23,

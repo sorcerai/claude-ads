@@ -20,6 +20,7 @@ import argparse
 import json
 import os
 import sys
+import time
 from datetime import date
 from urllib.parse import urlparse
 
@@ -82,6 +83,11 @@ EU_FIELDS = (
     "total_reach_by_location",
 )
 
+# Documented throttle codes: 4 app, 17 user, 32 Pages, 613 Ad Library. These are
+# excluded from retry even when Meta marks them transient, because retrying a rate
+# limit deepens the very throttle the error is reporting.
+THROTTLE_CODES = frozenset({4, 17, 32, 613})
+
 AD_TYPES = (
     "ALL",
     "EMPLOYMENT_ADS",
@@ -127,10 +133,17 @@ def search_ad_library(
     limit: int = 100,
     max_pages: int = 5,
     timeout: int = 30,
+    retry_delay: float = 2.0,
+    sleep=time.sleep,
 ) -> dict:
     """Query ads_archive and page through results.
 
-    Returns a dict with query metadata, ads, pages_fetched, warning, and error.
+    Returns a dict with query metadata, ads, pages_fetched, usage, warning, and
+    error.
+
+    The single-retry backoff shape is adapted from the MIT-licensed
+    krusemediallc/arcads-claude-code meta_api.py, reduced from its four attempts
+    to the one retry ads/SKILL.md permits, and narrowed to exclude throttle codes.
     """
     result = {
         "source": "meta-ad-library-api",
@@ -173,17 +186,44 @@ def search_ad_library(
     session.trust_env = False
     headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
 
+    def dispatch(target: str, page_params: dict | None):
+        """Send one page, retrying a single transient failure.
+
+        ads/SKILL.md allows exactly one retry of a transient tool failure and
+        forbids retrying authentication, authorization, schema, policy, or
+        validation errors. Throttle codes are excluded too: they are the one
+        "transient" class where retrying makes the condition worse.
+        """
+        for attempt in (1, 2):
+            try:
+                response = guarded_request(
+                    session, "GET", target, headers=headers,
+                    params=page_params, timeout=timeout,
+                )
+            except (requests.exceptions.Timeout, requests.exceptions.ConnectionError):
+                if attempt == 2:
+                    raise
+                sleep(retry_delay)
+                continue
+
+            if response.status_code == 200 or attempt == 2:
+                return response
+            try:
+                error = (response.json() or {}).get("error") or {}
+            except ValueError:
+                return response
+            if error.get("is_transient") and error.get("code") not in THROTTLE_CODES:
+                sleep(retry_delay)
+                continue
+            return response
+        return response
+
     url: str | None = ENDPOINT
     try:
         while url and result["pages_fetched"] < max_pages:
-            response = guarded_request(
-                session,
-                "GET",
-                url,
-                headers=headers,
-                params=params if result["pages_fetched"] == 0 else None,
-                timeout=timeout,
-            )
+            # A cursor URL already carries its query; re-sending params would
+            # double-apply them.
+            response = dispatch(url, params if result["pages_fetched"] == 0 else None)
             if response.status_code != 200:
                 # Meta puts the actionable part in the body: an app token yields
                 # "App role required" (code 10) while a bad token yields a plain
