@@ -25,6 +25,7 @@ class _Response:
     def __init__(self, payload: dict, status_code: int = 200) -> None:
         self._payload = payload
         self.status_code = status_code
+        self.headers: dict[str, str] = {}
 
     def json(self) -> dict:
         return self._payload
@@ -181,3 +182,41 @@ def test_field_sets_are_opt_in():
     widened = fetch_ad_library.build_fields(True, True)
     assert "spend" in widened
     assert "target_gender" in widened
+
+
+class _ResponseWithHeaders(_Response):
+    def __init__(self, payload, status_code=200, headers=None):
+        super().__init__(payload, status_code)
+        self.headers = headers or {}
+
+
+def test_usage_header_is_surfaced_for_throttle_headroom(monkeypatch):
+    """ads_archive reports via x-business-use-case-usage, not X-App-Usage."""
+    payload = {"data": [], "paging": {}}
+    headers = {
+        "x-business-use-case-usage": json.dumps(
+            {"123": [{"type": "ads_archive", "call_count": 7, "estimated_time_to_regain_access": 0}]}
+        )
+    }
+    monkeypatch.setattr(
+        fetch_ad_library,
+        "guarded_request",
+        lambda *a, **k: _ResponseWithHeaders(payload, 200, headers),
+    )
+    result = fetch_ad_library.search_ad_library(token="t", countries=["DE"], search_terms="x")
+    assert result["usage"]["header"] == "x-business-use-case-usage"
+    assert result["usage"]["value"]["123"][0]["call_count"] == 7
+
+
+def test_rate_limit_error_is_named_as_throttling_not_a_penalty(monkeypatch):
+    """Error 613 is the Ad Library throttle code; it must not read as a ban."""
+    payload = {"error": {"message": "rate limit", "code": 613}}
+    monkeypatch.setattr(
+        fetch_ad_library,
+        "guarded_request",
+        lambda *a, **k: _ResponseWithHeaders(payload, 400, {}),
+    )
+    result = fetch_ad_library.search_ad_library(token="t", countries=["DE"], search_terms="x")
+    assert "Rate limited" in result["error"]
+    assert "not a penalty" in result["error"]
+    assert "app tokens are rejected" not in result["error"]

@@ -145,6 +145,7 @@ def search_ad_library(
         "warning": scope_warning(ad_type, countries),
         "ads": [],
         "pages_fetched": 0,
+        "usage": None,
         "error": None,
     }
 
@@ -189,8 +190,11 @@ def search_ad_library(
                 # 401. Collapsing both into one hint sent us debugging the wrong
                 # thing, so surface the API's own message.
                 detail = ""
+                throttled = False
                 try:
                     error = (response.json() or {}).get("error") or {}
+                    # 4 app limit, 17 user limit, 32 Pages limit, 613 Ad Library limit.
+                    throttled = error.get("code") in (4, 17, 32, 613)
                     parts = [
                         str(error.get(key))
                         for key in ("message", "error_user_title", "error_user_msg")
@@ -203,13 +207,36 @@ def search_ad_library(
                     detail = " ".join(parts)
                 except ValueError:
                     detail = ""
-                result["error"] = (
-                    f"Ad Library API returned HTTP {response.status_code}. "
-                    + (f"{sanitize_error(ValueError(detail))} " if detail else "")
-                    + "The archive requires a user access token from an "
-                    "identity-confirmed account; app tokens are rejected."
-                )
+                if throttled:
+                    result["error"] = (
+                        f"Ad Library API returned HTTP {response.status_code}. "
+                        + (f"{sanitize_error(ValueError(detail))} " if detail else "")
+                        + "Rate limited. Stop calling and let the rolling one-hour window "
+                        "recover; check the usage field for headroom. This is throttling, "
+                        "not a penalty."
+                    )
+                else:
+                    result["error"] = (
+                        f"Ad Library API returned HTTP {response.status_code}. "
+                        + (f"{sanitize_error(ValueError(detail))} " if detail else "")
+                        + "The archive requires a user access token from an "
+                        "identity-confirmed account; app tokens are rejected."
+                    )
                 return result
+
+            # Meta's throttle signal. ads_archive reports through
+            # x-business-use-case-usage rather than the X-App-Usage documented for
+            # the general Graph API, so read that first. Values are percentages of
+            # the limit; estimated_time_to_regain_access is minutes, 0 when clear.
+            for header in ("x-business-use-case-usage", "X-App-Usage"):
+                raw = response.headers.get(header)
+                if not raw:
+                    continue
+                try:
+                    result["usage"] = {"header": header, "value": json.loads(raw)}
+                except ValueError:
+                    result["usage"] = {"header": header, "value": raw}
+                break
 
             payload = response.json()
             result["ads"].extend(payload.get("data", []))
