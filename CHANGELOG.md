@@ -96,6 +96,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   format mix, placement, and longevity remain analyzable; visual treatment does
   not, and must be sourced as `operator-supplied`.
 
+* **Landing grades no longer fail a page that never loaded**
+  (`scripts/analyze_landing.py`). Grading the untouched result skeleton reported
+  `FAIL` on every check when the fetch errored, which would put an all-FAIL
+  landing audit in front of a client for a page nobody ever saw — and it
+  contradicted the repository rule that unknown reduces evidence coverage rather
+  than health. A failed fetch now yields `UNKNOWN` across a stable key set, and a
+  fetched page with no LCP measurement reports `UNKNOWN` instead of omitting the
+  key. Adapted from the MIT-licensed community fork `turbionai/claude-ads`,
+  reproduced locally and reimplemented against the `unknown` status in
+  `finding.schema.json`.
+
 ### Notes
 
 * The `ad-library-search` capability is `live-verified` as of 2026-08-23,

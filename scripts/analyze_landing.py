@@ -294,19 +294,49 @@ def analyze_landing(
     return result
 
 
+UNKNOWN = "UNKNOWN"
+
+# Canonical grade keys, always emitted so consumers see a stable shape whether or
+# not the page loaded. UNKNOWN matches the `unknown` status in
+# claude_ads_core/schemas/v1/finding.schema.json, which reduces evidence coverage
+# without affecting health.
+GRADE_KEYS = (
+    "G59_mobile_speed",
+    "G60_relevance",
+    "G61_schema",
+    "cta_above_fold",
+    "mobile_responsive",
+)
+
+
 def grade_landing(result: dict) -> dict:
-    """Grade landing page quality based on ad audit criteria."""
+    """Grade landing page quality based on ad audit criteria.
+
+    Fix adapted from the MIT-licensed community fork turbionai/claude-ads
+    ("report NOT_ASSESSED instead of FAIL when page never loaded"), reproduced
+    here and reimplemented against this repository's `unknown` vocabulary.
+
+    A failed fetch is missing evidence, not a failing landing page. On error the
+    skeleton still holds its default falsy values, and grading those directly
+    reported FAIL for every check on a page that was never seen — an all-FAIL
+    audit for a site that may be perfectly fine. Return UNKNOWN instead and let
+    the scoring engine treat it as absent coverage.
+    """
+    if result.get("error"):
+        return {key: UNKNOWN for key in GRADE_KEYS}
+
     grades = {}
 
-    # G59: Mobile speed (LCP)
+    # G59: Mobile speed (LCP). Absent LCP is unmeasured, not slow.
     lcp = result["performance"].get("lcp_ms")
-    if lcp:
-        if lcp < 2500:
-            grades["G59_mobile_speed"] = "PASS"
-        elif lcp < 4000:
-            grades["G59_mobile_speed"] = "WARNING"
-        else:
-            grades["G59_mobile_speed"] = "FAIL"
+    if lcp is None:
+        grades["G59_mobile_speed"] = UNKNOWN
+    elif lcp < 2500:
+        grades["G59_mobile_speed"] = "PASS"
+    elif lcp < 4000:
+        grades["G59_mobile_speed"] = "WARNING"
+    else:
+        grades["G59_mobile_speed"] = "FAIL"
 
     # G60: Landing page relevance (H1 present)
     grades["G60_relevance"] = "PASS" if result["content"]["h1"] else "FAIL"
