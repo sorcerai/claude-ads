@@ -125,6 +125,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   keeps its original params rather than re-applying them to a cursor URL. The
   sleep is injectable so the tests do not add wall-clock time.
 
+* **Homoglyph impersonation detector** (`mixed_script_advertisers`): flags
+  advertiser names mixing Latin with Cyrillic or Greek lookalikes, which render
+  identically to a reader while evading exact-match moderation and keyword
+  search. Scoped to confusable scripts so legitimate multilingual names are not
+  flagged. Built from a live observation: eight advertisers spoofing a German
+  television brand across 16% of a category's ads, drawing roughly six times the
+  median reach of the rest of the result set.
+
 ### Notes
 
 * The `ad-library-search` capability is `live-verified` as of 2026-08-23,

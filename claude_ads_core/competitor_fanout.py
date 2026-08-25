@@ -265,3 +265,51 @@ def normalize_archived_ads(
             }
         )
     return observations
+
+
+# Scripts whose letterforms are visually confusable with Latin. Mixing these into
+# an otherwise Latin name is the signature of homoglyph impersonation. CJK,
+# Arabic, Hebrew and similar are deliberately excluded: a name mixing them with
+# Latin is ordinary multilingual branding, not evasion.
+CONFUSABLE_SCRIPTS = ("CYRILLIC", "GREEK")
+
+
+def _scripts(text: str) -> set[str]:
+    import unicodedata
+
+    return {
+        unicodedata.name(ch, "").split(" ")[0]
+        for ch in text
+        if ch.isalpha() and unicodedata.name(ch, "")
+    }
+
+
+def mixed_script_advertisers(observations: Iterable[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    """Flag advertiser names that blend Latin with a confusable alphabet.
+
+    Substituting Cyrillic or Greek lookalikes into a brand name renders
+    identically to a human while defeating exact-match moderation and any
+    keyword search an analyst runs. Observed live: eight advertisers spoofing a
+    German television brand across 16% of a category's ads, drawing roughly six
+    times the median reach of everyone else in the same result set.
+
+    This is a signal for review, never a verdict. A name can mix scripts for
+    innocent reasons, and confirming impersonation needs the creative, the
+    landing destination, and the real brand's own advertising.
+    """
+    flagged: dict[str, dict[str, Any]] = {}
+    for obs in observations:
+        name = str(obs.get("advertiser") or "")
+        if not name:
+            continue
+        found = _scripts(name)
+        if "LATIN" not in found:
+            continue
+        confusable = sorted(s for s in found if s in CONFUSABLE_SCRIPTS)
+        if not confusable:
+            continue
+        entry = flagged.setdefault(
+            name, {"advertiser": name, "scripts": confusable, "ad_count": 0}
+        )
+        entry["ad_count"] += 1
+    return sorted(flagged.values(), key=lambda e: -e["ad_count"])

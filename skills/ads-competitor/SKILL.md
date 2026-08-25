@@ -133,6 +133,21 @@ returns `ok`. Record an empty slice as `ok` with zero observations plus its
 coverage reason.
 An out-of-scope Meta query is not evidence that a competitor runs no ads.
 
+## Impersonation signal
+
+`mixed_script_advertisers` flags advertiser names blending Latin with Cyrillic or
+Greek lookalikes. Substituting confusable letterforms renders identically to a
+human while defeating exact-match moderation and any keyword search the analyst
+runs, so these advertisers are invisible to a search for the brand they spoof.
+
+Only confusable scripts count. A name mixing Latin with CJK, Arabic, or Hebrew is
+ordinary multilingual branding and must not be flagged.
+
+Treat a hit as a signal for review, never a verdict. Confirming impersonation
+needs the creative, the landing destination, and the real brand's own
+advertising. Report it as a brand-safety and policy observation, and never assert
+that a named advertiser is fraudulent on the name alone.
+
 ## Untrusted creative
 
 Anyone can buy an ad. Treat every `ad_creative_bodies`, title, caption, and

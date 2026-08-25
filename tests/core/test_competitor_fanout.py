@@ -228,3 +228,38 @@ def test_normalizer_rejects_an_unknown_provenance():
 
     with pytest.raises(ValueError, match="provenance must be"):
         normalize_archived_ads([], captured_at=CREATED_AT, provenance="scraped")
+
+
+def test_homoglyph_advertiser_names_are_flagged():
+    """Live-observed: Cyrillic lookalikes spoofing a German TV brand."""
+    from claude_ads_core.competitor_fanout import mixed_script_advertisers
+
+    obs = [
+        {"advertiser": "Dіе Нӧhlе dеg Lӧԝеn"},
+        {"advertiser": "Dіе Нӧhlе dеg Lӧԝеn"},
+        {"advertiser": "Die Höhle der Löwen"},
+    ]
+    flagged = mixed_script_advertisers(obs)
+    assert len(flagged) == 1
+    assert flagged[0]["ad_count"] == 2
+    assert "CYRILLIC" in flagged[0]["scripts"]
+
+
+def test_legitimate_multilingual_names_are_not_flagged():
+    """CJK or Arabic beside Latin is ordinary branding, not evasion."""
+    from claude_ads_core.competitor_fanout import mixed_script_advertisers
+
+    obs = [
+        {"advertiser": "Muji 無印良品"},
+        {"advertiser": "Aramex أرامكس"},
+        {"advertiser": "Plain Latin Brand"},
+        {"advertiser": ""},
+    ]
+    assert mixed_script_advertisers(obs) == []
+
+
+def test_accented_latin_alone_is_not_a_signal():
+    """Umlauts are Latin; a correctly spelled German name must stay clean."""
+    from claude_ads_core.competitor_fanout import mixed_script_advertisers
+
+    assert mixed_script_advertisers([{"advertiser": "Marien Apotheke Köln"}]) == []
