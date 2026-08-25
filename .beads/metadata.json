@@ -1,0 +1,7 @@
+{
+  "database": "dolt",
+  "backend": "dolt",
+  "dolt_mode": "embedded",
+  "dolt_database": "claude_ads",
+  "project_id": "170b9962-1265-4ee9-a149-2718a9e3d170"
+}
