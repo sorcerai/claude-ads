@@ -216,6 +216,40 @@ def test_disclosed_political_metrics_are_carried_through():
     assert observations[0]["disclosed_political_metrics"]["currency"] == "EUR"
 
 
+def test_snapshot_url_never_carries_the_callers_credential():
+    """The archive appends the caller's token to every snapshot URL it returns.
+
+    These observations get embedded in other repositories, so a populated token
+    would be committed. Stripping happens where the row becomes an observation,
+    not in each caller.
+    """
+    from claude_ads_core.competitor_fanout import normalize_archived_ads
+
+    ads = [
+        {"id": "1", "ad_snapshot_url": "https://x/render_ad/?id=1&access_token=SECRET"},
+        {"id": "2", "ad_snapshot_url": "https://x/render_ad/?access_token=SECRET&id=2"},
+        # Meta currently returns the bare parameter with no value. That is not a
+        # contract, but it must not leave a dangling separator either.
+        {"id": "3", "ad_snapshot_url": "https://x/render_ad/?id=3&access_token"},
+        {"id": "4", "ad_snapshot_url": "https://x/render_ad/?id=4"},
+        # A row with no snapshot URL stays None: "" would make an absent
+        # snapshot indistinguishable from an empty one.
+        {"id": "5"},
+    ]
+    observations = normalize_archived_ads(
+        ads, captured_at=CREATED_AT, provenance="ad-library-api"
+    )
+    urls = [observation["snapshot_url"] for observation in observations]
+
+    assert not any("access_token" in (url or "") for url in urls)
+    assert not any("SECRET" in (url or "") for url in urls)
+    assert urls[0] == "https://x/render_ad/?id=1"
+    assert urls[1] == "https://x/render_ad/?id=2"
+    assert urls[2] == "https://x/render_ad/?id=3"
+    assert urls[3] == "https://x/render_ad/?id=4"
+    assert urls[4] is None
+
+
 def test_normalizer_rejects_a_row_without_an_id():
     from claude_ads_core.competitor_fanout import normalize_archived_ads
 
