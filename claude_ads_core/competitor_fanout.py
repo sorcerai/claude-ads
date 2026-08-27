@@ -35,6 +35,7 @@ SOURCES: dict[str, dict[str, Any]] = {
         "label": "Meta Ad Library API",
         "secret_ref": "META_AD_LIBRARY_TOKEN",
         "tool": "scripts/fetch_ad_library.py",
+        "collection_mode": "automated",
         "evidence_policy": [
             "Query the official ads_archive endpoint only; never scrape the Ad Library UI.",
             "Record ad_snapshot_url, page_name, and capture date for every observation.",
@@ -44,16 +45,19 @@ SOURCES: dict[str, dict[str, Any]] = {
     "google-ads-transparency": {
         "label": "Google Ads Transparency Center",
         "secret_ref": None,
-        "tool": "WebFetch",
+        "tool": None,
+        "collection_mode": "operator-capture-only",
         "evidence_policy": [
-            "Use the public Transparency Center only; respect robots and access controls.",
-            "Record advertiser identity, format, capture date, and source URL.",
+            "A person opens the public Transparency Center and supplies the observations.",
+            "Do not fetch, crawl, render, or reverse-engineer undocumented UI endpoints.",
+            "Record the operator's query, advertiser identity, format, capture date, and source URL.",
         ],
     },
     "serp-paid": {
         "label": "Paid SERP competitor comparison",
         "secret_ref": None,
         "tool": "mcp__search-ops__find_serp_competitors",
+        "collection_mode": "automated",
         "evidence_policy": [
             "Request resultTypes ['paid'] and label output as a third-party estimate.",
             "Never present provider visibility estimates as competitor account facts.",
@@ -143,6 +147,15 @@ def plan_slices(
                     if note:
                         scope.append(f"Coverage limit: {note}")
 
+                if profile["collection_mode"] == "operator-capture-only":
+                    scope.append(
+                        "Operator capture required: this repository has no approved automated client "
+                        "for the source."
+                    )
+                    recovery.append(
+                        "Ask the operator to browse the public source manually and supply the observed "
+                        "fields, query, capture date, and source URL."
+                    )
                 tasks.append(
                     {
                         "schema_version": SCHEMA_VERSION,
@@ -290,10 +303,6 @@ def normalize_archived_ads(
     return observations
 
 
-# Scripts whose letterforms are visually confusable with Latin. Mixing these into
-# an otherwise Latin name is the signature of homoglyph impersonation. CJK,
-# Arabic, Hebrew and similar are deliberately excluded: a name mixing them with
-# Latin is ordinary multilingual branding, not evasion.
 CONFUSABLE_SCRIPTS = ("CYRILLIC", "GREEK")
 
 

@@ -1,6 +1,7 @@
 """Competitor fanout slice planning: contract validity, independence, coverage."""
 
 from __future__ import annotations
+import json
 
 import pytest
 
@@ -86,6 +87,21 @@ def test_tokenless_source_has_no_secret_recovery_hint():
     tasks = _plan(competitors=["Acme"], countries=["US"], sources=["serp-paid"])
     assert not any("TOKEN" in hint for hint in tasks[0]["recovery"])
     assert SOURCES["serp-paid"]["secret_ref"] is None
+
+
+def test_google_transparency_requires_operator_capture_before_dispatch():
+    profile = SOURCES["google-ads-transparency"]
+    assert profile["collection_mode"] == "operator-capture-only"
+    assert profile["tool"] is None
+
+    task = _plan(
+        competitors=["Acme"],
+        countries=["DE"],
+        sources=["google-ads-transparency"],
+    )[0]
+    assert any("Operator capture required" in item for item in task["scope"])
+    assert any("Ask the operator" in item for item in task["recovery"])
+    validate_workflow_contract("orchestration-task", task)
 
 
 def test_unknown_source_is_rejected():
