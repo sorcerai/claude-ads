@@ -215,6 +215,29 @@ POLITICAL_ONLY_FIELDS = (
 PROVENANCE = ("ad-library-api", "operator-supplied")
 
 
+# The archive appends the caller's credential to every ad_snapshot_url it
+# returns. Today Meta sends the bare parameter name with no value, but that is
+# Meta's choice on the day, not a contract — and these observations get embedded
+# in other repositories, where a populated one would be committed. Strip it at
+# the point the row becomes an observation, so no downstream caller has to
+# remember. Found because adsinfra's committed-record guard test rejected an
+# overlay that carried it through from here.
+_CREDENTIAL_PARAM_RE = re.compile(r"([?&])access_token(=[^&]*)?(&|$)")
+
+
+def _strip_snapshot_credential(url: Any) -> Any:
+    """Return a snapshot URL with the credential parameter removed.
+
+    Non-strings pass through untouched: a missing ad_snapshot_url is None, and
+    turning that into "" would make an absent snapshot look like an empty one.
+    """
+    if not isinstance(url, str):
+        return url
+    return _CREDENTIAL_PARAM_RE.sub(
+        lambda match: match.group(1) if match.group(3) == "&" else "", url
+    )
+
+
 def normalize_archived_ads(
     ads: Iterable[Mapping[str, Any]],
     *,
@@ -247,7 +270,7 @@ def normalize_archived_ads(
                 "platform": "meta",
                 "advertiser": ad.get("page_name"),
                 "advertiser_page_id": ad.get("page_id"),
-                "snapshot_url": ad.get("ad_snapshot_url"),
+                "snapshot_url": _strip_snapshot_credential(ad.get("ad_snapshot_url")),
                 "publisher_platforms": list(ad.get("publisher_platforms") or []),
                 "languages": list(ad.get("languages") or []),
                 "delivery_start": ad.get("ad_delivery_start_time"),
