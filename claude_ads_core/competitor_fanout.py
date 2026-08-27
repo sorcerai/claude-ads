@@ -303,6 +303,70 @@ def normalize_archived_ads(
     return observations
 
 
+VISUAL_MEDIA_TYPES = ("single_image", "video", "carousel", "other")
+
+
+
+_RFC3339_RE = re.compile(
+    r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$"
+)
+
+
+def _require_rfc3339(value: str) -> None:
+    if not isinstance(value, str) or not _RFC3339_RE.match(value):
+        raise ValueError(f"captured_at must be an RFC3339 timestamp, got {value!r}")
+
+def merge_operator_visuals(
+    observations: Iterable[Mapping[str, Any]],
+    captures: Iterable[Mapping[str, Any]],
+    *,
+    captured_at: str,
+) -> dict[str, Any]:
+    """Return operator visual captures as an overlay, never inside observations.
+
+    The Ad Library API returns no media (CLM-0216), so a human's visual
+    record is a separate evidence artifact with its own provenance. Base
+    observations stay byte-identical whether they came from the API or from
+    an operator; downstream reporting keeps the two lists side by side and
+    attributes visual findings only to this overlay.
+    """
+    base = [dict(observation) for observation in observations]
+    by_id = {observation["observation_id"]: observation for observation in base}
+    _require_rfc3339(captured_at)
+    overlay: list[dict[str, Any]] = []
+    seen_ids: set[str] = set()
+    for capture in captures:
+        observation_id = str(capture.get("observation_id") or "").strip()
+        if not observation_id or observation_id not in by_id:
+            raise ValueError(f"unknown observation: {observation_id!r}")
+        if observation_id in seen_ids:
+            raise ValueError(f"duplicate visual capture for {observation_id}")
+        seen_ids.add(observation_id)
+        media_type = str(capture.get("media_type") or "").strip()
+        if media_type not in VISUAL_MEDIA_TYPES:
+            raise ValueError(f"media_type must be one of {VISUAL_MEDIA_TYPES}")
+        overlay.append(
+            {
+                "observation_id": observation_id,
+                "snapshot_url": by_id[observation_id].get("snapshot_url"),
+                "media_type": media_type,
+                # Operator-typed browser text is untrusted input, same as ad
+                # copy: quarantined so no caller mistakes it for verified data.
+                "untrusted_visual": {
+                    "on_screen_text": str(capture.get("on_screen_text") or ""),
+                    "visual_notes": str(capture.get("visual_notes") or ""),
+                },
+                "provenance": "operator-supplied",
+                "captured_at": captured_at,
+            }
+        )
+    return {"observations": base, "operator_visual_captures": overlay}
+
+
+# Scripts whose letterforms are visually confusable with Latin. Mixing these into
+# an otherwise Latin name is the signature of homoglyph impersonation. CJK,
+# Arabic, Hebrew and similar are deliberately excluded: a name mixing them with
+# Latin is ordinary multilingual branding, not evasion.
 CONFUSABLE_SCRIPTS = ("CYRILLIC", "GREEK")
 
 
