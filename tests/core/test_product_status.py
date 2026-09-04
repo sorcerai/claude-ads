@@ -19,16 +19,32 @@ def _artifact_root(tmp_path: Path, repo_root: Path) -> Path:
     return root
 
 
-def test_current_repository_status_has_one_declared_next_blocker(repo_root: Path):
-    result = evaluate_product_status(repo_root, as_of=date(2026, 7, 11))
+def test_current_repository_status_reports_maturity_blocker_when_claims_clean(repo_root: Path):
+    result = evaluate_product_status(repo_root, as_of=date(2026, 8, 25))
     assert result["maturity"]["current"] == "domain-integrated"
     assert result["evidence"]["stale_load_bearing_claims"] == []
+    assert result["evidence"]["unverified_load_bearing_claims"] == []
     assert len(result["scoring_profiles"]["disabled"]) == 12
     assert result["next_blocker"]["kind"] == "maturity-blocker"
     assert result["next_blocker"]["id"] == "maturity-blocker-001"
+    assert "account-health scoring profiles are deliberately disabled" in result["next_blocker"]["summary"]
     assert result["next_blocker"]["evidence_paths"] == [
-        "control-plane/manifests/maturity-status.json"
+        "control-plane/manifests/maturity-status.json",
     ]
+
+
+def test_demoted_load_bearing_claim_deterministically_overrides_declared_blocker(
+    tmp_path: Path, repo_root: Path
+):
+    root = _artifact_root(tmp_path, repo_root)
+    path = root / "control-plane" / "manifests" / "claim-ledger.json"
+    claims = json.loads(path.read_text(encoding="utf-8"))
+    claims["claims"][0]["verdict"] = "demoted"
+    claims["claims"][0]["load_bearing"] = True
+    path.write_text(json.dumps(claims), encoding="utf-8")
+    result = evaluate_product_status(root, as_of=date(2026, 8, 25))
+    assert result["next_blocker"]["kind"] == "unverified-load-bearing-claim"
+    assert result["next_blocker"]["id"] == claims["claims"][0]["id"]
 
 
 def test_stale_load_bearing_claim_deterministically_overrides_declared_blocker(
@@ -37,11 +53,35 @@ def test_stale_load_bearing_claim_deterministically_overrides_declared_blocker(
     root = _artifact_root(tmp_path, repo_root)
     path = root / "control-plane" / "manifests" / "claim-ledger.json"
     claims = json.loads(path.read_text(encoding="utf-8"))
+    for claim in claims["claims"]:
+        claim["verdict"] = "verified"
     claims["claims"][0]["refresh_due"] = "2026-07-10"
     path.write_text(json.dumps(claims), encoding="utf-8")
     result = evaluate_product_status(root, as_of=date(2026, 7, 11))
     assert result["next_blocker"]["kind"] == "stale-load-bearing-claim"
     assert result["next_blocker"]["id"] == claims["claims"][0]["id"]
+
+def test_stale_source_marks_linked_load_bearing_claim_stale(tmp_path: Path, repo_root: Path):
+    root = _artifact_root(tmp_path, repo_root)
+    path = root / "control-plane" / "manifests" / "source-ledger.json"
+    sources = json.loads(path.read_text(encoding="utf-8"))
+    source = next(item for item in sources["sources"] if item["id"] == "google-ads-api-official")
+    source["refresh_due"] = "2026-08-24"
+    path.write_text(json.dumps(sources), encoding="utf-8")
+
+    result = evaluate_product_status(root, as_of=date(2026, 8, 25))
+
+    stale = {item["claim_id"]: item for item in result["evidence"]["stale_load_bearing_claims"]}
+    assert stale["CLM-0007"] == {
+        "claim_id": "CLM-0007",
+        "refresh_due": "2026-08-24",
+        "source_ids": [
+            "google-ads-api-official",
+            "google-ads-conversion-goals-official",
+            "google-ads-enhanced-conversions-official",
+        ],
+        "stale_source_ids": ["google-ads-api-official"],
+    }
 
 
 def test_missing_required_maturity_input_fails_closed(tmp_path: Path, repo_root: Path):

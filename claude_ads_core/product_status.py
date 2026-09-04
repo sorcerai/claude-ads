@@ -137,13 +137,14 @@ def _validate_evidence_ledgers(
             raise ProductStatusError(f"{label}.{collection} must be an array")
     raw_sources = source_document["sources"]
     sources: dict[str, Mapping[str, Any]] = {}
+    source_refresh_due: dict[str, date] = {}
     for index, raw in enumerate(raw_sources):
         if not isinstance(raw, Mapping):
             raise ProductStatusError(f"source ledger.sources[{index}] must be an object")
         source_id = _nonempty(raw.get("id"), f"source ledger.sources[{index}].id")
         if source_id in sources:
             raise ProductStatusError(f"duplicate source ID: {source_id}")
-        _date(raw.get("refresh_due"), f"source {source_id}.refresh_due")
+        source_refresh_due[source_id] = _date(raw.get("refresh_due"), f"source {source_id}.refresh_due")
         _strings(raw.get("claim_ids"), f"source {source_id}.claim_ids")
         sources[source_id] = raw
     stale: list[dict[str, Any]] = []
@@ -163,6 +164,12 @@ def _validate_evidence_ledgers(
             source = sources.get(source_id)
             if source is None or claim_id not in source.get("claim_ids", []):
                 raise ProductStatusError(f"claim/source reciprocity failed: {claim_id} -> {source_id}")
+        stale_source_ids = sorted(
+            source_id for source_id in source_ids if source_refresh_due[source_id] < as_of
+        )
+        stale_dates = [source_refresh_due[source_id] for source_id in stale_source_ids]
+        if refresh_due < as_of:
+            stale_dates.append(refresh_due)
         load_bearing = raw.get("load_bearing")
         if not isinstance(load_bearing, bool):
             raise ProductStatusError(f"claim {claim_id}.load_bearing must be boolean")
@@ -174,12 +181,13 @@ def _validate_evidence_ledgers(
                     "source_ids": sorted(source_ids),
                 }
             )
-        if load_bearing and refresh_due < as_of:
+        if load_bearing and stale_dates:
             stale.append(
                 {
                     "claim_id": claim_id,
-                    "refresh_due": refresh_due.isoformat(),
+                    "refresh_due": min(stale_dates).isoformat(),
                     "source_ids": sorted(source_ids),
+                    "stale_source_ids": stale_source_ids,
                 }
             )
     for source_id, source in sources.items():
@@ -329,7 +337,10 @@ def _next_blocker(
         return {
             "kind": "unverified-load-bearing-claim",
             "id": selected["claim_id"],
-            "summary": f"Restore or demote load-bearing claim {selected['claim_id']} before relying on it.",
+            "summary": (
+                f"Restore current evidence for load-bearing claim {selected['claim_id']} or remove it "
+                "from the load-bearing contract through the governing decision process."
+            ),
             "rationale": "Unverified load-bearing evidence invalidates downstream maturity before feature work.",
             "evidence_paths": [
                 "control-plane/manifests/claim-ledger.json",

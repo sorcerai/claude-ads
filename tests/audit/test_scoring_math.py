@@ -21,12 +21,32 @@ def _control(control_id: str, category: str, severity: str) -> dict:
 
 
 def _finding(control_id: str, status: str) -> dict:
+    evidence = (
+        [{
+            "evidence_id": f"evidence-{control_id}",
+            "proof_kind": "observation",
+            "source_id": "test-source",
+            "locator": "fixture locator",
+            "sha256": None,
+            "observed_at": "2026-07-11T16:00:00Z",
+            "query_id": None,
+            "report_id": None,
+            "window": None,
+            "report_grain": [],
+            "input_field": None,
+            "redacted_value": True,
+            "observation_ref": None,
+        }]
+        if status in {"pass", "fail"}
+        else []
+    )
     return {
-        "schema_version": "1.0.0",
+        "schema_version": "2.0.0",
         "control_id": control_id,
         "status": status,
-        "evidence": [{"fixture": True}] if status in {"pass", "fail"} else [],
+        "evidence": evidence,
         "confidence": "high" if status in {"pass", "fail"} else "none",
+        "source_classification": "evidence_based",
         "observation": "",
         "diagnosis": "",
         "recommendation": "",

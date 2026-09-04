@@ -79,12 +79,18 @@ The archive returns text only (CLM-0216). There is no image or video field, and
 interface assets and no ad media. Rendering it headlessly would be automated
 collection of `facebook.com`, which is prohibited, so it is not an option.
 
-Consequences for creative work: message, offer, hook, format mix, placement, and
-longevity are all analyzable from the API. Visual treatment, thumbnail, colour,
-talent, and on-screen text are not. When visual analysis is required, the
-operator opens `ad_snapshot_url` in a browser and supplies what they observe,
-recorded as `operator-supplied`. Never imply visual findings were derived from
-API evidence.
+Consequences for creative work: message, offer, hook, placement, and
+longevity are analyzable from the API. Format mix, visual treatment, thumbnail,
+colour, talent, and on-screen text are not — format mix needs the visual
+overlay below. When visual analysis is required, the
+operator opens `ad_snapshot_url` in a browser and supplies what they observe.
+The observation is an overlay, never a modification of the API row:
+`merge_operator_visuals(observations, captures, captured_at=...)` validates each
+capture against a known `observation_id`, stamps it `provenance:
+operator-supplied`, and returns `{observations, operator_visual_captures}` with
+the base observations byte-identical. Reporting keeps both lists side by side
+and attributes visual findings only to the overlay. Never imply visual findings
+were derived from API evidence.
 
 ## TikTok has no sanctioned automated route
 
@@ -119,14 +125,21 @@ python -m claude_ads_core plan-fanout --run-id <run> \
 It emits one schema-valid `orchestration-task` packet per competitor x country x
 source, each with a distinct single-writer destination and no `depends_on`, so
 slices are independent by construction and reruns keep stable task IDs. Meta
-slices carry their coverage limit in scope.
+slices carry their coverage limit in scope. Google Ads Transparency packets state
+that operator capture is required because this repository has no approved
+automated client.
 
-Dispatch `agents/research-worker.md` per emitted packet. Sources are the Ad Library search above, the Google
-Ads Transparency Center, and paid SERP comparison via
-`mcp__search-ops__find_serp_competitors` with `resultTypes: ['paid']`, which
-needs no advertising-platform credential but bills a paid provider per call. Workers return schema-valid
-findings with capture dates; the conductor merges, deduplicates by advertiser and
-creative theme, and owns the final artifact. No worker writes a shared filename.
+Dispatch `agents/research-worker.md` for the automated Meta and paid-SERP packets.
+The paid SERP source uses `mcp__search-ops__find_serp_competitors` with
+`resultTypes: ['paid']`, needs no advertising-platform credential, and bills a
+paid provider per call. Do not dispatch a Google Ads Transparency packet to an
+automated worker. The task remains `queued` but undispatched. Until a person
+supplies the query, observed fields, capture date, and source URL, the conductor
+records a `needs_input` orchestration result for that task. After those inputs
+arrive, a worker may normalize only the operator-supplied observations. Workers
+return schema-valid findings with capture dates; the conductor merges and deduplicates by
+advertiser and creative theme, and owns the final artifact. No worker writes a
+shared filename.
 
 Fold results with `coverage_summary`; a fanout is complete only when every slice
 returns `ok`. Record an empty slice as `ok` with zero observations plus its

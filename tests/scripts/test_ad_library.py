@@ -295,3 +295,148 @@ def test_retry_does_not_double_count_pages_or_resend_params(monkeypatch):
     )
     assert result["pages_fetched"] == 1
     assert seen[0] is not None and seen[1] is not None  # same first page, params kept
+
+
+def test_search_clamps_limit_and_max_pages(monkeypatch):
+    seen_params = []
+
+    def fake(session, method, url, **kwargs):
+        seen_params.append(kwargs.get("params"))
+        return _ResponseWithHeaders({"data": [], "paging": {}}, 200, {})
+
+    monkeypatch.setattr(fetch_ad_library, "guarded_request", fake)
+    fetch_ad_library.search_ad_library(
+        token="t",
+        countries=["DE"],
+        search_terms="x",
+        limit=500,  # exceeds MAX_PAGE_LIMIT 100
+        max_pages=50,  # exceeds MAX_PAGES_CEILING 10
+        sleep=lambda _: None,
+    )
+    assert seen_params[0]["limit"] == 100
+
+
+def test_search_stops_paging_on_high_usage_threshold(monkeypatch):
+    calls = []
+    payload1 = {
+        "data": [{"id": "1", "page_name": "Test Page"}],
+        "paging": {"next": "https://graph.facebook.com/v26.0/ads_archive?after=cursor2"},
+    }
+    payload2 = {
+        "data": [{"id": "2", "page_name": "Test Page"}],
+        "paging": {},
+    }
+    headers = {
+        "x-business-use-case-usage": json.dumps({
+            "act_123": [{"type": "ads_archive", "call_count": 85, "estimated_time_to_regain_access": 0}]
+        })
+    }
+
+    def fake(session, method, url, **kwargs):
+        calls.append(url)
+        if len(calls) == 1:
+            return _ResponseWithHeaders(payload1, 200, headers)
+        return _ResponseWithHeaders(payload2, 200, {})
+
+    monkeypatch.setattr(fetch_ad_library, "guarded_request", fake)
+    result = fetch_ad_library.search_ad_library(
+        token="t",
+        countries=["DE"],
+        search_terms="x",
+        max_pages=5,
+        sleep=lambda _: None,
+    )
+    # Must have stopped after page 1 because usage was 85% >= 80%
+    assert len(calls) == 1
+    assert result["pages_fetched"] == 1
+    assert "Usage throttle threshold reached" in result["warning"]
+
+
+def test_build_canonical_artifact_normalizes_observations_and_binds_lifecycle():
+    raw_result = {
+        "source": "meta-ad-library-api",
+        "endpoint": fetch_ad_library.ENDPOINT,
+        "retrieved_at": "2026-09-04",
+        "query": {"search_terms": "crm", "ad_reached_countries": ["DE"], "ad_type": "ALL"},
+        "warning": None,
+        "ads": [
+            {
+                "id": "ad-101",
+                "page_name": "HubSpot",
+                "page_id": "1001",
+                "ad_snapshot_url": "https://facebook.com/ads/archive/render_ad/?id=101",
+                "publisher_platforms": ["facebook", "instagram"],
+                "languages": ["en"],
+                "ad_delivery_start_time": "2026-08-01",
+                "ad_creative_bodies": ["Grow your business"],
+                "ad_creative_link_titles": ["CRM Platform"],
+            }
+        ],
+        "pages_fetched": 1,
+        "usage": {"header": "x-app-usage", "value": {"call_count": 10}},
+        "error": None,
+    }
+
+    artifact = fetch_ad_library.build_canonical_artifact(
+        raw_result,
+        run_id="run-test-001",
+        client_id="client-test",
+        purpose="competitor_analysis",
+        privacy_class="public",
+    )
+
+    assert artifact["schema_version"] == "1.0.0"
+    assert artifact["artifact_type"] == "competitor-observations"
+    assert artifact["run_id"] == "run-test-001"
+    assert artifact["client_id"] == "client-test"
+    assert artifact["purpose"] == "competitor_analysis"
+    assert artifact["source_digest"].startswith("sha256:")
+    assert artifact["query_digest"].startswith("sha256:")
+    assert artifact["observation_count"] == 1
+    assert artifact["data_lifecycle"]["classification"] == "public"
+
+    # Normalized observation checks
+    obs = artifact["observations"][0]
+    assert obs["observation_id"] == "meta-ad-library.ad-101"
+    assert obs["advertiser"] == "HubSpot"
+    assert obs["platform"] == "meta"
+    assert obs["untrusted_creative"]["bodies"] == ["Grow your business"]
+    assert obs["provenance"] == "ad-library-api"
+
+
+def test_cli_main_persists_canonical_artifact_to_output(tmp_path, monkeypatch):
+    out_file = tmp_path / "normalized-ads.json"
+    raw_fixture = _fixture_payload()
+
+    monkeypatch.setenv("CLAUDE_ADS_OUTPUT_ROOT", str(tmp_path))
+    monkeypatch.setenv("META_AD_LIBRARY_TOKEN", "mock-token-xyz")
+    monkeypatch.setattr(
+        fetch_ad_library,
+        "guarded_request",
+        lambda *a, **k: _ResponseWithHeaders(raw_fixture, 200, {}),
+    )
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "fetch_ad_library.py",
+            "--search-terms", "project management",
+            "--countries", "DE",
+            "--run-id", "run-persist-001",
+            "--client-id", "client-persist",
+            "--output", str(out_file),
+        ],
+    )
+
+    fetch_ad_library.main()
+    assert out_file.is_file()
+
+    saved = json.loads(out_file.read_text(encoding="utf-8"))
+    assert saved["artifact_type"] == "competitor-observations"
+    assert saved["run_id"] == "run-persist-001"
+    assert saved["client_id"] == "client-persist"
+    assert "data_lifecycle" in saved
+    assert "observations" in saved
+    assert isinstance(saved["observations"], list)
+    assert len(saved["observations"]) > 0
+    # Confirm raw 'ads' field is NOT present at top level of the saved artifact
+    assert "ads" not in saved

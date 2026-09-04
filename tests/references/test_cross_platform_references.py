@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import datetime as dt
 import re
 from pathlib import Path
 
@@ -46,6 +47,13 @@ REQUIRED_SOURCE_IDS = {
     "microsoft-ads-mcp-official",
     "meta-andromeda-engineering-official",
     "meta-ai-ads-ranking-official",
+    "meta-marketing-api-rate-limits-official",
+    "meta-marketing-api-troubleshooting-official",
+    "meta-insights-best-practices-official",
+    "meta-platform-terms-official",
+    "meta-developer-policies-official",
+    "meta-mcp-protected-resource-metadata",
+    "meta-mcp-authorization-metadata",
 }
 
 
@@ -56,10 +64,26 @@ def _reference_texts(repo_root: Path) -> dict[str, str]:
     }
 
 
-def test_cross_platform_references_have_verification_and_refresh_metadata(repo_root):
+def test_cross_platform_references_have_iso_verification_and_refresh_metadata(repo_root):
+    iso_date = re.compile(r"\d{4}-\d{2}-\d{2}")
+    verified_date = re.compile(r"\*\*Verified:\*\* (\d{4}-\d{2}-\d{2})")
+    refresh_field = re.compile(r"\*\*Refresh(?: due)?:\*\* ([^\n]+)")
     for name, text in _reference_texts(repo_root).items():
-        assert "**Verified:** 2026-07-11" in text, name
-        assert "**Refresh" in text, name
+        verified = verified_date.search(text)
+        refresh = refresh_field.search(text)
+        assert verified, name
+        assert refresh, name
+        refresh_date = iso_date.search(refresh.group(1))
+        if refresh_date:
+            assert dt.date.fromisoformat(refresh_date.group(0)) >= dt.date.fromisoformat(
+                verified.group(1)
+            ), name
+        else:
+            # Quarterly, foundational, and event-driven refresh cadences are valid.
+            assert any(
+                cadence in refresh.group(1).lower()
+                for cadence in ("quarterly", "foundational", "event-driven")
+            ), name
 
 
 def test_cross_platform_references_do_not_restore_legacy_universal_claims(repo_root):
@@ -94,3 +118,23 @@ def test_automation_and_mcp_do_not_imply_write_authority(repo_root):
         "mcp-integration.md"
     ]
     assert "not an account-health score" in texts["automation-tier-classifier.md"]
+
+def test_meta_mcp_uses_warehouse_first_direct_read_boundaries(repo_root):
+    mcp = _reference_texts(repo_root)["mcp-integration.md"].lower()
+    skill = (repo_root / "skills" / "ads-meta" / "SKILL.md").read_text(encoding="utf-8").lower()
+    for text in (mcp, skill):
+        normalized = " ".join(text.split())
+        assert "warehouse-first" in normalized
+        assert "warehouse storage is recommended, not mandated" in normalized
+        assert "run/client-bound snapshots" in normalized
+        assert (
+            "direct meta reads are limited to bounded ingestion, cache recovery, or future mutation pre/post verification"
+            in normalized
+        )
+        assert "data separation" in normalized
+        assert "retention" in normalized
+        assert "rate-limit and abuse controls" in normalized
+        assert "high call volume automatically violates platform terms" in normalized
+    assert "current account live-read is not installed" in skill
+    assert "account mutation disabled" in skill
+

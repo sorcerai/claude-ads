@@ -19,6 +19,7 @@ resolve_target_paths() {
         windsurf) SKILL_BASE="${HOME}/.windsurf/skills";                                 AGENT_DIR="${HOME}/.windsurf/agents" ;;
         gemini)   SKILL_BASE="${HOME}/.gemini/extensions/claude-ads/skills";             AGENT_DIR="${HOME}/.gemini/extensions/claude-ads/agents" ;;
         goose)    SKILL_BASE="${HOME}/.config/goose/skills";                             AGENT_DIR="${HOME}/.config/goose/agents" ;;
+        omp)      SKILL_BASE="${HOME}/.omp/agent/skills";                                AGENT_DIR="${HOME}/.omp/agent/agents" ;;
         *)        return 1 ;;
     esac
     return 0
@@ -78,7 +79,7 @@ main() {
 
     if ! resolve_target_paths "$TARGET"; then
         echo "✗ Unknown target: $TARGET" >&2
-        echo "  Valid targets: claude, codex, cursor, windsurf, gemini, goose" >&2
+        echo "  Valid targets: claude, codex, cursor, windsurf, gemini, goose, omp" >&2
         exit 1
     fi
 

@@ -122,6 +122,39 @@ provisional or unsupported, name the missing capability or source access, and
 block any `release-current` claim that depends on it. Tool unavailability never
 turns stale evidence into current evidence.
 
+### Measurement completeness, evidence binding, and freshness
+
+`measurement_context.missing_fields` means a recognized field was not supplied
+by the snapshot. `measurement_context.unsupported_fields` means the native
+adapter cannot provide a recognized field. Preserve these arrays separately.
+Neither condition is a zero, a pass, or permission to infer a value.
+
+Resolve every control's `required_inputs` against the snapshot collections,
+spend, and measurement-context fields. If a recognized required input appears
+in either `missing_fields` or `unsupported_fields`, the control MUST be
+`unknown`, never `pass` or `fail`, and MUST include a recovery hint naming the
+input and the evidence or adapter capability needed. The runtime gate rejects
+pass/fail findings for such controls.
+
+An EvidenceRecord `source_id` MUST be declared in the run manifest's `sources`.
+Evidence source binding is proof-specific: `observation` source IDs MUST be
+declared in the snapshot's `measurement_context.source_ids`; `source_fact` and
+`vendor_claim` source IDs MUST be declared in the referenced control
+definition's `source_ids`; and `inference` source IDs MUST be declared in either
+the snapshot's `measurement_context.source_ids` or the referenced control
+definition's `source_ids`. For `observation` evidence, its `source_id` MUST use
+the canonical format `sha256:<64 lowercase hex>` matching its `sha256` 64-hex
+lowercase digest; non-canonical formats, null digests, or digest mismatches fail
+closed. Its `window` MUST be non-null and remain inside the account snapshot
+window. A missing or out-of-window observation window cannot support a
+period-specific claim.
+
+An enabled health score requires current control, claim, and source ledger
+deadlines on the run date: validate each health control's `expires_at`, every
+referenced claim's `refresh_due`, and every referenced control source's
+`refresh_due` in the source ledger. If a required deadline is missing or expired,
+fail closed and do not emit the enabled score.
+
 ## Worker orchestration
 
 Use one conductor and bounded workers. Fan out platform slices, source checks,
@@ -143,8 +176,13 @@ Every task packet specifies:
 Every worker returns one result object with:
 
 - `status`: `ok`, `needs_input`, `blocked`, or `failed`.
-- Findings with control ID, applicability, result, severity, confidence,
-  observations, evidence references, and recommendation.
+- `findings`: findings validate the current v2 schema. Each finding MUST contain
+  exactly `schema_version`, `control_id`, `status`, `evidence`, `confidence`,
+  `source_classification`, `observation`, `diagnosis`, and `recommendation`.
+- Severity is registry-owned. `score_contribution` is not a v2 field (it is not
+  merely worker-omitted; deterministic scoring calculates scores downstream and
+  the v2 schema rejects legacy fields). Workers MUST omit `score_contribution`
+  and legacy fields.
 - Contradictions, missing inputs, stale sources, and recovery hints.
 
 Retry one transient tool failure. Do not retry authentication, authorization,
@@ -163,9 +201,14 @@ plans. Structural validity does not establish source truth, platform eligibility
 provider availability, owner approval, or permission to apply a change.
 
 - Score stable applicable health controls only.
-- Load controls and category weights from the versioned control registry. If a
-  platform profile is disabled, return no health score and zero approved evidence
-  coverage; never promote catalog or watchlist rows inside a prompt.
+- Load controls and category weights from the packaged immutable control registry
+  by default. When an explicit repository root is supplied, registry loading
+  resolves `<root>/control-plane/manifests` and fails closed without falling back
+  to packaged defaults. Canonical manifests in `control-plane/manifests/` and
+  packaged manifests in `claude_ads_core/manifests/` must maintain exact byte
+  equality, which is release-controlled. If a platform profile is disabled, return
+  no health score and zero approved evidence coverage; never promote catalog or
+  watchlist rows inside a prompt.
 - Keep health, evidence coverage, regulatory exposure, and opportunities separate.
 - `not_applicable` controls do not affect score or coverage.
 - `unknown` controls do not affect health but reduce evidence coverage.

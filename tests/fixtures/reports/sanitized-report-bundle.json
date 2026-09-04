@@ -1,12 +1,12 @@
 {
-  "schema_version": "1.0.0",
+  "schema_version": "2.0.0",
   "run_manifest": {
     "schema_version": "1.0.0",
     "run_id": "fixture-run-20260711-001",
     "started_at": "2026-07-11T16:00:00Z",
     "scopes": ["audit", "google"],
     "adapters": [{"platform": "google", "mode": "export"}],
-    "sources": ["sanitized-google-export.csv", "official-google-help"],
+    "sources": ["sanitized-google-export.csv", "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "official-google-help"],
     "privacy_class": "internal",
     "data_lifecycle": {
       "schema_version": "1.0.0",
@@ -22,14 +22,33 @@
     "completeness": "partial"
   },
   "account_snapshot": {
-    "schema_version": "1.0.0",
+    "schema_version": "2.0.0",
     "account": {"platform": "google", "account_id": "fixture-google-001", "name": "Northstar Demo"},
     "window": {"start": "2026-06-01", "end": "2026-06-30"},
     "currency": "USD",
+    "measurement_context": {
+      "timezone": null,
+      "currency": "USD",
+      "profile_id": "google-fixture-health-v1",
+      "source_format": "sanitized-report-fixture",
+      "source_ids": ["official-google-help", "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"],
+      "report_grain": ["date", "campaign_id"],
+      "conversion_definition": "primary_conversion_action",
+      "conversion_actions": ["primary_conversion_action"],
+      "attribution_model": null,
+      "click_attribution_window": null,
+      "view_attribution_window": null,
+      "counting_behavior": null,
+      "as_of": "2026-06-30",
+      "data_finalization": "unknown",
+      "modeled_data_treatment": "unknown",
+      "missing_fields": ["attribution_model", "click_attribution_window", "counting_behavior", "data_finalization", "modeled_data_treatment", "timezone", "view_attribution_window"],
+      "unsupported_fields": ["budget", "creative_id", "creative_name"]
+    },
     "spend": 1200.0,
-    "campaigns": [],
+    "campaigns": [{"campaign_id": "campaign-001", "policy_status": "eligible"}],
     "creatives": [],
-    "conversions": [],
+    "conversions": [{"action": "primary_conversion_action", "status": "inactive"}],
     "budgets": []
   },
   "control_definitions": [
@@ -75,10 +94,24 @@
   ],
   "findings": [
     {
-      "schema_version": "1.0.0",
+      "schema_version": "2.0.0",
       "control_id": "G-TRACK-001",
       "status": "fail",
-      "evidence": [{"field": "primary_conversion_status", "value": "inactive"}],
+      "evidence": [{
+        "evidence_id": "evidence-google-tracking-001",
+        "proof_kind": "observation",
+        "source_id": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "locator": "input:sanitized-google-export.csv",
+        "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "observed_at": "2026-07-11T16:00:00Z",
+        "query_id": null,
+        "report_id": null,
+        "window": {"start": "2026-06-01", "end": "2026-06-30"},
+        "report_grain": ["date", "campaign_id"],
+        "input_field": "primary_conversion_status",
+        "redacted_value": "inactive",
+        "observation_ref": null
+      }],
       "confidence": "high",
       "source_classification": "evidence_based",
       "observation": "The sanitized export marks the primary conversion action inactive.",
@@ -86,7 +119,7 @@
       "recommendation": "Have the measurement owner verify the conversion action before bid changes."
     },
     {
-      "schema_version": "1.0.0",
+      "schema_version": "2.0.0",
       "control_id": "G-CREATIVE-001",
       "status": "unknown",
       "evidence": [],
@@ -97,10 +130,24 @@
       "recommendation": "Export asset-level creative performance for the same date window."
     },
     {
-      "schema_version": "1.0.0",
+      "schema_version": "2.0.0",
       "control_id": "G-POLICY-001",
       "status": "pass",
-      "evidence": [{"field": "policy_status", "value": "eligible"}],
+      "evidence": [{
+        "evidence_id": "evidence-google-policy-001",
+        "proof_kind": "observation",
+        "source_id": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "locator": "input:sanitized-google-export.csv",
+        "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "observed_at": "2026-07-11T16:00:00Z",
+        "query_id": null,
+        "report_id": null,
+        "window": {"start": "2026-06-01", "end": "2026-06-30"},
+        "report_grain": ["date", "campaign_id"],
+        "input_field": "policy_status",
+        "redacted_value": "eligible",
+        "observation_ref": null
+      }],
       "confidence": "medium",
       "source_classification": "evidence_based",
       "observation": "Included campaign rows are eligible.",
@@ -113,9 +160,9 @@
     "evidence_coverage": 61.54,
     "status": "provisional",
     "categories": [
-      {"category": "tracking", "category_weight": 50.0, "health_score": 0.0, "evidence_coverage": 100.0},
-      {"category": "creative", "category_weight": 20.0, "health_score": null, "evidence_coverage": 0.0},
-      {"category": "policy", "category_weight": 30.0, "health_score": 100.0, "evidence_coverage": 100.0}
+      {"category": "tracking", "category_weight": 50.0, "health_score": 0.0, "evidence_coverage": 100.0, "applicable_controls": 1, "known_controls": 1, "passed_controls": 0, "failed_controls": 1, "unknown_controls": 0},
+      {"category": "creative", "category_weight": 20.0, "health_score": null, "evidence_coverage": 0.0, "applicable_controls": 1, "known_controls": 0, "passed_controls": 0, "failed_controls": 0, "unknown_controls": 1},
+      {"category": "policy", "category_weight": 30.0, "health_score": 100.0, "evidence_coverage": 100.0, "applicable_controls": 1, "known_controls": 1, "passed_controls": 1, "failed_controls": 0, "unknown_controls": 0}
     ]
   },
   "contradictions": [

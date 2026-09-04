@@ -19,7 +19,7 @@ claude-ads-core = "claude_ads_core.cli:main"
 include = ["claude_ads_core*"]
 
 [tool.setuptools.package-data]
-claude_ads_core = ["schemas/v1/*.json"]
+claude_ads_core = ["schemas/v1/*.json", "schemas/v2/*.json", "manifests/*.json"]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]

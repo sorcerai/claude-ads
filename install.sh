@@ -22,7 +22,7 @@ set -euo pipefail
 #
 # All target keys are validated against a strict whitelist (no shell injection
 # possible via --target=...). Custom --skill-dir paths are validated against
-# `;&|$()<>` ` `, leading dashes, `..` segments, and UNC-style paths.
+# shell metacharacters, leading dashes, `..` segments, and UNC-style paths.
 
 REPO_URL="https://github.com/AgriciDaniel/claude-ads"
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
@@ -40,6 +40,7 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 # windsurf  — Windsurf IDE (EXPERIMENTAL)
 # gemini    — Gemini CLI (EXPERIMENTAL)
 # goose     — Goose CLI (EXPERIMENTAL)
+# omp       — OMP Agent (EXPERIMENTAL)
 
 resolve_target_paths() {
     local target="$1"
@@ -79,6 +80,12 @@ resolve_target_paths() {
             AGENT_DIR="${HOME}/.config/goose/agents"
             ALLOW_PIP=0
             HOST_LABEL="Goose CLI"
+            ;;
+        omp)
+            SKILL_BASE="${HOME}/.omp/agent/skills"
+            AGENT_DIR="${HOME}/.omp/agent/agents"
+            ALLOW_PIP=1
+            HOST_LABEL="OMP Agent"
             ;;
         *)
             return 1
@@ -122,6 +129,7 @@ Targets (default: claude):
   windsurf   Windsurf IDE (experimental)
   gemini     Gemini CLI (experimental)
   goose      Goose CLI (experimental)
+  omp        OMP Agent (experimental)
 
 Overrides:
   --skill-dir=<path>   Override the target's default skill install root
@@ -216,7 +224,7 @@ main() {
     # Resolve target paths (rejects unknown targets via whitelist)
     if ! resolve_target_paths "$TARGET"; then
         echo "✗ Unknown target: $TARGET" >&2
-        echo "  Valid targets: claude, codex, cursor, windsurf, gemini, goose" >&2
+        echo "  Valid targets: claude, codex, cursor, windsurf, gemini, goose, omp" >&2
         echo "  Run: bash install.sh --help" >&2
         exit 1
     fi
@@ -323,6 +331,8 @@ print("|".join((sys.implementation.name, f"{sys.version_info.major}.{sys.version
     echo "✓ Distribution source: ${SOURCE_MODE}"
 
     mkdir -p "${SKILL_BASE}" "${AGENT_DIR}"
+    [ ! -L "${SKILL_BASE}" ] || { echo "✗ Refusing symlinked configured skill root: ${SKILL_BASE}" >&2; return 1; }
+    [ ! -L "${AGENT_DIR}" ] || { echo "✗ Refusing symlinked configured agent root: ${AGENT_DIR}" >&2; return 1; }
     SKILL_BASE_CANON=$(CDPATH= cd -- "$SKILL_BASE" && pwd -P)
     AGENT_DIR_CANON=$(CDPATH= cd -- "$AGENT_DIR" && pwd -P)
     MANIFEST_TMP=$(mktemp "${SKILL_BASE}/.claude-ads-manifest.XXXXXX")
@@ -359,6 +369,279 @@ print("|".join((sys.implementation.name, f"{sys.version_info.major}.{sys.version
         awk -F '\t' -v destination="$destination" \
             '$1 == "F" && $2 == destination { found=1 } END { exit !found }' "$MANIFEST_PATH"
     }
+    prior_manifest_has_record() {
+        local kind="$1" destination="$2"
+        [ -f "$MANIFEST_PATH" ] || return 1
+        awk -F '\t' -v kind="$kind" -v destination="$destination" \
+            '$1 == kind && $2 == destination { found=1 } END { exit !found }' "$MANIFEST_PATH"
+    }
+    effective_uid() {
+        id -u
+    }
+    file_uid() {
+        local value
+        value=$(stat -f '%u' -- "$1" 2>/dev/null) || value=""
+        case "$value" in
+            *[!0-9]*|"") value=$(stat -c '%u' -- "$1" 2>/dev/null) || return 1 ;;
+        esac
+        case "$value" in *[!0-9]*|"") return 1 ;; esac
+        printf '%s\n' "$value"
+    }
+    file_mode() {
+        local value
+        value=$(stat -f '%Lp' -- "$1" 2>/dev/null) || value=""
+        case "$value" in
+            *[!0-7]*|"") value=$(stat -c '%a' -- "$1" 2>/dev/null) || return 1 ;;
+        esac
+        case "$value" in *[!0-7]*|"") return 1 ;; esac
+        printf '%s\n' "$value"
+    }
+    assert_current_user_owned() {
+        local path="$1" owner
+        owner=$(file_uid "$path") || {
+            echo "✗ Could not determine ownership for prior manifest path: ${path}" >&2
+            return 1
+        }
+        [ "$owner" = "$(effective_uid)" ] || {
+            echo "✗ Prior manifest path is not owned by the current user: ${path}" >&2
+            return 1
+        }
+    }
+    check_directory_security() {
+        local directory="$1" require_owner="$2" allow_sticky="$3" child="$4" acl_check="${5:-1}"
+        local mode acl_listing permissions
+        [ -d "$directory" ] && [ ! -L "$directory" ] || {
+            echo "✗ Prior manifest path has a missing or unsafe parent: ${directory}" >&2
+            return 1
+        }
+        if [ "$require_owner" = "1" ]; then
+            assert_current_user_owned "$directory" || return 1
+        elif [ "$require_owner" = "2" ]; then
+            local owner
+            owner=$(file_uid "$directory") || {
+                echo "✗ Could not determine ownership for prior manifest path: ${directory}" >&2
+                return 1
+            }
+            [ "$owner" = "$(effective_uid)" ] || [ "$owner" = "0" ] || {
+                echo "✗ Prior manifest ancestor is not owned by the current user or root: ${directory}" >&2
+                return 1
+            }
+        fi
+        mode=$(file_mode "$directory") || {
+            echo "✗ Could not determine permissions for prior manifest path: ${directory}" >&2
+            return 1
+        }
+        if (( (8#$mode & 0022) != 0 )); then
+            if [ "$allow_sticky" != "1" ] || (( (8#$mode & 01000) == 0 )) ||
+                [ -z "$child" ] || ! assert_current_user_owned "$child"; then
+                echo "✗ Prior manifest path has a group/world-writable parent: ${directory}" >&2
+                return 1
+            fi
+        fi
+        if [ "$acl_check" = "1" ] && [ "$(uname -s)" = "Darwin" ]; then
+            if acl_listing=$(ls -lde "$directory" 2>/dev/null); then
+                local acl_first acl_entries acl_lower acl_line
+                acl_first=${acl_listing%%$'\n'*}
+                permissions=${acl_first%%[[:space:]]*}
+                case "$permissions" in
+                    *+*)
+                        acl_entries=${acl_listing#*$'\n'}
+                        [ "$acl_entries" != "$acl_listing" ] || {
+                            echo "✗ Could not inspect ACL entries for prior manifest path: ${directory}" >&2
+                            return 1
+                        }
+                        acl_lower=$(printf '%s\n' "$acl_entries" | tr '[:upper:]' '[:lower:]')
+                        while IFS= read -r acl_line; do
+                            case "$acl_line" in
+                                *" allow "*|*" allow"*)
+                                    case "$acl_line" in
+                                        *write*|*append*|*add_file*|*add_subdirectory*|*delete*|*delete_child*|*writeattr*|*writeextattr*|*writesecurity*|*chown*|*takeownership*)
+                                            echo "✗ Prior manifest path has an ACL mutation grant: ${directory}" >&2
+                                            return 1
+                                            ;;
+                                    esac
+                                    ;;
+                            esac
+                        done <<< "$acl_lower"
+                        ;;
+                esac
+            else
+                command -v xattr >/dev/null 2>&1 || {
+                    echo "✗ Could not inspect ACL metadata for prior manifest path: ${directory}" >&2
+                    return 1
+                }
+                acl_listing=$(xattr -p com.apple.acl.text "$directory" 2>/dev/null) || acl_listing=""
+                [ -z "$acl_listing" ] || {
+                    echo "✗ Prior manifest path has an extended ACL: ${directory}" >&2
+                    return 1
+                }
+            fi
+        fi
+    }
+    assert_private_directory_chain() {
+        local path="$1" root="$2" parent ancestor child
+        check_directory_security "$root" 1 0 "" || return 1
+        parent=$(dirname -- "$path")
+        while :; do
+            check_directory_security "$parent" 1 0 "" || return 1
+            [ "$parent" = "$root" ] && break
+            parent=$(dirname -- "$parent")
+            [ "$parent" != "/" ] || {
+                echo "✗ Prior manifest path escapes configured root: ${path}" >&2
+                return 1
+            }
+        done
+        ancestor="$root"
+        while [ "$ancestor" != "/" ]; do
+            child="$ancestor"
+            ancestor=$(dirname -- "$ancestor")
+            check_directory_security "$ancestor" 2 1 "$child" || return 1
+        done
+    }
+    assert_safe_prior_manifest_path() {
+        local kind="$1" path="$2" deep="${3:-0}" canonical parent root
+        [ -n "$path" ] || {
+            echo "✗ Invalid ownership-manifest path: empty ${kind} entry" >&2
+            return 1
+        }
+        validate_install_path "$path" || {
+            echo "✗ Unsafe ownership-manifest path: ${path}" >&2
+            return 1
+        }
+        case "$path" in
+            "${SKILL_BASE_CANON}"/*) root="$SKILL_BASE_CANON" ;;
+            "${AGENT_DIR_CANON}"/*) root="$AGENT_DIR_CANON" ;;
+            *)
+                echo "✗ Unsafe ownership-manifest path: ${path}" >&2
+                return 1
+                ;;
+        esac
+        if [ "$deep" = "1" ]; then
+            assert_private_directory_chain "$path" "$root" || return 1
+        else
+            check_directory_security "$root" 1 0 "" 0 || return 1
+            parent=$(dirname -- "$path")
+            while :; do
+                check_directory_security "$parent" 1 0 "" 0 || return 1
+                [ "$parent" = "$root" ] && break
+                parent=$(dirname -- "$parent")
+            done
+        fi
+        parent=$(dirname -- "$path")
+        while :; do
+            [ ! -L "$parent" ] || {
+                echo "✗ Unsafe ownership-manifest path: ${path}" >&2
+                return 1
+            }
+            [ "$parent" = "$root" ] && break
+            parent=$(dirname -- "$parent")
+        done
+        if [ -e "$path" ] || [ -L "$path" ]; then
+            canonical=$(canonical_destination "$path") || {
+                echo "✗ Unsafe ownership-manifest path: ${path}" >&2
+                return 1
+            }
+            [ "$canonical" = "$path" ] || {
+                echo "✗ Unsafe ownership-manifest path: ${path}" >&2
+                return 1
+            }
+            if [ "$kind" = "F" ]; then
+                [ -f "$path" ] && [ ! -L "$path" ] || {
+                    echo "✗ Prior manifest file is not a regular non-symlink file: ${path}" >&2
+                    return 1
+                }
+                assert_current_user_owned "$path" || return 1
+            elif [ "$kind" != "F" ]; then
+                [ -d "$path" ] && [ ! -L "$path" ] || {
+                    echo "✗ Prior manifest directory is not a regular non-symlink directory: ${path}" >&2
+                    return 1
+                }
+                assert_current_user_owned "$path" || return 1
+            fi
+        fi
+    }
+    validate_prior_manifest() {
+        [ -e "$MANIFEST_PATH" ] || [ -L "$MANIFEST_PATH" ] || return 0
+        [ ! -L "$MANIFEST_PATH" ] && [ -f "$MANIFEST_PATH" ] || {
+            echo "✗ Invalid ownership manifest path: ${MANIFEST_PATH}" >&2
+            return 1
+        }
+        assert_private_directory_chain "$MANIFEST_PATH" "$SKILL_BASE_CANON" || return 1
+        assert_current_user_owned "$MANIFEST_PATH" || return 1
+        local version_seen=0 target_seen=0 kind path extra
+        while IFS=$'\t' read -r kind path extra || [ -n "$kind" ]; do
+            [ -n "$kind" ] && [ -z "$extra" ] || {
+                echo "✗ Invalid ownership manifest: ${MANIFEST_PATH}" >&2
+                return 1
+            }
+            case "$kind" in
+                V)
+                    [ "$path" = "1" ] && [ "$version_seen" = "0" ] || {
+                        echo "✗ Invalid ownership manifest: ${MANIFEST_PATH}" >&2
+                        return 1
+                    }
+                    version_seen=1
+                    ;;
+                T)
+                    [ "$path" = "$TARGET" ] && [ "$target_seen" = "0" ] || {
+                        echo "✗ Invalid ownership manifest: ${MANIFEST_PATH}" >&2
+                        return 1
+                    }
+                    target_seen=1
+                    ;;
+                F|D|R)
+                    assert_safe_prior_manifest_path "$kind" "$path" || return 1
+                    ;;
+                *)
+                    echo "✗ Unknown ownership-manifest record: ${kind}" >&2
+                    return 1
+                    ;;
+            esac
+        done < "$MANIFEST_PATH"
+        [ "$version_seen" = "1" ] && [ "$target_seen" = "1" ] || {
+            echo "✗ Invalid ownership manifest: ${MANIFEST_PATH}" >&2
+            return 1
+        }
+    }
+    validate_prior_manifest || return 1
+    assert_private_directory_chain "${SKILL_BASE_CANON}/.claude-ads-root-check" "$SKILL_BASE_CANON" || return 1
+    assert_private_directory_chain "${AGENT_DIR_CANON}/.claude-ads-root-check" "$AGENT_DIR_CANON" || return 1
+    prior_path_aliases_planned_file() {
+        local prior_path="$1" kind planned_path extra
+        while IFS=$'\t' read -r kind planned_path extra || [ -n "$kind" ]; do
+            [ "$kind" = "F" ] || continue
+            [ -e "$planned_path" ] || continue
+            [ "$prior_path" -ef "$planned_path" ] && return 0
+        done < "$MANIFEST_TMP"
+        return 1
+    }
+    remove_retired_prior_files() {
+        [ -f "$MANIFEST_PATH" ] || return 0
+        local kind path extra
+        while IFS=$'\t' read -r kind path extra || [ -n "$kind" ]; do
+            [ "$kind" = "F" ] || continue
+            if awk -F '\t' -v destination="$path" \
+                '$1 == "F" && $2 == destination { found=1 } END { exit !found }' "$MANIFEST_TMP"; then
+                continue
+            fi
+            assert_safe_prior_manifest_path F "$path" 1 || return 1
+            if [ -e "$path" ] && prior_path_aliases_planned_file "$path"; then
+                continue
+            fi
+            if [ -e "$path" ] || [ -L "$path" ]; then
+                [ -f "$path" ] && [ ! -L "$path" ] || {
+                    echo "✗ Prior manifest file is not a regular non-symlink file: ${path}" >&2
+                    return 1
+                }
+                assert_current_user_owned "$path" || return 1
+                rm -f -- "$path" || {
+                    echo "✗ Could not remove retired owned file: ${path}" >&2
+                    return 1
+                }
+            fi
+        done < "$MANIFEST_PATH"
+    }
+    validate_prior_manifest || return 1
     install_file() {
         local source="$1" destination="$2" canonical
         [ ! -L "$destination" ] || { echo "✗ Refusing symlinked install file: ${destination}" >&2; return 1; }
@@ -432,43 +715,44 @@ print("|".join((sys.implementation.name, f"{sys.version_info.major}.{sys.version
         install_file "${SOURCE_DIR}/requirements.txt" "${SKILL_DIR}/requirements.txt"
         install_file "${SOURCE_DIR}/requirements.lock" "${SKILL_DIR}/requirements.lock"
         CORE_DIR=$(ensure_owned_dir "${SCRIPTS_DIR}/claude_ads_core")
-        for source_file in "${SOURCE_DIR}/claude_ads_core/"*.py; do
-            [ -f "$source_file" ] || continue
-            install_file "$source_file" "${CORE_DIR}/$(basename -- "$source_file")"
-        done
-        ADAPTERS_DIR=$(ensure_owned_dir "${CORE_DIR}/adapters")
-        for source_file in "${SOURCE_DIR}/claude_ads_core/adapters/"*.py; do
-            [ -f "$source_file" ] || continue
-            install_file "$source_file" "${ADAPTERS_DIR}/$(basename -- "$source_file")"
-        done
-        SCHEMAS_DIR=$(ensure_owned_dir "${CORE_DIR}/schemas/v1")
-        for source_file in "${SOURCE_DIR}/claude_ads_core/schemas/v1/"*.json; do
-            [ -f "$source_file" ] || continue
-            install_file "$source_file" "${SCHEMAS_DIR}/$(basename -- "$source_file")"
-        done
-        record_dir "$SCHEMAS_DIR"
-        record_dir "$ADAPTERS_DIR"
+        while IFS= read -r source_file; do
+            relative="${source_file#${SOURCE_DIR}/claude_ads_core/}"
+            destination="${CORE_DIR}/${relative}"
+            destination_dir=$(ensure_owned_dir "$(dirname -- "$destination")")
+            install_file "$source_file" "$destination"
+            record_dir "$destination_dir"
+        done < <(
+            find "${SOURCE_DIR}/claude_ads_core" -type f \
+                \( -name '*.py' -o -name '*.json' \) \
+                ! -path '*/__pycache__/*' -print | LC_ALL=C sort
+        )
         record_dir "$CORE_DIR"
         record_dir "${SCRIPTS_DIR}"
     fi
 
     # Commit ownership before dependency installation. A later pip failure is
     # therefore recoverable with uninstall and never leaves unowned files.
+    VENV_DIR="${SKILL_DIR}/.venv"
+    RECEIPT_PATH="${SKILL_DIR}/managed-runtime-receipt.json"
     if [ "${ALLOW_PIP}" = "1" ] && [ "$INSTALL_DEPS" = "1" ]; then
-        VENV_DIR="${SKILL_DIR}/.venv"
         printf 'R\t%s\n' "$VENV_DIR" >> "$MANIFEST_TMP"
-        record_file "${SKILL_DIR}/managed-runtime-receipt.json"
+        record_file "$RECEIPT_PATH"
+    elif [ "$INSTALL_DEPS" = "0" ]; then
+        # --no-deps may reuse a previously installed managed runtime, but
+        # never carries forward arbitrary retired distribution files.
+        if prior_manifest_has_record R "$VENV_DIR"; then
+            printf 'R\t%s\n' "$VENV_DIR" >> "$MANIFEST_TMP"
+        fi
+        if prior_manifest_has_record F "$RECEIPT_PATH"; then
+            record_file "$RECEIPT_PATH"
+        fi
     fi
+    remove_retired_prior_files || return 1
     record_dir "${SKILL_DIR}"
     mv -f "$MANIFEST_TMP" "$MANIFEST_PATH"
     MANIFEST_TMP=""
     echo "✓ Ownership manifest: ${MANIFEST_PATH}"
-
-    # Install Python dependencies — only for hosts that explicitly support
-    # Python execution (claude, codex). Other targets skip the pip step.
-    echo ""
     if [ "${ALLOW_PIP}" = "1" ] && [ "$INSTALL_DEPS" = "1" ]; then
-        RECEIPT_PATH="${SKILL_DIR}/managed-runtime-receipt.json"
         if ! rm -f -- "$RECEIPT_PATH"; then
             echo "✗ Could not invalidate the prior managed runtime receipt." >&2
             return 1

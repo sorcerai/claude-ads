@@ -404,7 +404,7 @@
         {
           "id": "native-export-normalization",
           "mode": "export-read",
-          "status": "fixture-verified",
+          "status": "disabled",
           "implementation_paths": [
             "claude_ads_core/adapters/mappings_v1.py",
             "claude_ads_core/adapters/native_export.py"
@@ -417,7 +417,8 @@
           ],
           "source_ids": [
             "tiktok-integrated-reporting-official"
-          ]
+          ],
+          "disabled_reason": "Official TikTok API documentation does not verify the integrated AUCTION_AD field schema, and ad_id_v2 represents an ad or asset-group ID rather than creative identity; capability is disabled."
         },
         {
           "id": "account-health-scoring",
@@ -752,13 +753,14 @@
             "claude_ads_core/adapters/native_export.py"
           ],
           "fixture_paths": [
-            "tests/fixtures/native_exports/reddit.csv"
+            "tests/fixtures/native_exports/reddit.json"
           ],
           "test_paths": [
             "tests/core/test_native_exports.py"
           ],
           "source_ids": [
-            "reddit-ads-reporting-v3-official"
+            "reddit-ads-reporting-v3-official",
+            "reddit-ads-openapi-v3"
           ]
         },
         {

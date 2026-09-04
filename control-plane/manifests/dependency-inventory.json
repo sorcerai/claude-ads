@@ -2564,7 +2564,7 @@
   "manifests": [
     {
       "path": "pyproject.toml",
-      "sha256": "80bd12414a83c3df78c541024e744b5ab3bcff65c3831fd0e7087eef16514d23"
+      "sha256": "bce4a8ab487cc30b83d9f2da0ad7d9c7ecb48232b0e27fa93a8d4a1976d0c5fc"
     },
     {
       "path": "requirements-dev.lock",

@@ -1,0 +1,130 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ai-marketing-hub:claude-ads:schema:core:v2:account-snapshot.schema.json",
+  "title": "AccountSnapshot v2",
+  "type": "object",
+  "required": ["schema_version", "account", "window", "currency", "measurement_context", "campaigns", "creatives", "conversions", "budgets"],
+  "properties": {
+    "schema_version": {"const": "2.0.0"},
+    "account": {
+      "type": "object",
+      "required": ["platform", "account_id"],
+      "properties": {
+        "platform": {"enum": ["google", "meta", "youtube", "linkedin", "tiktok", "microsoft", "apple", "amazon", "reddit", "pinterest", "snapchat", "x"]},
+        "account_id": {"type": "string", "minLength": 1},
+        "name": {"type": "string"}
+      },
+      "additionalProperties": true
+    },
+    "window": {
+      "type": "object",
+      "required": ["start", "end"],
+      "properties": {
+        "start": {"type": "string", "format": "date"},
+        "end": {"type": "string", "format": "date"}
+      },
+      "additionalProperties": false
+    },
+    "currency": {"type": "string", "pattern": "^[A-Z]{3}$"},
+    "measurement_context": {
+      "type": "object",
+      "required": ["timezone", "currency", "profile_id", "source_format", "source_ids", "report_grain", "conversion_definition", "conversion_actions", "attribution_model", "click_attribution_window", "view_attribution_window", "counting_behavior", "as_of", "data_finalization", "modeled_data_treatment", "missing_fields", "unsupported_fields"],
+      "properties": {
+        "timezone": {"type": ["string", "null"]},
+        "currency": {"type": "string", "pattern": "^[A-Z]{3}$"},
+        "profile_id": {"type": "string", "minLength": 1},
+        "source_format": {"type": "string", "minLength": 1},
+        "source_ids": {"type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": true},
+        "report_grain": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+        "conversion_definition": {"type": ["string", "null"], "minLength": 1},
+        "conversion_actions": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+        "attribution_model": {"type": ["string", "null"], "minLength": 1},
+        "click_attribution_window": {
+          "type": ["object", "null"],
+          "required": ["value", "unit"],
+          "properties": {
+            "value": {"type": "integer", "minimum": 0},
+            "unit": {"enum": ["hour", "day"]}
+          },
+          "additionalProperties": false
+        },
+        "view_attribution_window": {
+          "type": ["object", "null"],
+          "required": ["value", "unit"],
+          "properties": {
+            "value": {"type": "integer", "minimum": 0},
+            "unit": {"enum": ["hour", "day"]}
+          },
+          "additionalProperties": false
+        },
+        "counting_behavior": {"type": ["string", "null"], "minLength": 1},
+        "as_of": {"type": "string", "format": "date"},
+        "data_finalization": {"enum": ["final", "provisional", "unknown"]},
+        "modeled_data_treatment": {"enum": ["included", "excluded", "mixed", "unknown"]},
+        "missing_fields": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}, "$comment": "Sorted lexicographically by field name."},
+        "unsupported_fields": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1, "enum": ["account_name", "campaign_name", "campaign_status", "creative_id", "creative_name", "conversion_action", "conversions", "budget"]}, "$comment": "Sorted lexicographically by field name."}
+      },
+      "additionalProperties": false
+    },
+    "spend": {"type": ["number", "null"], "minimum": 0},
+    "campaigns": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["campaign_id"],
+        "properties": {
+          "campaign_id": {"type": "string", "minLength": 1},
+          "name": {"type": "string", "minLength": 1},
+          "status": {"type": "string", "minLength": 1},
+          "policy_status": {"type": "string", "minLength": 1},
+          "spend": {"type": "number", "minimum": 0}
+        },
+        "additionalProperties": false
+      }
+    },
+    "creatives": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["creative_id", "campaign_id"],
+        "properties": {
+          "creative_id": {"type": "string", "minLength": 1},
+          "campaign_id": {"type": "string", "minLength": 1},
+          "name": {"type": "string", "minLength": 1}
+        },
+        "additionalProperties": false
+      }
+    },
+    "conversions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["action"],
+        "properties": {
+          "action": {"type": "string", "minLength": 1},
+          "count": {"type": "number", "minimum": 0},
+          "status": {"type": "string", "minLength": 1}
+        },
+        "anyOf": [
+          {"required": ["count"]},
+          {"required": ["status"]}
+        ],
+        "additionalProperties": false
+      }
+    },
+    "budgets": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["campaign_id", "date", "amount"],
+        "properties": {
+          "campaign_id": {"type": "string", "minLength": 1},
+          "date": {"type": "string", "format": "date"},
+          "amount": {"type": "number", "minimum": 0}
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": true
+}

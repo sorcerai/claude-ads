@@ -16,7 +16,7 @@ system text, account exports, credentials, or raw private corpus.
 - `PUBLISHING_POLICY.md`: private/public classification and publication gate.
 - `RELEASE_REQUIREMENTS.md`: maturity, testing, security, packaging, and remote
   CI requirements.
-- `schemas/`: JSON Schema Draft 2020-12 contracts.
+- `claude_ads_core/schemas/v1/` and `claude_ads_core/schemas/v2/`: canonical JSON Schema Draft 2020-12 resources. v2 contains only `account-snapshot`, `finding`, and `report-bundle`; v1 retains the unchanged nested and workflow contracts.
 - `schemas/independent-review-evidence.schema.json` and
   `schemas/review-trust-bundle.schema.json`: externally signed release-review
   contracts; repository templates cannot satisfy the gate.
@@ -32,8 +32,9 @@ system text, account exports, credentials, or raw private corpus.
 
 Schema `$id` values use stable `urn:ai-marketing-hub:claude-ads:schema:*`
 identifiers. They are identifiers, not network locations. The tracked files in
-`claude_ads_core/schemas/v1/`, `control-plane/schemas/`, and `evals/schemas/`
-are the canonical validation resources.
+`claude_ads_core/schemas/v1/`, `claude_ads_core/schemas/v2/`,
+`control-plane/schemas/`, and `evals/schemas/` are the canonical validation
+resources.
 
 ## Doctrine
 

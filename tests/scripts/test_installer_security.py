@@ -22,6 +22,17 @@ WINDOWS_POWERSHELL = shutil.which("powershell.exe") if os.name == "nt" else None
 WINDOWS_POWERSHELL_ONLY = pytest.mark.skipif(
     WINDOWS_POWERSHELL is None, reason="Windows PowerShell 5.1 is not installed"
 )
+REMOVED_V1_SCHEMA_NAMES = (
+    "account-snapshot.schema.json",
+    "finding.schema.json",
+    "report-bundle.schema.json",
+)
+CONTROL_REGISTRY_MANIFEST_NAMES = (
+    "control-registry.json",
+    "scoring-profiles.json",
+    "claim-ledger.json",
+    "source-ledger.json",
+)
 
 
 def _run(script: str, *args: str) -> subprocess.CompletedProcess[str]:
@@ -50,6 +61,17 @@ def _fake_python(tmp_path: Path, target: str, fail_venv: bool = False) -> Path:
     )
     script.chmod(0o755)
     return directory
+
+
+def _run_with_env(env: dict[str, str], *args: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        ["bash", str(ROOT / "install.sh"), *args],
+        cwd=ROOT,
+        env={**os.environ, **env},
+        check=False,
+        capture_output=True,
+        text=True,
+    )
 
 
 def _install(tmp_path: Path) -> tuple[Path, Path]:
@@ -166,6 +188,26 @@ def test_bash_installer_syntax_and_no_global_pip_escape_hatch():
     assert "Refusing to overwrite unowned file" in powershell
     assert "-band [IO.FileAttributes]::ReparsePoint" in powershell
     assert powershell.count("Copy-Item") == 1
+    assert "Get-ChildItem $CoreSource -File -Recurse" in powershell
+    assert "Remove-Item -LiteralPath $RetiredFile" in powershell
+    assert "UnionWith($PriorFiles)" not in powershell
+    assert "UnionWith($PriorDirectories)" in powershell
+    assert "$RetainedRuntimeFiles" in powershell
+    assert "$RetainedRuntimeDirs" in powershell
+    assert "if ($NoDeps)" in powershell
+    assert "Assert-PrivateDirectoryChain" in powershell
+    assert "DeleteSubdirectoriesAndFiles" in powershell
+    assert "non-Windows PowerShell" in powershell
+    assert "Identity.Groups" not in powershell
+    assert "Retired file parent is not owned by a trusted identity" in powershell
+    assert "WriteData" in powershell
+    assert "FullControl" not in powershell
+    assert "GetFolderPath([Environment+SpecialFolder]::UserProfile)" in powershell
+    assert "if ($Current.Equals($ProfileRoot, $PathComparison)) { break }" in powershell
+    assert "ls -lde" in installer
+    assert "com.apple.acl.text" in installer
+    assert "ACL mutation grant" in installer
+    assert '*" allow "*' in installer
 
     powershell_uninstall = (ROOT / "uninstall.ps1").read_text(encoding="utf-8")
     assert "ExpectedProperties" in powershell_uninstall
@@ -208,6 +250,343 @@ def test_installer_includes_portable_interface_and_all_platform_surfaces(tmp_pat
     ):
         assert (skills / f"ads-{platform}" / "SKILL.md").is_file()
         assert (agents / f"audit-{platform}.md").is_file()
+
+
+@BASH_INSTALLER_ONLY
+def test_bash_installer_includes_all_versioned_schema_resources_and_manifest_ownership(
+    tmp_path,
+):
+    skills, agents = _install(tmp_path)
+    installed_core = skills / "ads" / "scripts" / "claude_ads_core"
+    manifest = skills / ".claude-ads-claude.manifest"
+    manifest_files = {
+        line.split("\t", 1)[1]
+        for line in manifest.read_text(encoding="utf-8").splitlines()
+        if line.startswith("F\t")
+    }
+    expected = sorted(
+        path.relative_to(ROOT / "claude_ads_core")
+        for path in (ROOT / "claude_ads_core" / "schemas").rglob("*.json")
+    )
+    assert expected
+    for relative in expected:
+        installed = installed_core / relative
+        assert installed.is_file(), relative
+        assert str(installed.resolve()) in manifest_files
+    for schema_name in REMOVED_V1_SCHEMA_NAMES:
+        assert not (installed_core / "schemas" / "v1" / schema_name).exists()
+    for name in CONTROL_REGISTRY_MANIFEST_NAMES:
+        installed = installed_core / "manifests" / name
+        canonical = ROOT / "control-plane" / "manifests" / name
+        assert installed.read_bytes() == canonical.read_bytes()
+
+
+@POWERSHELL_ONLY
+def test_powershell_installer_includes_all_control_registry_manifests(tmp_path):
+    skills, agents = tmp_path / "skills", tmp_path / "agents"
+    result = _powershell_install(skills, agents)
+    assert result.returncode == 0, result.stdout + result.stderr
+    installed_core = skills / "ads" / "scripts" / "claude_ads_core"
+    for name in CONTROL_REGISTRY_MANIFEST_NAMES:
+        installed = installed_core / "manifests" / name
+        canonical = ROOT / "control-plane" / "manifests" / name
+        assert installed.read_bytes() == canonical.read_bytes()
+
+
+@BASH_INSTALLER_ONLY
+def test_bash_upgrade_removes_safe_retired_owned_file_but_keeps_v1_schemas(tmp_path):
+    skills, agents = _install(tmp_path)
+    installed_core = skills / "ads" / "scripts" / "claude_ads_core"
+    stale = installed_core / "schemas" / "retired.schema.json"
+    stale.write_text('{"retired": true}\n', encoding="utf-8")
+    retired_v1 = [
+        installed_core / "schemas" / "v1" / schema_name
+        for schema_name in REMOVED_V1_SCHEMA_NAMES
+    ]
+    for retired in retired_v1:
+        retired.write_text('{"retired": true}\n', encoding="utf-8")
+    manifest = skills / ".claude-ads-claude.manifest"
+    with manifest.open("a", encoding="utf-8") as handle:
+        handle.write(f"F\t{stale.resolve()}\n")
+        for retired in retired_v1:
+            handle.write(f"F\t{retired.resolve()}\n")
+
+    result = _run(
+        "install.sh",
+        "--target=claude",
+        "--source=local",
+        "--no-deps",
+        f"--skill-dir={skills}",
+        f"--agent-dir={agents}",
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert not stale.exists()
+    for retired in retired_v1:
+        assert not retired.exists()
+    assert str(stale.resolve()) not in manifest.read_text(encoding="utf-8")
+    for version in ("v1", "v2"):
+        assert any((installed_core / "schemas" / version).glob("*.json"))
+
+
+@BASH_INSTALLER_ONLY
+@pytest.mark.parametrize("unsafe_kind", ["symlink", "outside", "malformed"])
+def test_bash_upgrade_rejects_unsafe_retired_manifest_entry_before_cleanup(
+    tmp_path, unsafe_kind
+):
+    skills, agents = _install(tmp_path)
+    legitimate = skills / "ads" / "SKILL.md"
+    manifest = skills / ".claude-ads-claude.manifest"
+    if unsafe_kind == "symlink":
+        outside = tmp_path / "outside.txt"
+        outside.write_text("preserve\n", encoding="utf-8")
+        stale = skills / "ads" / "scripts" / "claude_ads_core" / "stale-link.json"
+        stale.symlink_to(outside)
+        entry = stale
+        expected_error = "regular non-symlink"
+    elif unsafe_kind == "outside":
+        stale = tmp_path.parent / "outside-retired.json"
+        stale.write_text("preserve\n", encoding="utf-8")
+        entry = stale
+        expected_error = "Unsafe"
+    else:
+        entry = skills / "ads" / ".." / ".." / "outside-retired.json"
+        expected_error = "Unsafe"
+    with manifest.open("a", encoding="utf-8") as handle:
+        handle.write(f"F\t{entry}\n")
+
+    result = _run(
+        "install.sh",
+        "--target=claude",
+        "--source=local",
+        "--no-deps",
+        f"--skill-dir={skills}",
+        f"--agent-dir={agents}",
+    )
+
+    assert result.returncode != 0
+    assert expected_error in result.stderr
+    assert legitimate.is_file()
+
+
+@BASH_INSTALLER_ONLY
+def test_bash_no_deps_retains_only_explicit_managed_runtime_state(tmp_path):
+    skills, agents = _install(tmp_path)
+    runtime = skills / "ads" / ".venv"
+    runtime.mkdir()
+    receipt = skills / "ads" / "managed-runtime-receipt.json"
+    receipt.write_text('{"managed": true}\n', encoding="utf-8")
+    retired = skills / "ads" / "scripts" / "claude_ads_core" / "retired.json"
+    retired.write_text("{}\n", encoding="utf-8")
+    unowned_runtime_file = runtime / "unowned.txt"
+    unowned_runtime_file.write_text("preserve\n", encoding="utf-8")
+    manifest = skills / ".claude-ads-claude.manifest"
+    with manifest.open("a", encoding="utf-8") as handle:
+        handle.write(f"R\t{runtime.resolve()}\n")
+        handle.write(f"F\t{receipt.resolve()}\n")
+        handle.write(f"F\t{retired.resolve()}\n")
+
+    result = _run(
+        "install.sh",
+        "--target=claude",
+        "--source=local",
+        "--no-deps",
+        f"--skill-dir={skills}",
+        f"--agent-dir={agents}",
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    new_manifest = manifest.read_text(encoding="utf-8")
+    assert f"R\t{runtime.resolve()}\n" in new_manifest
+    assert f"F\t{receipt.resolve()}\n" in new_manifest
+    assert f"F\t{retired.resolve()}\n" not in new_manifest
+    assert f"F\t{unowned_runtime_file.resolve()}\n" not in new_manifest
+    assert receipt.is_file()
+    assert unowned_runtime_file.is_file()
+    assert not retired.exists()
+
+
+@BASH_INSTALLER_ONLY
+def test_bash_upgrade_rejects_group_writable_root_before_retired_cleanup(tmp_path):
+    skills, agents = _install(tmp_path)
+    stale = skills / "ads" / "scripts" / "claude_ads_core" / "retired.json"
+    stale.write_text("{}\n", encoding="utf-8")
+    manifest = skills / ".claude-ads-claude.manifest"
+    with manifest.open("a", encoding="utf-8") as handle:
+        handle.write(f"F\t{stale.resolve()}\n")
+    skills.chmod(0o777)
+
+    result = _run(
+        "install.sh",
+        "--target=claude",
+        "--source=local",
+        "--no-deps",
+        f"--skill-dir={skills}",
+        f"--agent-dir={agents}",
+    )
+
+    assert result.returncode != 0
+    assert "group/world-writable" in result.stderr
+    assert stale.is_file()
+
+
+@BASH_INSTALLER_ONLY
+@pytest.mark.skipif(os.uname().sysname != "Darwin", reason="Darwin ACL guard only")
+def test_bash_upgrade_rejects_extended_acl_metadata_before_cleanup(tmp_path):
+    skills, agents = _install(tmp_path)
+    stale = skills / "ads" / "scripts" / "claude_ads_core" / "retired.json"
+    stale.write_text("{}\n", encoding="utf-8")
+    manifest = skills / ".claude-ads-claude.manifest"
+    with manifest.open("a", encoding="utf-8") as handle:
+        handle.write(f"F\t{stale.resolve()}\n")
+    fake_ls_dir = tmp_path / "fake-bin"
+    fake_ls_dir.mkdir()
+    fake_ls = fake_ls_dir / "ls"
+    fake_ls.write_text(
+        "#!/bin/sh\n"
+        "printf 'drwx------+  owner  group  0 Jan 01 00:00 %s\\n' \"$2\"\n"
+        "printf '0: group:everyone allow write\\n'\n",
+        encoding="utf-8",
+    )
+    fake_ls.chmod(0o755)
+
+    result = _run_with_env(
+        {"PATH": f"{fake_ls_dir}:{os.environ['PATH']}"},
+        "--target=claude",
+        "--source=local",
+        "--no-deps",
+        f"--skill-dir={skills}",
+        f"--agent-dir={agents}",
+    )
+    assert result.returncode != 0
+    assert "ACL mutation grant" in result.stderr
+    assert stale.is_file()
+
+
+@BASH_INSTALLER_ONLY
+@pytest.mark.skipif(os.uname().sysname != "Darwin", reason="Darwin ACL guard only")
+def test_bash_upgrade_allows_protective_deny_acl_before_cleanup(tmp_path):
+    skills, agents = _install(tmp_path)
+    stale = skills / "ads" / "scripts" / "claude_ads_core" / "retired.json"
+    stale.write_text("{}\n", encoding="utf-8")
+    manifest = skills / ".claude-ads-claude.manifest"
+    with manifest.open("a", encoding="utf-8") as handle:
+        handle.write(f"F\t{stale.resolve()}\n")
+    fake_ls_dir = tmp_path / "fake-bin"
+    fake_ls_dir.mkdir()
+    fake_ls = fake_ls_dir / "ls"
+    fake_ls.write_text(
+        "#!/bin/sh\n"
+        "printf 'drwx------+  owner  group  0 Jan 01 00:00 %s\\n' \"$2\"\n"
+        "printf '0: group:everyone deny delete,delete_child\\n'\n",
+        encoding="utf-8",
+    )
+    fake_ls.chmod(0o755)
+
+    result = _run_with_env(
+        {"PATH": f"{fake_ls_dir}:{os.environ['PATH']}"},
+        "--target=claude",
+        "--source=local",
+        "--no-deps",
+        f"--skill-dir={skills}",
+        f"--agent-dir={agents}",
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert not stale.exists()
+
+
+@BASH_INSTALLER_ONLY
+def test_bash_upgrade_rejects_group_writable_root_ancestor_before_cleanup(tmp_path):
+    container = tmp_path / "container"
+    skills = container / "skills"
+    agents = container / "agents"
+    first = _run(
+        "install.sh",
+        "--target=claude",
+        "--source=local",
+        "--no-deps",
+        f"--skill-dir={skills}",
+        f"--agent-dir={agents}",
+    )
+    assert first.returncode == 0, first.stdout + first.stderr
+    stale = skills / "ads" / "scripts" / "claude_ads_core" / "retired.json"
+    stale.write_text("{}\n", encoding="utf-8")
+    manifest = skills / ".claude-ads-claude.manifest"
+    with manifest.open("a", encoding="utf-8") as handle:
+        handle.write(f"F\t{stale.resolve()}\n")
+    container.chmod(0o777)
+
+    result = _run(
+        "install.sh",
+        "--target=claude",
+        "--source=local",
+        "--no-deps",
+        f"--skill-dir={skills}",
+        f"--agent-dir={agents}",
+    )
+    container.chmod(0o700)
+
+    assert result.returncode != 0
+    assert "group/world-writable parent" in result.stderr
+    assert stale.is_file()
+
+
+@BASH_INSTALLER_ONLY
+def test_bash_upgrade_rejects_prior_owner_mismatch_before_cleanup(tmp_path):
+    skills, agents = _install(tmp_path)
+    stale = skills / "ads" / "scripts" / "claude_ads_core" / "retired.json"
+    stale.write_text("{}\n", encoding="utf-8")
+    manifest = skills / ".claude-ads-claude.manifest"
+    with manifest.open("a", encoding="utf-8") as handle:
+        handle.write(f"F\t{stale.resolve()}\n")
+    fake_stat_dir = tmp_path / "fake-bin"
+    fake_stat_dir.mkdir()
+    fake_stat = fake_stat_dir / "stat"
+    fake_stat.write_text(
+        "#!/bin/sh\n"
+        "case \"$*\" in *%u*) printf '99999\\n' ;; "
+        "*%Lp*|*%a*) printf '755\\n' ;; *) exit 1 ;; esac\n",
+        encoding="utf-8",
+    )
+    fake_stat.chmod(0o755)
+
+    result = _run_with_env(
+        {"PATH": f"{fake_stat.parent}:{os.environ['PATH']}"},
+        "--target=claude",
+        "--source=local",
+        "--no-deps",
+        f"--skill-dir={skills}",
+        f"--agent-dir={agents}",
+    )
+
+    assert result.returncode != 0
+    assert "not owned by the current user" in result.stderr
+    assert stale.is_file()
+
+
+@BASH_INSTALLER_ONLY
+def test_bash_upgrade_does_not_remove_case_alias_of_planned_file(tmp_path):
+    skills, agents = _install(tmp_path)
+    planned = skills / "ads" / "SKILL.md"
+    alias = skills / "ads" / "skill.md"
+    if not alias.exists():
+        pytest.skip("filesystem does not provide case aliases")
+    manifest = skills / ".claude-ads-claude.manifest"
+    with manifest.open("a", encoding="utf-8") as handle:
+        handle.write(f"F\t{alias}\n")
+
+    result = _run(
+        "install.sh",
+        "--target=claude",
+        "--source=local",
+        "--no-deps",
+        f"--skill-dir={skills}",
+        f"--agent-dir={agents}",
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert planned.is_file()
 
 
 @BASH_INSTALLER_ONLY
@@ -506,6 +885,10 @@ def test_powershell_install_uninstall_round_trip_preserves_unrelated_skill(tmp_p
     assert install.returncode == 0, install.stdout + install.stderr
     assert (skills / "ads" / "SKILL.md").is_file()
     assert (skills / ".claude-ads-claude.manifest.json").is_file()
+    installed_core = skills / "ads" / "scripts" / "claude_ads_core"
+    for schema_name in REMOVED_V1_SCHEMA_NAMES:
+        assert not (installed_core / "schemas" / "v1" / schema_name).exists()
+
 
     # The exact path is now recorded by the validated prior manifest, so a
     # repeat install may replace it and must restore the distribution content.
@@ -515,6 +898,8 @@ def test_powershell_install_uninstall_round_trip_preserves_unrelated_skill(tmp_p
     repeat = _powershell_install(skills, agents)
     assert repeat.returncode == 0, repeat.stdout + repeat.stderr
     assert installed_main.read_text(encoding="utf-8") == expected_main
+    for schema_name in REMOVED_V1_SCHEMA_NAMES:
+        assert not (installed_core / "schemas" / "v1" / schema_name).exists()
 
     unrelated = skills / "ads-weather"
     unrelated.mkdir()
@@ -721,7 +1106,7 @@ def test_windows_powershell_51_parse_security_and_round_trip(tmp_path):
 
 
 @POWERSHELL_ONLY
-def test_powershell_repeat_preserves_dropped_owned_file_for_uninstall(tmp_path):
+def test_powershell_repeat_removes_dropped_owned_file_before_uninstall(tmp_path):
     source = tmp_path / "distribution"
     (source / "ads" / "references").mkdir(parents=True)
     (source / "ads" / "SKILL.md").write_text("---\nname: ads\n---\n", encoding="utf-8")
@@ -742,21 +1127,15 @@ def test_powershell_repeat_preserves_dropped_owned_file_for_uninstall(tmp_path):
     legacy_source.unlink()
 
     repeat = _powershell_install(skills, agents, repo_dir=source)
+    if os.name != "nt":
+        assert repeat.returncode != 0
+        assert "use install.sh" in repeat.stdout + repeat.stderr
+        assert installed_legacy.is_file()
+        return
     assert repeat.returncode == 0, repeat.stdout + repeat.stderr
     manifest = json.loads(
         (skills / ".claude-ads-claude.manifest.json").read_text(encoding="utf-8-sig")
     )
-    assert str(installed_legacy.resolve()) in manifest["files"]
-
-    uninstall = subprocess.run(
-        [
-            "pwsh", "-NoProfile", "-File", str(ROOT / "uninstall.ps1"),
-            "-Target", "claude", "-SkillDir", str(skills), "-AgentDir", str(agents),
-        ],
-        cwd=ROOT,
-        check=False,
-        capture_output=True,
-        text=True,
-    )
-    assert uninstall.returncode == 0, uninstall.stdout + uninstall.stderr
+    assert str(installed_legacy.resolve()) not in manifest["files"]
     assert not installed_legacy.exists()
+

@@ -1,5 +1,7 @@
 """Deterministic Claude Ads contracts and scoring engine."""
 
+__version__ = "2.0.0"
+
 from .contracts import ContractError, load_contract, validate_contract
 from .control_registry import (
     ControlRegistry,
@@ -9,7 +11,16 @@ from .control_registry import (
     load_control_registry,
 )
 from .adapters import Adapter, AdapterCapabilities, GenericCSVExportAdapter, MutationDisabledError
-from .models import AccountSnapshot, ControlDefinition, Finding, ReportBundle, RunManifest
+from .models import (
+    AccountSnapshot,
+    AttributionWindow,
+    ControlDefinition,
+    EvidenceRecord,
+    Finding,
+    MeasurementContext,
+    ReportBundle,
+    RunManifest,
+)
 from .orchestration import (
     OrchestrationError,
     OrchestrationStore,
@@ -44,26 +55,37 @@ from .reporting import (
     write_report_bundle,
 )
 from .product_status import ProductStatusError, evaluate_product_status
-from .scoring import (
-    CATEGORY_WEIGHT_TOTAL,
-    SEVERITY_WEIGHTS,
-    PortfolioResult,
-    ScoreResult,
-    ScoringError,
-    score_account,
-    score_portfolio,
+from .scoring import CATEGORY_WEIGHT_TOTAL, SEVERITY_WEIGHTS, ScoringError
+from .doctor import DoctorError, run_doctor
+from .audit import AuditError, run_audit
+from .warehouse import (
+    ApiReadPurpose,
+    DirectApiReadForbiddenError,
+    MetaBudgetManager,
+    MetaQuerySpec,
+    MetaUsageMonitor,
+    MetaUsageStats,
+    MetaWarehouseReadPlane,
+    Provenance,
+    RateBudgetExceededError,
+    StaleDataError,
+    WarehouseError,
+    WarehouseSnapshot,
 )
 
 __all__ = [
     "CATEGORY_WEIGHT_TOTAL",
     "SEVERITY_WEIGHTS",
     "AccountSnapshot",
+    "AttributionWindow",
     "Adapter",
     "AdapterCapabilities",
     "ContractError",
     "ControlRegistry",
     "ControlDefinition",
+    "MeasurementContext",
     "Finding",
+    "EvidenceRecord",
     "GenericCSVExportAdapter",
     "MutationDisabledError",
     "MutationPlan",
@@ -82,16 +104,20 @@ __all__ = [
     "OrchestrationStore",
     "OrchestrationTask",
     "PDFDependencyError",
-    "PortfolioResult",
     "ProductStatusError",
     "ReportRenderError",
     "ReportBundle",
     "RegistryEntry",
     "RegistryError",
     "RunManifest",
-    "ScoreResult",
     "ScoringError",
     "ScoringProfile",
+    "DoctorError",
+    "run_doctor",
+    "SetupError",
+    "generate_setup_profile",
+    "AuditError",
+    "run_audit",
     "load_contract",
     "load_control_registry",
     "atomic_write_report",
@@ -100,14 +126,22 @@ __all__ = [
     "render_pdf",
     "render_report",
     "resolve_report_path",
-    "score_account",
-    "score_portfolio",
     "validate_contract",
     "evaluate_product_status",
     "artifact_sha256",
     "canonical_json_bytes",
     "evaluate_artifact_gate",
     "write_report_bundle",
+    "ApiReadPurpose",
+    "DirectApiReadForbiddenError",
+    "MetaBudgetManager",
+    "MetaQuerySpec",
+    "MetaUsageMonitor",
+    "MetaUsageStats",
+    "MetaWarehouseReadPlane",
+    "Provenance",
+    "RateBudgetExceededError",
+    "StaleDataError",
+    "WarehouseError",
+    "WarehouseSnapshot",
 ]
-
-__version__ = "2.0.0"

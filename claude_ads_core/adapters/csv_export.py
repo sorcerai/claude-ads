@@ -3,7 +3,11 @@
 from __future__ import annotations
 
 import csv
+import hashlib
+import io
 import math
+import os
+import stat
 from collections import Counter
 from datetime import date
 from decimal import Decimal, InvalidOperation
@@ -108,36 +112,45 @@ class GenericCSVExportAdapter(BaseAdapter):
     def read_snapshot(self, source: str | PathLike[str]) -> AccountSnapshot:
         path = Path(source)
         try:
-            if not path.is_file():
-                raise CSVExportError(f"export is not a regular file: {path}")
-            size = path.stat().st_size
+            handle = path.open("rb")
         except OSError as exc:
             raise CSVExportError(f"cannot inspect export: {exc}") from exc
-        if size > MAX_EXPORT_BYTES:
-            raise CSVExportError(f"export exceeds {MAX_EXPORT_BYTES} byte limit")
 
+        rows: list[dict[str, Any]] = []
         try:
-            with path.open("r", encoding="utf-8-sig", newline="") as handle:
-                reader = csv.DictReader(handle, strict=True)
-                headers = reader.fieldnames or []
-                if len(headers) > MAX_EXPORT_COLUMNS:
-                    raise CSVExportError(f"export exceeds {MAX_EXPORT_COLUMNS} column limit")
-                duplicates = sorted(field for field, count in Counter(headers).items() if count > 1)
-                if duplicates:
-                    raise CSVExportError(f"export contains duplicate column(s): {', '.join(duplicates)}")
-                missing = [field for field in REQUIRED_COLUMNS if field not in headers]
-                if missing:
-                    raise CSVExportError(f"export missing required column(s): {', '.join(missing)}")
-                rows = []
-                for row_number, row in enumerate(reader, start=2):
-                    if row_number - 1 > MAX_EXPORT_ROWS:
-                        raise CSVExportError(f"export exceeds {MAX_EXPORT_ROWS} row limit")
-                    rows.append(self._normalize_row(row, row_number))
+            with handle:
+                descriptor = os.fstat(handle.fileno())
+                if not stat.S_ISREG(descriptor.st_mode):
+                    raise CSVExportError(f"export is not a regular file: {path}")
+                size = descriptor.st_size
+                if size > MAX_EXPORT_BYTES:
+                    raise CSVExportError(f"export exceeds {MAX_EXPORT_BYTES} byte limit")
+                handle.seek(0)
+                source_id = f"sha256:{hashlib.sha256(handle.read()).hexdigest()}"
+                handle.seek(0)
+                text_handle = io.TextIOWrapper(handle, encoding="utf-8-sig", newline="")
+                try:
+                    reader = csv.DictReader(text_handle, strict=True)
+                    headers = reader.fieldnames or []
+                    if len(headers) > MAX_EXPORT_COLUMNS:
+                        raise CSVExportError(f"export exceeds {MAX_EXPORT_COLUMNS} column limit")
+                    duplicates = sorted(field for field, count in Counter(headers).items() if count > 1)
+                    if duplicates:
+                        raise CSVExportError(f"export contains duplicate column(s): {', '.join(duplicates)}")
+                    missing = [field for field in REQUIRED_COLUMNS if field not in headers]
+                    if missing:
+                        raise CSVExportError(f"export missing required column(s): {', '.join(missing)}")
+                    for row_number, row in enumerate(reader, start=2):
+                        if row_number - 1 > MAX_EXPORT_ROWS:
+                            raise CSVExportError(f"export exceeds {MAX_EXPORT_ROWS} row limit")
+                        rows.append(self._normalize_row(row, row_number))
+                finally:
+                    text_handle.detach()
         except (OSError, UnicodeError, csv.Error) as exc:
             raise CSVExportError(f"cannot read export: {exc}") from exc
         if not rows:
             raise CSVExportError("export must contain at least one data row")
-        return self._build_snapshot(rows)
+        return self._build_snapshot(rows, source_id)
 
     def _normalize_row(self, row: Mapping[str, str | None], row_number: int) -> dict[str, Any]:
         normalized = {field: _required(row, field, row_number) for field in REQUIRED_COLUMNS}
@@ -150,7 +163,7 @@ class GenericCSVExportAdapter(BaseAdapter):
             raise CSVExportError(f"row {row_number}: currency must be a three-letter uppercase code")
         return normalized
 
-    def _build_snapshot(self, rows: list[dict[str, Any]]) -> AccountSnapshot:
+    def _build_snapshot(self, rows: list[dict[str, Any]], source_id: str) -> AccountSnapshot:
         account_ids = {str(row["account_id"]) for row in rows}
         account_names = {str(row["account_name"]) for row in rows}
         currencies = {str(row["currency"]) for row in rows}
@@ -211,8 +224,10 @@ class GenericCSVExportAdapter(BaseAdapter):
                 )
             budgets[budget_key] = row["budget"]
 
+        window_end = max(row["date"] for row in rows).isoformat()
+        conversion_actions = sorted(conversions)
         snapshot: AccountSnapshot = {
-            "schema_version": "1.0.0",
+            "schema_version": "2.0.0",
             "account": {
                 "platform": self.platform,
                 "account_id": next(iter(account_ids)),
@@ -220,9 +235,37 @@ class GenericCSVExportAdapter(BaseAdapter):
             },
             "window": {
                 "start": min(row["date"] for row in rows).isoformat(),
-                "end": max(row["date"] for row in rows).isoformat(),
+                "end": window_end,
             },
             "currency": next(iter(currencies)),
+            "measurement_context": {
+                "timezone": None,
+                "currency": next(iter(currencies)),
+                "profile_id": self.adapter_id,
+                "source_format": "portable-csv",
+                "source_ids": [source_id],
+                "report_grain": ["date", "campaign_id", "creative_id"],
+                "conversion_definition": None,
+                "conversion_actions": conversion_actions,
+                "attribution_model": None,
+                "click_attribution_window": None,
+                "view_attribution_window": None,
+                "counting_behavior": None,
+                "as_of": window_end,
+                "data_finalization": "unknown",
+                "modeled_data_treatment": "unknown",
+                "missing_fields": [
+                    "attribution_model",
+                    "click_attribution_window",
+                    "conversion_definition",
+                    "counting_behavior",
+                    "data_finalization",
+                    "modeled_data_treatment",
+                    "timezone",
+                    "view_attribution_window",
+                ],
+                "unsupported_fields": [],
+            },
             "spend": _number(total_spend),
             "campaigns": [
                 {**campaign, "spend": _number(campaign["spend"])}

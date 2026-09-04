@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ai-marketing-hub:claude-ads:schema:core:v2:finding.schema.json",
+  "title": "Finding v2",
+  "type": "object",
+  "required": ["schema_version", "control_id", "status", "evidence", "confidence", "source_classification", "observation", "diagnosis", "recommendation"],
+  "properties": {
+    "schema_version": {"const": "2.0.0"},
+    "control_id": {"type": "string", "minLength": 1},
+    "status": {"enum": ["pass", "fail", "unknown", "not_applicable"]},
+    "evidence": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["evidence_id", "proof_kind", "source_id", "locator", "sha256", "observed_at", "query_id", "report_id", "window", "report_grain", "input_field", "redacted_value", "observation_ref"],
+        "properties": {
+          "evidence_id": {"type": "string", "minLength": 1},
+          "proof_kind": {"enum": ["observation", "source_fact", "vendor_claim", "inference"]},
+          "source_id": {"type": "string", "minLength": 1},
+          "locator": {"type": ["string", "null"], "minLength": 1},
+          "sha256": {"type": ["string", "null"], "pattern": "^[0-9a-f]{64}$"},
+          "observed_at": {"type": "string", "format": "date-time"},
+          "query_id": {"type": ["string", "null"], "minLength": 1},
+          "report_id": {"type": ["string", "null"], "minLength": 1},
+          "window": {
+            "type": ["object", "null"],
+            "required": ["start", "end"],
+            "properties": {
+              "start": {"type": "string", "format": "date"},
+              "end": {"type": "string", "format": "date"}
+            },
+            "additionalProperties": false
+          },
+          "report_grain": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+          "input_field": {"type": ["string", "null"], "minLength": 1},
+          "redacted_value": {},
+          "observation_ref": {"type": ["string", "null"], "minLength": 1}
+        },
+        "allOf": [
+          {
+            "anyOf": [
+              {"properties": {"locator": {"type": "string", "minLength": 1}}},
+              {"properties": {"sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}}}
+            ]
+          },
+          {
+            "anyOf": [
+              {"properties": {"redacted_value": {"not": {"type": "null"}}}},
+              {"properties": {"observation_ref": {"type": "string", "minLength": 1}}}
+            ]
+          }
+        ],
+        "additionalProperties": false
+      }
+    },
+    "confidence": {"enum": ["high", "medium", "low", "none"]},
+    "source_classification": {"enum": ["evidence_based", "practitioner", "contested", "folklore"]},
+    "observation": {"type": "string"},
+    "diagnosis": {"type": "string"},
+    "recommendation": {"type": "string"}
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "status": {"enum": ["pass", "fail"]}
+        }
+      },
+      "then": {
+        "properties": {
+          "evidence": {"minItems": 1}
+        }
+      }
+    }
+  ],
+  "additionalProperties": false
+}

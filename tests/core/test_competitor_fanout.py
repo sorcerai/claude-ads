@@ -399,3 +399,94 @@ def test_accented_latin_alone_is_not_a_signal():
     from claude_ads_core.competitor_fanout import mixed_script_advertisers
 
     assert mixed_script_advertisers([{"advertiser": "Marien Apotheke Köln"}]) == []
+
+
+def test_plan_slices_enforces_max_competitors_budget():
+    with pytest.raises(ValueError, match="competitors list exceeds maximum budget"):
+        _plan(competitors=[f"Competitor-{i}" for i in range(11)])
+
+
+def test_plan_slices_enforces_max_countries_budget():
+    with pytest.raises(ValueError, match="countries list exceeds maximum budget"):
+        _plan(countries=[f"C{i}" for i in range(11)])
+
+
+def test_plan_slices_enforces_max_total_slices_budget():
+    with pytest.raises(ValueError, match="total planned slices exceed maximum budget"):
+        _plan(
+            competitors=[f"Comp-{i}" for i in range(6)],
+            countries=[f"CN-{i}" for i in range(5)],
+            sources=["meta-ad-library", "serp-paid"],  # 6 * 5 * 2 = 60 > 50
+        )
+
+
+def test_plan_slices_deduplicates_competitors_and_countries():
+    tasks = _plan(
+        competitors=["Acme", "acme", "ACME", "Globex"],
+        countries=["de", "DE", "us", "US"],
+        sources=["meta-ad-library"],
+    )
+    # 2 unique competitors x 2 unique countries x 1 source = 4 tasks
+    assert len(tasks) == 4
+
+
+def test_normalize_archived_ads_generalized_platform():
+    """Verify normalization for non-Meta platforms such as TikTok or Google."""
+    from claude_ads_core.competitor_fanout import normalize_archived_ads
+
+    ads = [
+        {
+            "id": "tt-7890",
+            "platform": "tiktok",
+            "advertiser": "Acme Brand",
+            "advertiser_id": "act_999",
+            "body": "Special TikTok promotion text",
+            "title": "TikTok Ad Title",
+            "snapshot_url": "https://ads.tiktok.com/ad?id=tt-7890&access_token=SECRET",
+            "delivery_start": "2026-08-01",
+            "delivery_stop": "2026-08-15",
+            "languages": ["en"],
+        }
+    ]
+    observations = normalize_archived_ads(
+        ads, captured_at=CREATED_AT, provenance="operator-supplied"
+    )
+    assert len(observations) == 1
+    obs = observations[0]
+    assert obs["observation_id"] == "tiktok-ad-library.tt-7890"
+    assert obs["advertiser"] == "Acme Brand"
+    assert obs["advertiser_page_id"] == "act_999"
+    assert obs["publisher_platforms"] == ["tiktok"]
+    assert obs["untrusted_creative"]["bodies"] == ["Special TikTok promotion text"]
+    assert obs["untrusted_creative"]["titles"] == ["TikTok Ad Title"]
+    assert obs["snapshot_url"] == "https://ads.tiktok.com/ad?id=tt-7890"
+    assert obs["disclosed_political_metrics"] is None
+    assert obs["delivery_start"] == "2026-08-01"
+    assert obs["delivery_stop"] == "2026-08-15"
+    assert obs["provenance"] == "operator-supplied"
+
+
+def test_normalize_archived_ads_pre_parsed_creative_mapping():
+    """Verify that structured untrusted_creative mapping passes through safely quarantined."""
+    from claude_ads_core.competitor_fanout import normalize_archived_ads
+
+    ads = [
+        {
+            "id": "pre-123",
+            "untrusted_creative": {
+                "bodies": ["Body text"],
+                "titles": ["Headline"],
+                "descriptions": ["Subtitle"],
+                "captions": ["Caption"],
+            },
+        }
+    ]
+    obs = normalize_archived_ads(
+        ads, captured_at=CREATED_AT, provenance="ad-library-api", platform="google"
+    )[0]
+    assert obs["observation_id"] == "google-ad-library.pre-123"
+    assert obs["untrusted_creative"]["bodies"] == ["Body text"]
+    assert obs["untrusted_creative"]["titles"] == ["Headline"]
+    assert obs["untrusted_creative"]["descriptions"] == ["Subtitle"]
+    assert obs["untrusted_creative"]["captions"] == ["Caption"]
+

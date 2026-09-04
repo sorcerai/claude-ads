@@ -99,6 +99,11 @@ def meta_coverage_note(ad_type: str, countries: Iterable[str]) -> str | None:
     )
 
 
+MAX_COMPETITORS = 10
+MAX_COUNTRIES = 10
+MAX_TOTAL_SLICES = 50
+
+
 def plan_slices(
     *,
     run_id: str,
@@ -114,11 +119,34 @@ def plan_slices(
     each names a distinct single-writer destination, so no two workers can race
     the same file.
     """
-    competitors = list(competitors)
-    countries = list(countries)
+    seen_comp: set[str] = set()
+    dedup_competitors: list[str] = []
+    for c in competitors:
+        c_str = str(c).strip()
+        if c_str and c_str.lower() not in seen_comp:
+            seen_comp.add(c_str.lower())
+            dedup_competitors.append(c_str)
+
+    seen_cntry: set[str] = set()
+    dedup_countries: list[str] = []
+    for c in countries:
+        c_str = str(c).strip().upper()
+        if c_str and c_str not in seen_cntry:
+            seen_cntry.add(c_str)
+            dedup_countries.append(c_str)
+
     sources = list(sources)
-    if not competitors or not countries or not sources:
+    if not dedup_competitors or not dedup_countries or not sources:
         raise ValueError("competitors, countries, and sources must each be non-empty")
+
+    if len(dedup_competitors) > MAX_COMPETITORS:
+        raise ValueError(
+            f"competitors list exceeds maximum budget ({len(dedup_competitors)} > {MAX_COMPETITORS})"
+        )
+    if len(dedup_countries) > MAX_COUNTRIES:
+        raise ValueError(
+            f"countries list exceeds maximum budget ({len(dedup_countries)} > {MAX_COUNTRIES})"
+        )
 
     unknown = sorted(set(sources) - set(SOURCES))
     if unknown:
@@ -127,8 +155,8 @@ def plan_slices(
     tasks: list[dict[str, Any]] = []
     for source in sources:
         profile = SOURCES[source]
-        for competitor in competitors:
-            for country in countries:
+        for competitor in dedup_competitors:
+            for country in dedup_countries:
                 task_id = f"{run_id}.{slugify(source)}.{slugify(competitor)}.{country.upper()}"
                 scope = [
                     f"Competitor: {competitor}",
@@ -193,6 +221,10 @@ def plan_slices(
                         "status": "queued",
                     }
                 )
+    if len(tasks) > MAX_TOTAL_SLICES:
+        raise ValueError(
+            f"total planned slices exceed maximum budget ({len(tasks)} > {MAX_TOTAL_SLICES})"
+        )
     return tasks
 
 
@@ -256,16 +288,18 @@ def normalize_archived_ads(
     *,
     captured_at: str,
     provenance: str,
+    platform: str = "meta",
 ) -> list[dict[str, Any]]:
-    """Fold ArchivedAd rows into one canonical competitor observation shape.
+    """Fold ArchivedAd or operator-captured ad rows into one canonical competitor observation shape.
 
-    Both supported routes land here: the API client's `ads` list, and rows an
-    operator transcribed by hand from the public Ad Library. Downstream
-    clustering and reporting therefore never branch on where evidence came from,
-    only on how well attested it is.
+    Supports both automated API rows and operator-supplied rows across platforms
+    (e.g. Meta, TikTok, Google Ads Transparency). Downstream clustering and reporting
+    never branch on where evidence came from, only on how well attested it is.
 
-    Creative text is advertiser-authored and stays under `untrusted_creative`, so
-    no caller can mistake it for instructions or for verified claims.
+    Creative text is advertiser-authored and stays strictly quarantined under
+    `untrusted_creative`, so no caller can mistake it for instructions or for verified claims.
+    Undisclosed metrics normalize to None rather than zero.
+    Provenance is strictly restricted to 'ad-library-api' or 'operator-supplied'; scraped values are rejected.
     """
     if provenance not in PROVENANCE:
         raise ValueError(f"provenance must be one of {PROVENANCE}, got {provenance!r}")
@@ -276,26 +310,85 @@ def normalize_archived_ads(
         if not ad_id:
             raise ValueError("every ArchivedAd row requires an id")
 
+        row_platform = str(ad.get("platform") or platform).lower()
+
+        # Extract creative content strictly quarantined under untrusted_creative
+        creative_input = ad.get("untrusted_creative")
+        if isinstance(creative_input, Mapping):
+            bodies = list(creative_input.get("bodies") or [])
+            titles = list(creative_input.get("titles") or [])
+            descriptions = list(creative_input.get("descriptions") or [])
+            captions = list(creative_input.get("captions") or [])
+        else:
+            bodies = list(
+                ad.get("ad_creative_bodies")
+                or ([ad["body"]] if "body" in ad and ad["body"] else [])
+            )
+            titles = list(
+                ad.get("ad_creative_link_titles")
+                or ([ad["title"]] if "title" in ad and ad["title"] else [])
+            )
+            descriptions = list(
+                ad.get("ad_creative_link_descriptions")
+                or ([ad["description"]] if "description" in ad and ad["description"] else [])
+            )
+            captions = list(
+                ad.get("ad_creative_link_captions")
+                or ([ad["caption"]] if "caption" in ad and ad["caption"] else [])
+            )
+
+        untrusted_creative = {
+            "bodies": bodies,
+            "titles": titles,
+            "descriptions": descriptions,
+            "captions": captions,
+        }
+
+        # Normalize disclosed metrics: absent keys are undisclosed, never zero
         disclosed = {key: ad[key] for key in POLITICAL_ONLY_FIELDS if key in ad}
+        disclosed_metrics = (
+            ad.get("disclosed_political_metrics")
+            or ad.get("disclosed_metrics")
+            or (disclosed if disclosed else None)
+        )
+
+        advertiser = ad.get("page_name") or ad.get("advertiser") or ad.get("advertiser_name")
+        advertiser_page_id = (
+            ad.get("page_id") or ad.get("advertiser_page_id") or ad.get("advertiser_id")
+        )
+        snapshot_raw = (
+            ad.get("ad_snapshot_url") or ad.get("snapshot_url") or ad.get("source_url")
+        )
+        snapshot_url = _strip_snapshot_credential(snapshot_raw)
+
+        publisher_platforms = list(
+            ad.get("publisher_platforms")
+            or ([row_platform] if row_platform != "meta" else [])
+        )
+        languages = list(ad.get("languages") or [])
+        delivery_start = (
+            ad.get("ad_delivery_start_time") or ad.get("delivery_start") or ad.get("first_shown")
+        )
+        delivery_stop = (
+            ad.get("ad_delivery_stop_time") or ad.get("delivery_stop") or ad.get("last_shown") or None
+        )
+
+        observation_id = f"{row_platform}-ad-library.{ad_id}"
+
         observations.append(
             {
-                "observation_id": f"meta-ad-library.{ad_id}",
-                "platform": "meta",
-                "advertiser": ad.get("page_name"),
-                "advertiser_page_id": ad.get("page_id"),
-                "snapshot_url": _strip_snapshot_credential(ad.get("ad_snapshot_url")),
-                "publisher_platforms": list(ad.get("publisher_platforms") or []),
-                "languages": list(ad.get("languages") or []),
-                "delivery_start": ad.get("ad_delivery_start_time"),
-                "delivery_stop": ad.get("ad_delivery_stop_time") or None,
-                "untrusted_creative": {
-                    "bodies": list(ad.get("ad_creative_bodies") or []),
-                    "titles": list(ad.get("ad_creative_link_titles") or []),
-                    "descriptions": list(ad.get("ad_creative_link_descriptions") or []),
-                    "captions": list(ad.get("ad_creative_link_captions") or []),
-                },
+                "observation_id": observation_id,
+                "platform": row_platform,
+                "advertiser": advertiser,
+                "advertiser_page_id": advertiser_page_id,
+                "snapshot_url": snapshot_url,
+                "publisher_platforms": publisher_platforms,
+                "languages": languages,
+                "delivery_start": delivery_start,
+                "delivery_stop": delivery_stop,
+                "untrusted_creative": untrusted_creative,
                 # Absent keys are undisclosed for this ad's category, not zero.
-                "disclosed_political_metrics": disclosed or None,
+                "disclosed_political_metrics": disclosed_metrics,
                 "captured_at": captured_at,
                 "provenance": provenance,
             }

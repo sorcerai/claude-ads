@@ -255,14 +255,42 @@ def score_portfolio(accounts: Sequence[Mapping[str, Any]]) -> PortfolioResult:
     """
 
     included: list[tuple[str, Decimal, Decimal | None, str, tuple[str, str] | None]] = []
+    seen_identities: set[tuple[Any, ...]] = set()
+    platforms: set[str] = set()
+
     for index, account in enumerate(accounts):
         if not isinstance(account, Mapping):
             raise ScoringError(f"accounts[{index}] must be an object")
         account_id = account.get("account_id")
         if not isinstance(account_id, str) or not account_id:
             raise ScoringError(f"accounts[{index}].account_id must be a non-empty string")
-        if account.get("health_score") is None:
+
+        identity = (
+            account.get("tenant"),
+            account.get("advertiser"),
+            account.get("platform"),
+            account_id,
+        )
+        if identity in seen_identities:
+            raise ScoringError(f"accounts[{index}] has duplicate account identity {identity}")
+        seen_identities.add(identity)
+
+        platform = account.get("platform")
+        if isinstance(platform, str) and platform.strip():
+            platforms.add(platform.strip().lower())
+
+        status = str(account.get("status", "normal"))
+        if status not in {"normal", "provisional", "insufficient_evidence"}:
+            raise ScoringError(f"accounts[{index}].status is invalid")
+
+        if status == "insufficient_evidence" and account.get("health_score") is not None:
+            raise ScoringError(
+                f"accounts[{index}] has status insufficient_evidence but non-null health_score"
+            )
+
+        if account.get("health_score") is None or status == "insufficient_evidence":
             continue
+
         health = _decimal(account["health_score"], f"accounts[{index}].health_score")
         if not Decimal("0") <= health <= Decimal("100"):
             raise ScoringError(f"accounts[{index}].health_score must be between 0 and 100")
@@ -270,9 +298,6 @@ def score_portfolio(accounts: Sequence[Mapping[str, Any]]) -> PortfolioResult:
         spend = None if raw_spend is None else _decimal(raw_spend, f"accounts[{index}].spend")
         if spend is not None and spend < 0:
             raise ScoringError(f"accounts[{index}].spend must be >= 0")
-        status = str(account.get("status", "normal"))
-        if status not in {"normal", "provisional", "insufficient_evidence"}:
-            raise ScoringError(f"accounts[{index}].status is invalid")
         raw_window = account.get("window")
         window: tuple[str, str] | None = None
         if raw_window is not None:
@@ -283,6 +308,12 @@ def score_portfolio(accounts: Sequence[Mapping[str, Any]]) -> PortfolioResult:
                 raise ScoringError(f"accounts[{index}].window requires non-empty start and end strings")
             window = (start, end)
         included.append((account_id, health, spend, status, window))
+
+    if "meta" in platforms and len(platforms) > 1:
+        raise ScoringError(
+            "Cross-platform aggregation with Meta advertising data is disabled under "
+            "Meta Developer Policy 10.7 (CLM-0219); evaluate Meta independently."
+        )
 
     if not included:
         return PortfolioResult(None, "insufficient_evidence", "none", ())

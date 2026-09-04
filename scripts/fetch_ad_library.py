@@ -17,11 +17,13 @@ sent as a Bearer header so it never enters a URL, log line, or error string.
 """
 
 import argparse
+import hashlib
 import json
 import os
 import sys
 import time
-from datetime import date
+from datetime import date, datetime, timezone
+from typing import Any
 from urllib.parse import urlparse
 
 from url_utils import (
@@ -32,7 +34,10 @@ from url_utils import (
 
 # The planner and this client must agree on when an empty result is a coverage
 # limit rather than absence of ads, so the rule has exactly one definition.
-from claude_ads_core.competitor_fanout import meta_coverage_note as scope_warning
+from claude_ads_core.competitor_fanout import (
+    meta_coverage_note as scope_warning,
+    normalize_archived_ads,
+)
 
 try:
     import requests
@@ -96,6 +101,11 @@ AD_TYPES = (
     "POLITICAL_AND_ISSUE_ADS",
 )
 
+MAX_PAGE_LIMIT = 100
+MAX_PAGES_CEILING = 10
+USAGE_THROTTLE_LIMIT = 80.0
+DEFAULT_PACING_DELAY = 0.5
+
 
 def build_fields(include_political: bool, include_eu: bool) -> list[str]:
     """Assemble the requested field list, widest-scope fields last."""
@@ -134,9 +144,10 @@ def search_ad_library(
     max_pages: int = 5,
     timeout: int = 30,
     retry_delay: float = 2.0,
+    pacing_delay: float = DEFAULT_PACING_DELAY,
     sleep=time.sleep,
 ) -> dict:
-    """Query ads_archive and page through results.
+    """Query ads_archive and page through results with hard limits and queue pacing.
 
     Returns a dict with query metadata, ads, pages_fetched, usage, warning, and
     error.
@@ -145,6 +156,9 @@ def search_ad_library(
     krusemediallc/arcads-claude-code meta_api.py, reduced from its four attempts
     to the one retry ads/SKILL.md permits, and narrowed to exclude throttle codes.
     """
+    limit = min(max(1, limit), MAX_PAGE_LIMIT)
+    max_pages = min(max(1, max_pages), MAX_PAGES_CEILING)
+
     result = {
         "source": "meta-ad-library-api",
         "endpoint": ENDPOINT,
@@ -221,6 +235,9 @@ def search_ad_library(
     url: str | None = ENDPOINT
     try:
         while url and result["pages_fetched"] < max_pages:
+            if result["pages_fetched"] > 0:
+                sleep(pacing_delay)
+
             # A cursor URL already carries its query; re-sending params would
             # double-apply them.
             response = dispatch(url, params if result["pages_fetched"] == 0 else None)
@@ -282,8 +299,33 @@ def search_ad_library(
             result["ads"].extend(payload.get("data", []))
             result["pages_fetched"] += 1
 
-            next_url = (payload.get("paging") or {}).get("next")
-            url = _validate_next_url(next_url) if next_url else None
+            # Check for usage throttling signals
+            should_stop = False
+            usage_val = result["usage"].get("value") if result.get("usage") else None
+            if isinstance(usage_val, dict):
+                for metric in ("call_count", "total_cputime", "total_time"):
+                    if float(usage_val.get(metric, 0) or 0) >= USAGE_THROTTLE_LIMIT:
+                        should_stop = True
+                for items in usage_val.values():
+                    if isinstance(items, list):
+                        for entry in items:
+                            if isinstance(entry, dict):
+                                for metric in ("call_count", "total_cputime", "total_time"):
+                                    if float(entry.get(metric, 0) or 0) >= USAGE_THROTTLE_LIMIT:
+                                        should_stop = True
+                                if int(entry.get("estimated_time_to_regain_access", 0) or 0) > 0:
+                                    should_stop = True
+
+            if should_stop:
+                stop_msg = (
+                    "Usage throttle threshold reached (>=80% utilization or backoff requested); "
+                    "stopping further pagination."
+                )
+                result["warning"] = f"{result['warning']}; {stop_msg}" if result.get("warning") else stop_msg
+                url = None
+            else:
+                next_url = (payload.get("paging") or {}).get("next")
+                url = _validate_next_url(next_url) if next_url else None
 
     except ValueError as exc:
         result["error"] = sanitize_error(exc)
@@ -293,6 +335,87 @@ def search_ad_library(
         result["error"] = f"Request failed: {sanitize_error(exc)}"
 
     return result
+
+
+def build_canonical_artifact(
+    result: dict[str, Any],
+    *,
+    run_id: str,
+    client_id: str,
+    purpose: str,
+    privacy_class: str = "public",
+) -> dict[str, Any]:
+    """Fold raw public ad search results into one canonical competitor artifact.
+
+    Raw API payloads are never persisted directly. Every artifact binds run,
+    client-purpose, retrieval timestamp, source digest, warning/error/usage, and
+    lifecycle, then normalizes through canonical competitor observations before storage.
+    """
+    raw_ads = result.get("ads", [])
+    now_iso = datetime.now(timezone.utc).isoformat()
+    raw_bytes = json.dumps(raw_ads, sort_keys=True).encode("utf-8")
+    source_digest = f"sha256:{hashlib.sha256(raw_bytes).hexdigest()}"
+    query_bytes = json.dumps(result.get("query", {}), sort_keys=True).encode("utf-8")
+    query_digest = f"sha256:{hashlib.sha256(query_bytes).hexdigest()}"
+
+    normalized_observations = normalize_archived_ads(
+        raw_ads,
+        captured_at=now_iso,
+        provenance="ad-library-api",
+    )
+
+    return {
+        "schema_version": "1.0.0",
+        "artifact_type": "competitor-observations",
+        "run_id": run_id,
+        "client_id": client_id,
+        "purpose": purpose,
+        "retrieved_at": now_iso,
+        "source": "meta-ad-library-api",
+        "source_digest": source_digest,
+        "query_digest": query_digest,
+        "query": result.get("query"),
+        "warning": result.get("warning"),
+        "usage": result.get("usage"),
+        "error": result.get("error"),
+        "pages_fetched": result.get("pages_fetched", 0),
+        "observation_count": len(normalized_observations),
+        "data_lifecycle": {
+            "schema_version": "1.0.0",
+            "lifecycle_id": f"lifecycle-{run_id}",
+            "classification": privacy_class,
+            "retention": {
+                "minimum_seconds": 0,
+                "mode": "operator-defined",
+                "delete_after": None,
+                "purpose": purpose,
+                "exception_reason": None,
+            },
+            "encryption": {
+                "at_rest": "verified" if privacy_class != "public" else "not-applicable",
+                "in_transit": "verified" if privacy_class != "public" else "not-applicable",
+                "evidence_refs": [],
+            },
+            "access": {
+                "owner": "competitor-research-agent",
+                "authorized_roles": ["research-worker", "conductor"],
+                "access_log_locator": None,
+            },
+            "deletion": {
+                "status": "scheduled",
+                "method": "file-removal",
+                "verification_required": False,
+                "verification_artifact_locator": None,
+            },
+            "incident": {
+                "owner": "security-owner",
+                "reporting_channel": "security-incident",
+                "status": "not-triggered",
+                "record_locator": None,
+            },
+        },
+        "observations": normalized_observations,
+    }
 
 
 def main():
@@ -307,13 +430,31 @@ def main():
     parser.add_argument("--ad-type", default="ALL", choices=AD_TYPES)
     parser.add_argument("--delivery-date-min", help="YYYY-MM-DD")
     parser.add_argument("--delivery-date-max", help="YYYY-MM-DD")
-    parser.add_argument("--limit", type=int, default=100, help="Results per page")
-    parser.add_argument("--max-pages", type=int, default=5, help="Maximum pages to fetch")
+    parser.add_argument("--limit", type=int, default=100, help="Results per page (max 100)")
+    parser.add_argument("--max-pages", type=int, default=5, help="Maximum pages to fetch (max 10)")
     parser.add_argument("--include-political-fields", action="store_true")
     parser.add_argument("--include-eu-fields", action="store_true")
+    parser.add_argument("--run-id", default=None, help="Run ID for artifact provenance")
+    parser.add_argument("--client-id", default=None, help="Client ID for artifact provenance")
+    parser.add_argument("--purpose", default="competitor_analysis", help="Purpose of data retrieval")
+    parser.add_argument(
+        "--privacy-class",
+        default="public",
+        choices=("public", "internal", "confidential", "restricted"),
+        help="Data lifecycle classification",
+    )
     parser.add_argument("--output", "-o", help="Write JSON here instead of stdout")
 
     args = parser.parse_args()
+
+    # Pre-flight validate output path before making any network calls
+    output_path = None
+    if args.output:
+        try:
+            output_path = resolve_output_path(args.output, create_parent=True)
+        except ValueError as exc:
+            print(f"Error: {sanitize_error(exc)}", file=sys.stderr)
+            sys.exit(1)
 
     token = os.environ.get("META_AD_LIBRARY_TOKEN")
     if not token:
@@ -337,22 +478,33 @@ def main():
         max_pages=args.max_pages,
     )
 
-    if result["warning"]:
+    if result.get("warning"):
         print(f"Warning: {result['warning']}", file=sys.stderr)
 
-    payload = json.dumps(result, indent=2, ensure_ascii=False)
-    if args.output:
-        try:
-            output_path = resolve_output_path(args.output, create_parent=True)
-        except ValueError as exc:
-            print(f"Error: {sanitize_error(exc)}", file=sys.stderr)
-            sys.exit(1)
+    run_id = args.run_id or f"run-{date.today().strftime('%Y%m%d')}-ad-lib"
+    client_id = args.client_id or "default-client"
+    purpose = args.purpose
+    privacy_class = args.privacy_class
+
+    canonical_artifact = build_canonical_artifact(
+        result,
+        run_id=run_id,
+        client_id=client_id,
+        purpose=purpose,
+        privacy_class=privacy_class,
+    )
+
+    payload = json.dumps(canonical_artifact, indent=2, ensure_ascii=False)
+    if output_path:
         output_path.write_text(payload, encoding="utf-8")
-        print(f"Saved {len(result['ads'])} ads to {output_path}", file=sys.stderr)
+        print(
+            f"Saved {len(canonical_artifact['observations'])} normalized observations to {output_path}",
+            file=sys.stderr,
+        )
     else:
         print(payload)
 
-    if result["error"]:
+    if result.get("error"):
         print(f"Error: {result['error']}", file=sys.stderr)
         sys.exit(1)
 

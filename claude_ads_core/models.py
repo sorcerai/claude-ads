@@ -1,4 +1,4 @@
-"""Typed public interfaces for the v1 JSON contracts."""
+"""Typed public interfaces for mixed-version JSON contracts."""
 
 from __future__ import annotations
 
@@ -16,16 +16,68 @@ class DateWindow(TypedDict):
     end: str
 
 
+class AttributionWindow(TypedDict):
+    value: int
+    unit: Literal["hour", "day"]
+
+
+class MeasurementContext(TypedDict):
+    timezone: str | None
+    currency: str
+    profile_id: str
+    source_format: str
+    source_ids: list[str]
+    report_grain: list[str]
+    conversion_definition: str | None
+    conversion_actions: list[str]
+    attribution_model: str | None
+    click_attribution_window: AttributionWindow | None
+    view_attribution_window: AttributionWindow | None
+    counting_behavior: str | None
+    as_of: str
+    data_finalization: Literal["final", "provisional", "unknown"]
+    modeled_data_treatment: Literal["included", "excluded", "mixed", "unknown"]
+    missing_fields: list[str]
+    unsupported_fields: list[str]
+
+
+class CampaignRow(TypedDict):
+    campaign_id: str
+    name: NotRequired[str]
+    status: NotRequired[str]
+    policy_status: NotRequired[str]
+    spend: NotRequired[float]
+
+
+class CreativeRow(TypedDict):
+    creative_id: str
+    campaign_id: str
+    name: NotRequired[str]
+
+
+class ConversionRow(TypedDict):
+    action: str
+    count: NotRequired[float]
+    status: NotRequired[str]
+
+
+class BudgetRow(TypedDict):
+    campaign_id: str
+    date: str
+    amount: float
+
+
 class AccountSnapshot(TypedDict):
-    schema_version: Literal["1.0.0"]
+    schema_version: Literal["2.0.0"]
     account: AccountIdentity
     window: DateWindow
     currency: str
+    measurement_context: MeasurementContext
     spend: NotRequired[float | None]
-    campaigns: list[dict[str, Any]]
-    creatives: list[dict[str, Any]]
-    conversions: list[dict[str, Any]]
-    budgets: list[dict[str, Any]]
+    campaigns: list[CampaignRow]
+    creatives: list[CreativeRow]
+    conversions: list[ConversionRow]
+    budgets: list[BudgetRow]
 
 
 class AdapterRecord(TypedDict):
@@ -61,33 +113,60 @@ class ControlDefinition(TypedDict):
         "release-ready",
     ]
     geographies: list[str]
+
     expires_at: NotRequired[str | None]
     scoring_behavior: Literal["health", "opportunity", "watchlist"]
     stability: Literal["stable", "experimental"]
 
 
+class EvidenceRecord(TypedDict):
+    evidence_id: str
+    proof_kind: Literal["observation", "source_fact", "vendor_claim", "inference"]
+    source_id: str
+    locator: str | None
+    sha256: str | None
+    observed_at: str
+    query_id: str | None
+    report_id: str | None
+    window: DateWindow | None
+    report_grain: list[str]
+    input_field: str | None
+    redacted_value: Any | None
+    observation_ref: str | None
+
+
 class Finding(TypedDict):
-    schema_version: Literal["1.0.0"]
+    schema_version: Literal["2.0.0"]
     control_id: str
     status: Literal["pass", "fail", "unknown", "not_applicable"]
-    evidence: list[dict[str, Any]]
+    evidence: list[EvidenceRecord]
     confidence: Literal["high", "medium", "low", "none"]
-    source_classification: NotRequired[Literal["evidence_based", "practitioner", "contested", "folklore"]]
+    source_classification: Literal["evidence_based", "practitioner", "contested", "folklore"]
     observation: str
     diagnosis: str
     recommendation: str
-    score_contribution: NotRequired[float | None]
+
+
+class CategoryScoreOutput(TypedDict):
+    category: str
+    category_weight: float
+    health_score: float | None
+    evidence_coverage: float
+    applicable_controls: int
+    known_controls: int
+    passed_controls: int
+    failed_controls: int
+    unknown_controls: int
 
 
 class ScoringOutput(TypedDict):
     health_score: float | None
     evidence_coverage: float
     status: Literal["normal", "provisional", "insufficient_evidence"]
-    categories: list[dict[str, Any]]
-
+    categories: list[CategoryScoreOutput]
 
 class ReportBundle(TypedDict):
-    schema_version: Literal["1.0.0"]
+    schema_version: Literal["2.0.0"]
     run_manifest: RunManifest
     account_snapshot: AccountSnapshot
     control_definitions: list[ControlDefinition]

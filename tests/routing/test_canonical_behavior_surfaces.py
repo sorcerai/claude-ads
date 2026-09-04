@@ -9,6 +9,186 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+AUDIT_WORKER_FILES = (
+    "agents/audit-amazon.md",
+    "agents/audit-apple.md",
+    "agents/audit-budget.md",
+    "agents/audit-creative.md",
+    "agents/audit-google.md",
+    "agents/audit-linkedin.md",
+    "agents/audit-meta.md",
+    "agents/audit-microsoft.md",
+    "agents/audit-pinterest.md",
+    "agents/audit-policy-compliance.md",
+    "agents/audit-reddit.md",
+    "agents/audit-regulatory-compliance.md",
+    "agents/audit-snapchat.md",
+    "agents/audit-tiktok.md",
+    "agents/audit-tracking.md",
+    "agents/audit-x.md",
+    "agents/audit-youtube.md",
+)
+
+FINDING_V2_KEYS = (
+    "`schema_version`: `\"2.0.0\"`",
+    "`control_id`",
+    "`status`: `\"pass\" | \"fail\" | \"unknown\" | \"not_applicable\"`",
+    "`evidence`",
+    "`confidence`",
+    "`source_classification`",
+    "`observation`",
+    "`diagnosis`",
+    "`recommendation`",
+)
+
+EVIDENCE_RECORD_KEYS = (
+    "evidence_id",
+    "proof_kind",
+    "source_id",
+    "locator",
+    "sha256",
+    "observed_at",
+    "query_id",
+    "report_id",
+    "window",
+    "report_grain",
+    "input_field",
+    "redacted_value",
+    "observation_ref",
+)
+
+
+def test_all_audit_workers_and_audit_surface_use_finding_v2_contract(repo_root: Path):
+    actual_workers = tuple(
+        sorted(
+            path.relative_to(repo_root).as_posix()
+            for path in (repo_root / "agents").glob("audit-*.md")
+        )
+    )
+    assert actual_workers == AUDIT_WORKER_FILES
+
+    for relative_path in AUDIT_WORKER_FILES:
+        worker = _lower(repo_root, relative_path)
+        assert "claude_ads_core/schemas/v2/finding.schema.json" in worker
+        assert "must contain exactly these worker-emitted keys" in worker
+        for key in FINDING_V2_KEYS:
+            assert key in worker, f"{relative_path} lacks Finding v2 key {key!r}"
+        assert "`evidence` item must be an evidencerecord with exactly these keys" in worker
+        for key in EVIDENCE_RECORD_KEYS:
+            assert key in worker, f"{relative_path} lacks EvidenceRecord key {key!r}"
+        assert "pass` and `fail` findings must include at least one evidencerecord" in worker
+        assert "score_contribution" in worker
+        assert "not a v2 field" in worker
+        assert "do not emit legacy `result` or `evidence_refs`" in worker
+        assert "validate the complete result against the v2 finding schema before return" in worker
+        _assert_measurement_evidence_freshness_contract(worker, relative_path)
+        for legacy_phrase in (
+            '"result": "pass|fail|unknown|not_applicable"',
+            '"evidence_refs": ["input:...", "source:..."]',
+            '"recommendation": "decision-complete next action or null"',
+            "result, severity, confidence",
+            "evidence references, and recommendation",
+            "recommendation or `null`",
+        ):
+            assert legacy_phrase not in worker, f"{relative_path} retains {legacy_phrase!r}"
+
+    root = _lower(repo_root, "ads/SKILL.md")
+    _assert_measurement_evidence_freshness_contract(root, "ads/SKILL.md")
+    assert "findings validate the current v2 schema" in root
+    for key in (
+        "schema_version",
+        "control_id",
+        "status",
+        "evidence",
+        "confidence",
+        "source_classification",
+        "observation",
+        "diagnosis",
+        "recommendation",
+    ):
+        assert key in root
+    assert "severity is registry-owned" in root
+    assert "score_contribution" in root
+    assert "not a v2 field" in root
+    assert "evidence references" not in root
+    assert "evidence_refs" not in root
+    assert "result, severity" not in root
+
+    audit_skill = _lower(repo_root, "skills/ads-audit/SKILL.md")
+    _assert_measurement_evidence_freshness_contract(audit_skill, "skills/ads-audit/SKILL.md")
+    assert "evidence_id" in audit_skill
+    assert "observation_ref" in audit_skill
+    assert '"recommendation": "' in audit_skill
+    assert "score_contribution" in audit_skill
+    assert "not a v2 field" in audit_skill
+    assert "workers must omit" in audit_skill
+    assert "legacy fields" in audit_skill
+    assert "run_manifest.completeness" in audit_skill
+    assert "scoring.status" in audit_skill
+    raw_audit_skill = (repo_root / "skills/ads-audit/SKILL.md").read_text(encoding="utf-8")
+    block_start = raw_audit_skill.index("```json\n") + len("```json\n")
+    block_end = raw_audit_skill.index("\n```", block_start)
+    example = json.loads(raw_audit_skill[block_start:block_end])
+    finding = example["findings"][0]
+    assert set(finding) == {
+        "schema_version",
+        "control_id",
+        "status",
+        "evidence",
+        "confidence",
+        "source_classification",
+        "observation",
+        "diagnosis",
+        "recommendation",
+    }
+    assert set(finding["evidence"][0]) == set(EVIDENCE_RECORD_KEYS)
+    assert isinstance(finding["recommendation"], str)
+    assert "score_contribution" not in finding
+
+
+def _assert_measurement_evidence_freshness_contract(surface: str, surface_name: str):
+    assert "source_classification" in surface, f"{surface_name} lacks source classification"
+    assert "measurement_context.missing_fields" in surface, f"{surface_name} lacks missing fields"
+    assert "measurement_context.unsupported_fields" in surface, f"{surface_name} lacks unsupported fields"
+    assert any(
+        phrase in surface
+        for phrase in (
+            "keep them as separate arrays",
+            "preserve these arrays separately",
+            "in either `measurement_context.missing_fields` or `measurement_context.unsupported_fields`",
+            "in either `missing_fields` or `unsupported_fields`",
+        )
+    ), f"{surface_name} collapses missing and unsupported fields"
+    assert "required_inputs" in surface, f"{surface_name} lacks required-input handling"
+    assert (
+        'status: "unknown"' in surface
+        or "control must be `unknown`" in surface
+    ), f"{surface_name} lacks unknown recovery status"
+    assert "recovery hint" in surface, f"{surface_name} lacks recovery guidance"
+    assert "proof-specific" in surface, f"{surface_name} lacks proof-specific binding"
+    for binding_phrase in (
+        "measurement_context.source_ids",
+        "control definition",
+        "source_fact",
+        "vendor_claim",
+        "inference",
+    ):
+        assert binding_phrase in surface, f"{surface_name} lacks {binding_phrase!r} binding"
+    assert "window` must be non-null" in surface, f"{surface_name} lacks observation window requirement"
+    assert "sha256:<64 lowercase hex>" in surface, f"{surface_name} lacks canonical sha256 observation source"
+    assert "matching its `sha256` 64-hex lowercase digest" in surface, (
+        f"{surface_name} lacks observation sha256 digest matching contract"
+    )
+    for freshness_phrase in (
+        "deadlines",
+        "expires_at",
+        "referenced claim",
+        "control source",
+        "refresh_due",
+        "fail closed",
+    ):
+        assert freshness_phrase in surface, f"{surface_name} lacks {freshness_phrase!r} freshness gate"
+
 
 CANONICAL_EVAL_CONTRACTS = {
     "safety-browser-injection": {

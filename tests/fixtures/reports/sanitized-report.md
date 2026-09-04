@@ -11,6 +11,26 @@
 - Window: 2026\-06\-01 to 2026\-06\-30
 - Privacy class: Internal
 
+## Measurement context
+
+- Profile ID: google\-fixture\-health\-v1
+- Source format: sanitized\-report\-fixture
+- Source IDs: official\-google\-help, sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+- Report grain: date, campaign\_id
+- Timezone: None supplied
+- Currency: USD
+- Conversion definition: primary\_conversion\_action
+- Conversion actions: primary\_conversion\_action
+- Attribution model: None supplied
+- Click attribution window: None supplied
+- View attribution window: None supplied
+- Counting behavior: None supplied
+- As of: 2026\-06\-30
+- Data finalization: Unknown
+- Modeled-data treatment: Unknown
+- Missing fields: attribution\_model, click\_attribution\_window, counting\_behavior, data\_finalization, modeled\_data\_treatment, timezone, view\_attribution\_window
+- Unsupported fields: budget, creative\_id, creative\_name
+
 ## Decision status
 
 - Run completeness: **Partial**
@@ -62,7 +82,7 @@ No evidence was supplied.
 
 1.
 
-        {"field":"policy_status","value":"eligible"}
+        {"evidence_id":"evidence-google-policy-001","input_field":"policy_status","locator":"input:sanitized-google-export.csv","observation_ref":null,"observed_at":"2026-07-11T16:00:00Z","proof_kind":"observation","query_id":null,"redacted_value":"eligible","report_grain":["date","campaign_id"],"report_id":null,"sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","source_id":"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","window":{"end":"2026-06-30","start":"2026-06-01"}}
 
 ### [FAIL] G\-TRACK\-001 — Tracking
 
@@ -80,7 +100,7 @@ No evidence was supplied.
 
 1.
 
-        {"field":"primary_conversion_status","value":"inactive"}
+        {"evidence_id":"evidence-google-tracking-001","input_field":"primary_conversion_status","locator":"input:sanitized-google-export.csv","observation_ref":null,"observed_at":"2026-07-11T16:00:00Z","proof_kind":"observation","query_id":null,"redacted_value":"inactive","report_grain":["date","campaign_id"],"report_id":null,"sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","source_id":"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","window":{"end":"2026-06-30","start":"2026-06-01"}}
 
 ## Contradictions
 
@@ -93,4 +113,4 @@ No evidence was supplied.
 
 ---
 
-Generated deterministically from ReportBundle JSON. Scores were not recalculated.
+Generated deterministically from ReportBundle JSON. Scores were recomputed from the supplied control registry and verified against this ReportBundle before rendering.

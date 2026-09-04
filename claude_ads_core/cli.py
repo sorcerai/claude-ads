@@ -5,19 +5,38 @@ from __future__ import annotations
 import argparse
 from datetime import date
 import json
+import os
 import sys
 from pathlib import Path
 from typing import Any, Sequence
 
 from . import __version__
-from .adapters import AdapterError, GenericCSVExportAdapter
+from .adapters import (
+    AdapterError,
+    GenericCSVExportAdapter,
+    NativeCSVExportAdapter,
+    NativeJSONExportAdapter,
+)
+from .audit import AuditError, run_audit
 from .competitor_fanout import SOURCES, plan_slices
 from .contracts import CONTRACT_NAMES, ContractError, load_contract, validate_contract
+from .control_registry import RegistryError, load_control_registry
+from .doctor import DoctorError, run_doctor
 from .reporting import ReportRenderError, write_report_bundle
 from .product_status import ProductStatusError, evaluate_product_status
-from .scoring import ScoringError, score_account, score_portfolio
+from .setup import SetupError, generate_setup_profile
 from .workflow_contracts import WorkflowContractError, validate_workflow_contract
 
+
+
+def _default_report_root(platform_name: str | None = None) -> str:
+    platform_name = os.name if platform_name is None else platform_name
+    if platform_name == "nt":
+        try:
+            return str(Path.home() / ".claude-ads" / "runs")
+        except (OSError, RuntimeError) as exc:
+            raise ReportRenderError(f"report root home normalization failed: {exc}") from exc
+    return ".claude-ads/runs"
 
 def _read_json(path: str) -> Any:
     try:
@@ -39,17 +58,11 @@ def build_parser() -> argparse.ArgumentParser:
     validate.add_argument("contract", choices=CONTRACT_NAMES)
     validate.add_argument("path")
 
-    score = commands.add_parser("score", help="score one account")
-    score.add_argument("--controls", required=True)
-    score.add_argument("--findings", required=True)
-    score.add_argument("--weights", required=True)
-
-    portfolio = commands.add_parser("portfolio", help="aggregate account scores")
-    portfolio.add_argument("path", help="JSON array of account score records")
 
     status = commands.add_parser("status", help="show repository status, or a report bundle when path is supplied")
     status.add_argument("path", nargs="?")
     status.add_argument("--root", default=".")
+    status.add_argument("--registry-root", default=None, help="repository root containing the control registry")
     status.add_argument("--as-of")
     status.add_argument("--release-gate")
 
@@ -65,7 +78,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     render.add_argument("path", help="ReportBundle JSON input")
     render.add_argument("--format", choices=("markdown", "html", "pdf"), default="markdown")
-    render.add_argument("--root", default=".claude-ads/runs", help="safe root for report artifacts")
+    render.add_argument("--root", default=None, help="safe root for report artifacts")
+    render.add_argument("--registry-root", default=None, help="repository root containing the control registry")
     render.add_argument("--output", help="relative output path; defaults to <run-id>/report.<extension>")
 
     fanout = commands.add_parser(
@@ -83,9 +97,41 @@ def build_parser() -> argparse.ArgumentParser:
     fanout.add_argument("--ad-type", default="ALL")
     fanout.add_argument("--created-at", required=True, help="ISO 8601 timestamp")
 
-    ingest = commands.add_parser("ingest-export", help="normalize a generic CSV export")
+    ingest = commands.add_parser("ingest-export", help="normalize a CSV export")
     ingest.add_argument("--platform", required=True)
+    ingest.add_argument("--format", choices=("generic", "native"), default="generic", help="export projection format")
+    ingest.add_argument("--native", action="store_true", help="use platform native CSV export profile")
+    ingest.add_argument("--context", action="append", default=[], help="context key=value pairs for native adapter")
     ingest.add_argument("path")
+
+    doctor = commands.add_parser("doctor", help="inspect environment, packaging, and registry readiness")
+    doctor.add_argument("--root", default=".", help="repository root")
+    doctor.add_argument("--registry-root", default=None, help="control registry root")
+    doctor.add_argument("--format", choices=("json", "text"), default="json", help="output format")
+
+    setup = commands.add_parser("setup", help="generate a validated setup profile and data lifecycle")
+    setup.add_argument("--platform", default="google", help="target advertising platform")
+    setup.add_argument("--client", default="Default Client", help="client business name")
+    setup.add_argument("--business-model", default="ecommerce", help="business model")
+    setup.add_argument("--geography", default="US", help="target geography (comma-separated for multiples)")
+    setup.add_argument("--account-id", default="demo-account", help="platform account ID")
+    setup.add_argument("--objective", default="conversions", help="primary campaign objective")
+    setup.add_argument("--conversion-definition", default="purchase", help="conversion taxonomy definition")
+    setup.add_argument("--privacy-class", default="internal", choices=("public", "internal", "confidential", "restricted"))
+    setup.add_argument("--export-path", default=None, help="path to verified export data source")
+    setup.add_argument("--output", default=None, help="output path for setup-profile.json")
+
+    audit = commands.add_parser("audit", help="execute deterministic export-to-audit reference journey")
+    audit.add_argument("--platform", default="google", help="advertising platform (default: google)")
+    audit.add_argument("--input", required=True, help="path to account export CSV")
+    audit.add_argument("--format", choices=("markdown", "html", "pdf"), default="markdown", help="report format")
+    audit.add_argument("--export-format", choices=("auto", "native", "generic"), default="auto", help="export projection format")
+    audit.add_argument("--context", action="append", default=[], help="context key=value pairs for native adapter")
+    audit.add_argument("--run-id", default=None, help="deterministic run ID")
+    audit.add_argument("--root", default=None, help="safe report output root directory")
+    audit.add_argument("--registry-root", default=None, help="control registry root")
+    audit.add_argument("--privacy-class", default="internal", choices=("public", "internal", "confidential", "restricted"))
+    audit.add_argument("--client", default=None, help="client business name")
     return parser
 
 
@@ -96,23 +142,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.command == "validate":
             load_contract(args.contract, args.path)
             _emit({"contract": args.contract, "path": args.path, "status": "valid"})
-        elif args.command == "score":
-            controls = _read_json(args.controls)
-            findings = _read_json(args.findings)
-            weights = _read_json(args.weights)
-            if not isinstance(controls, list) or not isinstance(findings, list) or not isinstance(weights, dict):
-                raise ScoringError("controls/findings must be arrays and weights must be an object")
-            _emit(score_account(controls, findings, weights).to_dict())
-        elif args.command == "portfolio":
-            accounts = _read_json(args.path)
-            if not isinstance(accounts, list):
-                raise ScoringError("portfolio input must be an array")
-            _emit(score_portfolio(accounts).to_dict())
         elif args.command == "status":
-            if args.path:
+            if args.path is not None:
                 bundle = _read_json(args.path)
                 validate_contract("report-bundle", bundle)
-                scoring = bundle["scoring"]
+                registry = load_control_registry(args.registry_root)
+                scoring = registry.validate_report_scoring(bundle).to_dict()
                 manifest = bundle["run_manifest"]
                 _emit(
                     {
@@ -153,9 +188,13 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
         elif args.command in {"render", "report"}:
             bundle = load_contract("report-bundle", args.path)
+            registry = load_control_registry(args.registry_root)
             extension = {"markdown": "md", "html": "html", "pdf": "pdf"}[args.format]
-            destination = args.output or f"{bundle['run_manifest']['run_id']}/report.{extension}"
-            output_path = write_report_bundle(bundle, args.format, args.root, destination)
+            destination = args.output if args.output is not None else f"{bundle['run_manifest']['run_id']}/report.{extension}"
+            root = args.root if args.root is not None else _default_report_root()
+            output_path = write_report_bundle(
+                bundle, args.format, root, destination, registry=registry
+            )
             _emit(
                 {
                     "format": args.format,
@@ -180,13 +219,75 @@ def main(argv: Sequence[str] | None = None) -> int:
                 validate_workflow_contract("orchestration-task", task)
             _emit({"run_id": args.run_id, "slices": len(tasks), "tasks": tasks})
         elif args.command == "ingest-export":
-            _emit(GenericCSVExportAdapter(args.platform).read_snapshot(args.path))
+            use_native = args.native or args.format == "native"
+            if use_native:
+                context_dict = dict(item.split("=", 1) for item in args.context if "=" in item)
+                if Path(args.path).suffix.lower() == ".json":
+                    adapter = NativeJSONExportAdapter(args.platform, context=context_dict)
+                else:
+                    adapter = NativeCSVExportAdapter(args.platform, context=context_dict)
+                _emit(adapter.read_snapshot(args.path))
+            else:
+                _emit(GenericCSVExportAdapter(args.platform).read_snapshot(args.path))
+        elif args.command == "doctor":
+            result = run_doctor(root=args.root, registry_root=args.registry_root)
+            if args.format == "text":
+                print(f"Claude Ads Core v{result['version']} Doctor")
+                print(f"Status: {result['status'].upper()}")
+                print(f"Python: {result['python']['version']} (supported: {result['python']['supported']})")
+                print(f"Registry: {result['registry']['status']} ({result['registry']['entries_count']} entries, {result['registry']['profiles_count']} profiles)")
+                print(f"Adapters: {result['adapters']['status']} ({len(result['adapters']['profiles'])} profiles)")
+                print(f"Filesystem: report_root={result['filesystem']['report_root']} (writable: {result['filesystem']['writable']})")
+                if result["issues"]:
+                    print("Issues:")
+                    for issue in result["issues"]:
+                        print(f"  - {issue}")
+            else:
+                _emit(result)
+            if result["status"] == "error":
+                return 2
+        elif args.command == "setup":
+            geographies = [g.strip() for g in args.geography.split(",") if g.strip()]
+            profile = generate_setup_profile(
+                platform=args.platform,
+                client_name=args.client,
+                business_model=args.business_model,
+                geographies=geographies,
+                account_id=args.account_id,
+                objective=args.objective,
+                conversion_definition=args.conversion_definition,
+                privacy_class=args.privacy_class,
+                data_source_path=args.export_path,
+                output_path=args.output,
+            )
+            if args.output:
+                _emit({"status": "created", "path": args.output, "run_id": profile["run_id"]})
+            else:
+                _emit(profile)
+        elif args.command == "audit":
+            context_dict = dict(item.split("=", 1) for item in args.context if "=" in item)
+            result = run_audit(
+                platform=args.platform,
+                input_path=args.input,
+                report_format=args.format,
+                export_format=args.export_format,
+                context=context_dict if context_dict else None,
+                output_dir=args.root,
+                run_id=args.run_id,
+                privacy_class=args.privacy_class,
+                registry_root=args.registry_root,
+                client_name=args.client,
+            )
+            _emit(result)
     except (
         AdapterError,
+        AuditError,
         ContractError,
+        DoctorError,
         ProductStatusError,
+        RegistryError,
         ReportRenderError,
-        ScoringError,
+        SetupError,
         WorkflowContractError,
         ValueError,
     ) as exc:

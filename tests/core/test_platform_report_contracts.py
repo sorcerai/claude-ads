@@ -4,7 +4,11 @@ from pathlib import Path
 
 import pytest
 
-from claude_ads_core.adapters import GenericCSVExportAdapter, NativeCSVExportAdapter
+from claude_ads_core.adapters import (
+    GenericCSVExportAdapter,
+    NativeCSVExportAdapter,
+    NativeJSONExportAdapter,
+)
 from claude_ads_core.contracts import PLATFORMS, validate_contract
 from claude_ads_core.control_registry import load_control_registry
 from claude_ads_core.reporting import render_html, render_markdown
@@ -35,9 +39,13 @@ PLATFORM_CONTEXTS = {
 
 
 def _snapshot(platform: str, context: dict[str, str]) -> dict:
-    if platform in {"amazon", "x"}:
+    if platform in {"amazon", "tiktok", "x"}:
         return GenericCSVExportAdapter(platform).read_snapshot(
             FIXTURES / "exports" / f"{platform}.csv"
+        )
+    if platform == "reddit":
+        return NativeJSONExportAdapter(platform, context).read_snapshot(
+            FIXTURES / "native_exports" / "reddit.json"
         )
     return NativeCSVExportAdapter(platform, context).read_snapshot(
         FIXTURES / "native_exports" / f"{platform}.csv"
@@ -57,7 +65,8 @@ def test_every_platform_produces_a_schema_valid_unscored_finding_and_report(
     context = PLATFORM_CONTEXTS[platform]
     snapshot = _snapshot(platform, context)
     finding = {
-        "schema_version": "1.0.0",
+        "schema_version": "2.0.0",
+
         "control_id": control_id,
         "status": "unknown",
         "evidence": [],
@@ -69,7 +78,7 @@ def test_every_platform_produces_a_schema_valid_unscored_finding_and_report(
     }
     scoring = registry.score_platform(platform, [finding]).to_dict()
     bundle = {
-        "schema_version": "1.0.0",
+        "schema_version": "2.0.0",
         "run_manifest": {
             "schema_version": "1.0.0",
             "run_id": f"fixture-{platform}-domain-contract",
@@ -99,8 +108,8 @@ def test_every_platform_produces_a_schema_valid_unscored_finding_and_report(
         "actions": [],
     }
     validate_contract("report-bundle", bundle)
-    markdown = render_markdown(bundle)
-    html = render_html(bundle)
+    markdown = render_markdown(bundle, registry=registry)
+    html = render_html(bundle, registry=registry)
     assert control_id in markdown.replace("\\-", "-")
     assert control_id in html
     assert "Insufficient evidence" in markdown

@@ -66,8 +66,79 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * **Meta coverage rules now have one definition**, in the core module, imported
   by `fetch_ad_library.py`. The client and the planner previously duplicated the
   EU and special-ad-category logic and could have drifted apart.
+* **Packaged immutable manifests and control registry**: control registry,
+  platform scoring profiles, claim ledger, and source ledger are distributed as
+  immutable package data in `claude_ads_core/manifests/` loaded by default
+  outside git checkouts. An explicit root override resolves
+  `<root>/control-plane/manifests` and fails closed without fallback, with exact
+  canonical/packaged byte equality enforced as a release-controlled requirement.
+
+### Changed
+
+* **Scoped breaking v2 schema migration**: `AccountSnapshot`, `Finding`, and `ReportBundle`
+  now use v2.0.0 contracts. `AccountSnapshot` requires `MeasurementContext`, and
+  `Finding` evidence uses required typed `EvidenceRecord` fields. A `complete` run
+  must satisfy the complete-run invariant: control definitions and findings are
+  present, every declared worker is completed, and scoring is not
+  `insufficient_evidence`. The bundle keeps mixed nested v1 refs for unchanged
+  run-manifest and control-definition contracts. There is no v1 fallback.
+
+* **Finding v2 schema conditional and observation digest contract**: Finding v2
+  schema (`claude_ads_core/schemas/v2/finding.schema.json`) enforces conditional
+  `if`/`then` rules requiring non-empty `evidence` (`minItems: 1`) on `pass` and
+  `fail` findings, while allowing empty evidence for `unknown` and
+  `not_applicable`. For `observation` evidence, `source_id` MUST be canonical
+  `sha256:<64 lowercase hex>` matching its `sha256` 64-hex lowercase digest.
+
+* **All-visible required-input gate**: control registry input validation resolves
+  every declared `required_inputs` against snapshot collections (`campaigns`,
+  `creatives`, `conversions`, `budgets`), `spend`, and all visible
+  `measurement_context` fields. Controls requiring any input that is missing
+  from collections or listed in `missing_fields` or `unsupported_fields` must
+  emit `status: "unknown"` with a recovery hint, blocking unauthorized `pass` or
+  `fail` findings.
+
+* **v2 measurement and report contract hardening**: disclose
+  `measurement_context.missing_fields` separately from
+  `measurement_context.unsupported_fields`; controls with recognized required
+  inputs in either list must emit `unknown` with a recovery hint, never
+  `pass` or `fail`; bind every evidence `source_id` to run manifest sources
+  along with proof-specific binding (`observation` to content-bound export
+  source IDs in `measurement_context.source_ids`, `source_fact`/`vendor_claim`
+  to control definition `source_ids`, and `inference` to either); keep
+  observation windows inside the snapshot; require current control
+  `expires_at`, referenced claim `refresh_due`, and source ledger
+  `refresh_due` deadlines before enabled scoring; state `score_contribution` is
+  not a v2 field rather than merely worker-omitted; and reconcile/render exact
+  EvidenceRecords, both field lists, and full category counts. The conductor
+  owns run and artifact registration, including manifest updates.
 
 ### Fixed
+
+* **Meta token exchange hardening**: removed `debug_token` URL inspection. Token
+  exchange is POST-only, uses a separate `META_APP_ID` Keychain value, and writes
+  the replacement token to Keychain through the `security` command's stdin rather
+  than a command-line argument.
+
+* **Credential-header redaction** (`scripts/url_utils.py`): `sanitize_headers`
+  scrubs credential-bearing request and response headers (including Bearer
+  tokens, Cookie headers, and API keys) across HTTP request utilities,
+  preventing secrets from leaking into headers, logs, or error strings.
+
+* **Windows DACL verification**: report rendering and safe output path creation
+  enforce strict Discretionary Access Control List (DACL) verification on Windows,
+  failing closed if DACL queries return unprotected, unverifiable, permissive,
+  or current-user-denying ACL permissions.
+
+* **Report scores and files now fail closed.** Public score and portfolio
+  commands that bypassed disabled platform profiles were removed. Status and
+  every report renderer now reconcile supplied scores against the exact
+  `ControlRegistry` profile before output. Report files use strict portable
+  relative names, private roots, exact-byte and PDF-boundary verification, and
+  atomic replacement. POSIX writes use descriptor-relative traversal and
+  identity checks to prevent parent-swap and symlink redirection. Windows output
+  is restricted to non-reparse paths beneath the current user's home, with the
+  native Windows CI matrix exercising its boundary and failure paths.
 
 * **Corrected the non-EU coverage rule from live evidence** (CLM-0210). The
   earlier reading treated Meta's documented sentence as meaning a non-EU
@@ -105,7 +176,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   fetched page with no LCP measurement reports `UNKNOWN` instead of omitting the
   key. Adapted from the MIT-licensed community fork `turbionai/claude-ads`,
   reproduced locally and reimplemented against the `unknown` status in
-  `finding.schema.json`.
+  `claude_ads_core/schemas/v2/finding.schema.json`.
 
 * **Recorded that TikTok has no sanctioned automated competitor route**
   (CLM-0217). The Commercial Content API is gated to approved researchers under
@@ -142,12 +213,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * Getting a working token additionally requires selecting the app's **use
   cases** in the current console; without it the login dialog returns "Feature
   unavailable" at both the Explorer and the raw OAuth endpoint (CLM-0215).
-* No first-party Meta Ads MCP exists in the evidence table or the current
-  environment, and a connector would not substitute regardless: the documented
-  ads MCPs are Marketing API surfaces that read the operator's own authorized
-  account, while the Ad Library is a public archive of other advertisers.
-  Different API, different authorization, different data. Recorded in
+* **Meta Ads MCP metadata is not an authority claim.** Published OAuth metadata
+  records that a Meta Ads MCP surface exists, but it does not prove a connector is
+  installed, available, safe, or authorized in this environment. The Marketing
+  API/MCP surface reads an operator-authorized advertiser account. The Ad Library
+  is a separate public archive with a different API, authorization, and data. See
   `ads/references/mcp-integration.md`.
+* **Warehouse-first Meta analysis remains a policy guard and planned integration,
+  not an installed connector.** Analysis workers read bounded, immutable
+  run/client-bound snapshots rather than a live Meta provider loop, and no
+  `fetched_at` warehouse integration is claimed as installed.
 
 ## [2.0.1] - 2026-07-13
 

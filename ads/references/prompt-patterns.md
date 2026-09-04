@@ -27,11 +27,39 @@ User: “Use this product photo to make four Meta ad concepts.”
   "privacy_class": "confidential",
   "mutation_authority": "read-only",
   "inputs": ["run:20260711-demo/account-snapshot.json"],
-  "output_contract": "Finding[] v1.0.0",
-  "verification": ["schema validate", "cite every failed control"],
-  "recovery": ["return needs_input for missing tag evidence"]
+  "output_contract": "Finding[] v2.0.0",
+  "verification": [
+    "validate Finding[] v2.0.0",
+    "validate every EvidenceRecord exactly against claude_ads_core/schemas/v2/finding.schema.json",
+    "cite every failed control",
+    "verify each EvidenceRecord source_id is declared in run manifest sources and bound by proof_kind: observation to snapshot measurement_context.source_ids with canonical sha256:<digest> matching sha256, source_fact/vendor_claim to control definition source_ids, or inference to either",
+    "verify each observation EvidenceRecord window is inside the account snapshot window",
+    "reject pass/fail when a recognized required input appears in measurement_context.missing_fields or measurement_context.unsupported_fields; emit unknown with a recovery hint",
+    "verify current control expires_at, referenced claim refresh_due, and source ledger refresh_due before enabling a score"
+  ],
+  "recovery": ["return needs_input for missing or unsupported tag evidence"]
 }
 ```
+
+Findings validate the current v2 schema with required keys (`schema_version`,
+`control_id`, `status`, `evidence`, `confidence`, `source_classification`,
+`observation`, `diagnosis`, `recommendation`). Severity is registry-owned;
+`score_contribution` is not a v2 field (not merely worker-omitted; deterministic
+scoring calculates scores downstream and rejects legacy fields).
+
+Every `evidence` item is an exact v2 `EvidenceRecord`. It must include
+`evidence_id`, `proof_kind`, `source_id`, `locator`, `sha256`, `observed_at`,
+`query_id`, `report_id`, `window`, `report_grain`, `input_field`,
+`redacted_value`, and `observation_ref`.
+Enforce both conditional invariants: `locator` or `sha256` must be present, and
+non-null `redacted_value` or `observation_ref` must be present. For observation
+evidence, `source_id` MUST be canonical `sha256:<64 lowercase hex>` matching its
+`sha256` 64-hex lowercase digest string. Preserve the record's provenance fields
+rather than reducing evidence to a citation string.
+
+Registry loading defaults to packaged immutable manifests (`claude_ads_core/manifests/`);
+an explicit root override resolves `<root>/control-plane/manifests` and fails closed
+without fallback, and canonical vs package manifest byte equality is release-controlled.
 
 The worker returns findings and recovery hints to the conductor. It does not write
 `google-audit-results.md`, calculate a platform score, or broaden into budget work.
@@ -41,13 +69,17 @@ The worker returns findings and recovery hints to the conductor. It does not wri
 User: “My Meta CPA doubled. Pause the worst ads.”
 
 If the supplied data lacks conversion lag, attribution definition, spend, sample
-size, recent changes, or current remote state:
+size, recent changes, or current remote state, or if a recognized required input
+is listed in `measurement_context.missing_fields` or
+`measurement_context.unsupported_fields`:
 
 1. Record the observed CPA change only if windows are comparable.
-2. Return `needs_input` for a mutation.
-3. Offer a read-only diagnostic and an explicit data request.
-4. Do not apply a fixed CPA multiple or infer that the worst observed ad caused the
-   account-level change.
+2. Mark any affected control `unknown`, never `pass` or `fail`.
+3. Return `needs_input` for a mutation and include a recovery hint naming the
+   missing or unsupported input and the source or adapter capability needed.
+4. Offer a read-only diagnostic and an explicit data request.
+5. Do not apply a fixed CPA multiple or infer that the worst observed ad caused
+   the account-level change.
 
 ## 4. Approved mutation
 

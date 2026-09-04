@@ -34,8 +34,10 @@ __pycache__/
 *.pyc
 .pytest_cache/
 .venv/
+uv.lock
 build/
 dist/
+
 *.egg-info/
 
 # Node (if ever needed for tooling)
@@ -112,3 +114,7 @@ blog-preview*.png
 *.db
 .beads-credential-key
 .beads/proxieddb/
+.beads.gate.lock
+.beads/post-close-*
+.beads/hooks/
+

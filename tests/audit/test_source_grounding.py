@@ -41,6 +41,10 @@ NEW_PLATFORM_FOUNDATION_SOURCES = {
     "CLM-0017": ("snap-marketing-api", "developers.snap.com"),
     "CLM-0018": ("x-conversion-tracking", "business.x.com"),
 }
+REQUIRED_PLATFORM_SOURCE_IDS = {
+    "CLM-0013": {"apple-ads-api-official", "apple-ads-platform-api-official"},
+}
+
 
 ALLOWED_DISCOVERY_ONLY_SOURCES = {
     "public-claude-ads-issues",
@@ -232,8 +236,8 @@ def test_platform_grounding_claims_are_load_bearing_and_fresh(repo_root):
         claim = claims[claim_id]
         assert claim["load_bearing"] is True
         assert claim["verdict"] == "verified"
-        assert claim["last_verified"] == "2026-07-11"
-        assert claim["refresh_due"] == "2026-08-10"
+        assert claim["last_verified"] == "2026-08-25"
+        assert claim["refresh_due"] == "2026-09-24"
 
 
 def test_new_platform_foundation_claims_use_registered_official_sources(repo_root):
@@ -241,14 +245,16 @@ def test_new_platform_foundation_claims_use_registered_official_sources(repo_roo
     claim_doc = _manifest(repo_root, "claim-ledger.json")
     sources = {item["id"]: item for item in source_doc["sources"]}
     claims = {item["id"]: item for item in claim_doc["claims"]}
-    for claim_id, (source_id, hostname) in NEW_PLATFORM_FOUNDATION_SOURCES.items():
-        assert claims[claim_id]["source_ids"] == [source_id]
-        assert claim_id in sources[source_id]["claim_ids"]
-        parsed = urlparse(sources[source_id]["locator"])
-        assert parsed.scheme == "https"
-        assert parsed.hostname == hostname
-        assert sources[source_id]["authority_tier"] == 1
-        assert sources[source_id]["redistribution"] == "metadata-only"
+    for claim_id, (foundation_source_id, hostname) in NEW_PLATFORM_FOUNDATION_SOURCES.items():
+        expected_source_ids = REQUIRED_PLATFORM_SOURCE_IDS.get(claim_id, {foundation_source_id})
+        assert set(claims[claim_id]["source_ids"]) == expected_source_ids
+        for source_id in claims[claim_id]["source_ids"]:
+            assert claim_id in sources[source_id]["claim_ids"]
+            parsed = urlparse(sources[source_id]["locator"])
+            assert parsed.scheme == "https"
+            assert parsed.hostname == hostname
+            assert sources[source_id]["authority_tier"] == 1
+            assert sources[source_id]["redistribution"] == "metadata-only"
 
 
 def test_unclaimed_sources_are_an_explicit_discovery_only_allowlist(repo_root):

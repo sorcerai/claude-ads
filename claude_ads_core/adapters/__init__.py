@@ -16,13 +16,19 @@ from .mappings_v1 import (
     NativeValueGuard,
     get_native_profile,
 )
-from .native_export import NativeCSVExportAdapter, NativeExportError
+from .native_export import (
+    BaseNativeExportAdapter,
+    NativeCSVExportAdapter,
+    NativeExportError,
+    NativeJSONExportAdapter,
+)
 
 __all__ = [
     "Adapter",
     "AdapterCapabilities",
     "AdapterError",
     "BaseAdapter",
+    "BaseNativeExportAdapter",
     "CSVExportError",
     "Capability",
     "GenericCSVExportAdapter",
@@ -32,6 +38,7 @@ __all__ = [
     "NativeExportError",
     "NativeExportProfile",
     "NativeFieldMapping",
+    "NativeJSONExportAdapter",
     "NativeValueGuard",
     "get_native_profile",
 ]

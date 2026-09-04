@@ -28,12 +28,32 @@ def control(
 
 
 def finding(control_id: str, status: str) -> dict:
+    evidence = (
+        [{
+            "evidence_id": f"evidence-{control_id}",
+            "proof_kind": "observation",
+            "source_id": "test-source",
+            "locator": "fixture locator",
+            "sha256": None,
+            "observed_at": "2026-07-11T16:00:00Z",
+            "query_id": None,
+            "report_id": None,
+            "window": None,
+            "report_grain": [],
+            "input_field": None,
+            "redacted_value": True,
+            "observation_ref": None,
+        }]
+        if status in {"pass", "fail"}
+        else []
+    )
     return {
-        "schema_version": "1.0.0",
+        "schema_version": "2.0.0",
         "control_id": control_id,
         "status": status,
-        "evidence": [{"value": True}] if status in {"pass", "fail"} else [],
+        "evidence": evidence,
         "confidence": "high" if status in {"pass", "fail"} else "none",
+        "source_classification": "evidence_based",
         "observation": "",
         "diagnosis": "",
         "recommendation": "",
@@ -246,3 +266,43 @@ def test_scoring_is_deterministic_across_input_order():
     expected = score_account(controls, findings, {"one": 60, "two": 40}).to_dict()
     actual = score_account(list(reversed(controls)), list(reversed(findings)), {"two": 40, "one": 60}).to_dict()
     assert actual == expected
+
+
+def test_portfolio_rejects_duplicate_account_identity():
+    with pytest.raises(ScoringError, match="duplicate account identity"):
+        score_portfolio(
+            [
+                {"account_id": "acc-1", "health_score": 80, "status": "normal"},
+                {"account_id": "acc-1", "health_score": 70, "status": "normal"},
+            ]
+        )
+
+
+def test_portfolio_rejects_insufficient_evidence_with_non_null_health():
+    with pytest.raises(ScoringError, match="insufficient_evidence but non-null health_score"):
+        score_portfolio(
+            [
+                {"account_id": "acc-1", "health_score": 50, "status": "insufficient_evidence"},
+            ]
+        )
+
+
+def test_portfolio_rejects_cross_platform_meta_aggregation():
+    with pytest.raises(ScoringError, match="Meta Developer Policy 10.7"):
+        score_portfolio(
+            [
+                {"account_id": "acc-google", "platform": "google", "health_score": 80, "status": "normal"},
+                {"account_id": "acc-meta", "platform": "meta", "health_score": 75, "status": "normal"},
+            ]
+        )
+
+
+def test_portfolio_allows_meta_only_aggregation():
+    result = score_portfolio(
+        [
+            {"account_id": "meta-1", "platform": "meta", "health_score": 80, "spend": 100, "status": "normal"},
+            {"account_id": "meta-2", "platform": "meta", "health_score": 60, "spend": 100, "status": "normal"},
+        ]
+    )
+    assert result.health_score == 70.0
+    assert result.status == "provisional"

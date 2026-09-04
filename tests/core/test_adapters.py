@@ -1,21 +1,81 @@
 from __future__ import annotations
 
 import csv
+import hashlib
 from pathlib import Path
+from typing import Literal, get_type_hints
 
 import pytest
 
+from claude_ads_core import models
 from claude_ads_core.adapters import (
     Adapter,
+    BaseAdapter,
     CSVExportError,
     GenericCSVExportAdapter,
     MutationDisabledError,
+    NativeCSVExportAdapter,
+    NativeJSONExportAdapter,
 )
 from claude_ads_core.adapters.csv_export import REQUIRED_COLUMNS
 from claude_ads_core.contracts import PLATFORMS, validate_contract
 
 
 FIXTURE_ROOT = Path(__file__).resolve().parents[1] / "fixtures" / "exports"
+
+
+def _source_id(path: Path) -> str:
+    return f"sha256:{hashlib.sha256(path.read_bytes()).hexdigest()}"
+
+
+GENERIC_CONVERSION_ACTIONS = {
+    "amazon": ["purchase"],
+    "apple": ["install"],
+    "google": ["purchase"],
+    "linkedin": ["lead"],
+    "meta": ["purchase"],
+    "microsoft": ["purchase"],
+    "pinterest": ["purchase"],
+    "reddit": ["lead"],
+    "snapchat": ["purchase"],
+    "tiktok": ["purchase"],
+    "x": ["lead"],
+    "youtube": ["lead"],
+}
+
+
+def test_live_adapter_annotations_use_v2_snapshot():
+    snapshot = models.AccountSnapshot
+    assert not hasattr(models, "AccountSnapshotV1")
+    expected_methods = (
+        Adapter.read_snapshot,
+        BaseAdapter.read_snapshot,
+        GenericCSVExportAdapter.read_snapshot,
+        GenericCSVExportAdapter._build_snapshot,
+        NativeCSVExportAdapter.read_snapshot,
+        NativeCSVExportAdapter._build_snapshot,
+        NativeJSONExportAdapter.read_snapshot,
+        NativeJSONExportAdapter._build_snapshot,
+    )
+
+    for method in expected_methods:
+        assert get_type_hints(method)["return"] is snapshot
+
+    snapshot_hints = get_type_hints(snapshot)
+    assert set(snapshot_hints) == {
+        "schema_version",
+        "account",
+        "window",
+        "currency",
+        "measurement_context",
+        "spend",
+        "campaigns",
+        "creatives",
+        "conversions",
+        "budgets",
+    }
+    assert snapshot_hints["schema_version"] == Literal["2.0.0"]
+
 
 
 def write_export(tmp_path: Path, rows: list[dict[str, str]], name: str = "export.csv") -> Path:
@@ -57,10 +117,38 @@ def test_all_platform_fixtures_normalize_to_account_snapshot(platform: str):
     adapter = GenericCSVExportAdapter(platform)
     snapshot = adapter.read_snapshot(FIXTURE_ROOT / f"{platform}.csv")
     validate_contract("account-snapshot", snapshot)
-    assert snapshot["schema_version"] == "1.0.0"
+    assert snapshot["schema_version"] == "2.0.0"
     assert snapshot["account"]["platform"] == platform
     assert snapshot["account"]["account_id"] == f"demo-{platform}-account"
     assert snapshot["window"] == {"start": "2026-06-15", "end": "2026-06-15"}
+    assert snapshot["measurement_context"] == {
+        "timezone": None,
+        "currency": "USD",
+        "profile_id": f"{platform}-generic-csv-v1",
+        "source_format": "portable-csv",
+        "source_ids": [_source_id(FIXTURE_ROOT / f"{platform}.csv")],
+        "report_grain": ["date", "campaign_id", "creative_id"],
+        "conversion_definition": None,
+        "conversion_actions": GENERIC_CONVERSION_ACTIONS[platform],
+        "attribution_model": None,
+        "click_attribution_window": None,
+        "view_attribution_window": None,
+        "counting_behavior": None,
+        "as_of": "2026-06-15",
+        "data_finalization": "unknown",
+        "modeled_data_treatment": "unknown",
+        "missing_fields": [
+            "attribution_model",
+            "click_attribution_window",
+            "conversion_definition",
+            "counting_behavior",
+            "data_finalization",
+            "modeled_data_treatment",
+            "timezone",
+            "view_attribution_window",
+        ],
+        "unsupported_fields": [],
+    }
     assert len(snapshot["campaigns"]) == 1
     assert len(snapshot["creatives"]) == 1
     assert len(snapshot["conversions"]) == 1
@@ -102,12 +190,29 @@ def test_multirow_export_aggregates_and_sorts_deterministically(tmp_path: Path):
     ]
     first = GenericCSVExportAdapter("google").read_snapshot(write_export(tmp_path, rows, "first.csv"))
     second = GenericCSVExportAdapter("google").read_snapshot(write_export(tmp_path, list(reversed(rows)), "second.csv"))
+    first["measurement_context"]["source_ids"] = []
+    second["measurement_context"]["source_ids"] = []
     assert first == second
     assert first["window"] == {"start": "2026-06-01", "end": "2026-06-02"}
     assert first["spend"] == 31.0
     assert first["campaigns"][0]["spend"] == 31.0
     assert first["conversions"] == [{"action": "purchase", "count": 5.5}]
     assert [item["creative_id"] for item in first["creatives"]] == ["creative-a", "creative-b"]
+
+
+def test_digest_distinguishes_exports_with_same_normalized_content(tmp_path: Path):
+    first = write_export(tmp_path, [row()], "first.csv")
+    second = write_export(tmp_path, [row(account_name="Sanitized Demo ")], "second.csv")
+
+    first_snapshot = GenericCSVExportAdapter("google").read_snapshot(first)
+    second_snapshot = GenericCSVExportAdapter("google").read_snapshot(second)
+
+    assert first_snapshot["measurement_context"]["source_ids"] == [_source_id(first)]
+    assert second_snapshot["measurement_context"]["source_ids"] == [_source_id(second)]
+    assert first_snapshot["measurement_context"]["source_ids"] != second_snapshot["measurement_context"]["source_ids"]
+    first_snapshot["measurement_context"]["source_ids"] = []
+    second_snapshot["measurement_context"]["source_ids"] = []
+    assert first_snapshot == second_snapshot
 
 
 def test_export_text_is_preserved_as_untrusted_data_not_executed(tmp_path: Path):

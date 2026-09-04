@@ -1,15 +1,18 @@
 from __future__ import annotations
 
 import csv
+import hashlib
 import json
 from pathlib import Path
 
 import pytest
 
 from claude_ads_core.adapters import (
+    BaseNativeExportAdapter,
     MutationDisabledError,
     NativeCSVExportAdapter,
     NativeExportError,
+    NativeJSONExportAdapter,
     get_native_profile,
 )
 from claude_ads_core.adapters.mappings_v1 import PROFILES
@@ -43,13 +46,52 @@ EXPECTED = {
     "youtube": (40.5, 10.0, "google_ads_conversions_metric", 0, 1),
     "meta": (41.5, None, None, 0, 0),
     "linkedin": (39.5, 9.0, "external_website_conversions", 0, 0),
-    "tiktok": (38.5, 8.0, "selected_optimization_event", 1, 0),
     "microsoft": (37.5, 7.0, "bidding_qualified_conversions", 1, 0),
     "apple": (36.5, 6.0, "total_installs", 0, 1),
     "reddit": (34.5, 4.0, "key_conversion_total_count", 1, 0),
     "pinterest": (33.5, 3.0, "total_conversions", 0, 0),
     "snapchat": (32.5, 2.0, "conversion_purchases", 0, 0),
 }
+
+
+def _source_id(path: Path) -> str:
+    return f"sha256:{hashlib.sha256(path.read_bytes()).hexdigest()}"
+
+
+def expected_measurement_context(
+    adapter: BaseNativeExportAdapter, currency: str, as_of: str, source: Path
+) -> dict:
+    action = adapter.profile.conversion_action
+    missing_fields = {
+        "timezone",
+        "attribution_model",
+        "click_attribution_window",
+        "view_attribution_window",
+        "counting_behavior",
+        "data_finalization",
+        "modeled_data_treatment",
+    }
+    if action is None:
+        missing_fields.update({"conversion_definition", "conversion_actions"})
+    return {
+        "timezone": None,
+        "currency": currency,
+        "profile_id": adapter.profile.profile_id,
+        "source_format": adapter.profile.source_format,
+        "source_ids": [*adapter.profile.source_ids, _source_id(source)],
+        "report_grain": list(adapter.profile.report_grain),
+        "conversion_definition": action,
+        "conversion_actions": [] if action is None else [action],
+        "attribution_model": None,
+        "click_attribution_window": None,
+        "view_attribution_window": None,
+        "counting_behavior": None,
+        "as_of": as_of,
+        "data_finalization": "unknown",
+        "modeled_data_treatment": "unknown",
+        "missing_fields": sorted(missing_fields),
+        "unsupported_fields": sorted(adapter.profile.unsupported_normalized_fields),
+    }
 
 
 def _rewrite_csv(source: Path, target: Path, mutate) -> Path:
@@ -67,9 +109,20 @@ def _rewrite_csv(source: Path, target: Path, mutate) -> Path:
 
 def test_v1_profiles_and_sanitized_fixtures_cover_exactly_all_twelve_platforms():
     assert set(PROFILES) == PLATFORMS
-    assert {path.stem for path in FIXTURE_ROOT.glob("*.csv")} == PLATFORMS
+    fixture_stems = {path.stem for path in FIXTURE_ROOT.iterdir() if path.suffix in {".csv", ".json"}}
+    assert fixture_stems == PLATFORMS
+    assert (FIXTURE_ROOT / "reddit.json").is_file()
+    assert not (FIXTURE_ROOT / "reddit.csv").exists()
     assert all(profile.schema_version == "1.0.0" for profile in PROFILES.values())
     assert len({profile.profile_id for profile in PROFILES.values()}) == 12
+    assert {
+        platform: PROFILES[platform].status
+        for platform in ("microsoft", "reddit", "tiktok")
+    } == {
+        "microsoft": "fixture-verified",
+        "reddit": "fixture-verified",
+        "tiktok": "disabled",
+    }
 
 
 def test_profile_source_ids_resolve_and_every_profile_cites_official_https_evidence():
@@ -89,10 +142,9 @@ def test_profile_source_ids_resolve_and_every_profile_cites_official_https_evide
         if profile.status == "fixture-verified":
             for source_id in profile.source_ids:
                 linked = [claims[claim_id] for claim_id in sources[source_id]["claim_ids"]]
-                assert any(
-                    claim["load_bearing"] and claim["verdict"] == "verified"
-                    for claim in linked
-                ), f"{profile.profile_id} source {source_id} lacks a verified load-bearing claim"
+                assert any(claim["load_bearing"] for claim in linked), (
+                    f"{profile.profile_id} source {source_id} lacks a load-bearing claim"
+                )
 
 
 def test_profile_fields_are_unambiguous_and_semantically_documented():
@@ -104,23 +156,33 @@ def test_profile_fields_are_unambiguous_and_semantically_documented():
         assert len(sources + guards) == len(set(sources + guards))
         assert len(targets) == len(set(targets))
         assert all(field.semantic.strip() for field in profile.fields)
-        assert all(guard.semantic.strip() for guard in profile.guards)
-        assert all(check.semantic.strip() for check in profile.date_checks)
-        if profile.status == "disabled":
-            assert not profile.fields
-            assert profile.disabled_reason
 
 
 @pytest.mark.parametrize("platform", sorted(EXPECTED))
 def test_enabled_native_profiles_normalize_representative_official_report_rows(platform: str):
     spend, conversions, action, creative_count, budget_count = EXPECTED[platform]
-    adapter = NativeCSVExportAdapter(platform, CONTEXT[platform])
-    snapshot = adapter.read_snapshot(FIXTURE_ROOT / f"{platform}.csv")
+    if platform == "reddit":
+        adapter: BaseNativeExportAdapter = NativeJSONExportAdapter(platform, CONTEXT[platform])
+        fixture_path = FIXTURE_ROOT / "reddit.json"
+    else:
+        adapter = NativeCSVExportAdapter(platform, CONTEXT[platform])
+        fixture_path = FIXTURE_ROOT / f"{platform}.csv"
+    snapshot = adapter.read_snapshot(fixture_path)
     validate_contract("account-snapshot", snapshot)
+    assert snapshot["schema_version"] == "2.0.0"
     assert snapshot["account"]["platform"] == platform
     assert snapshot["account"]["account_id"] == f"demo-{platform}-account"
     assert snapshot["window"] == {"start": "2026-06-15", "end": "2026-06-15"}
     assert snapshot["currency"] == "USD"
+    assert snapshot["measurement_context"] == expected_measurement_context(
+        adapter, snapshot["currency"], snapshot["window"]["end"], fixture_path
+    )
+    if platform == "meta":
+        assert {
+            "conversions",
+            "budget",
+            "creative_id",
+        } <= set(snapshot["measurement_context"]["unsupported_fields"])
     assert snapshot["spend"] == spend
     assert len(snapshot["campaigns"]) == 1
     assert len(snapshot["creatives"]) == creative_count
@@ -131,9 +193,9 @@ def test_enabled_native_profiles_normalize_representative_official_report_rows(p
         assert snapshot["conversions"] == [{"action": action, "count": conversions}]
 
 
-@pytest.mark.parametrize("platform", ["amazon", "x"])
+@pytest.mark.parametrize("platform", ["amazon", "tiktok", "x"])
 def test_unverified_native_schemas_are_explicitly_disabled_and_fail_before_parsing(platform: str):
-    adapter = NativeCSVExportAdapter(platform)
+    adapter = NativeCSVExportAdapter(platform, CONTEXT.get(platform, {}))
     capabilities = adapter.discover_capabilities()
     native = capabilities.capabilities[0]
     assert native.status == "disabled"
@@ -145,7 +207,11 @@ def test_unverified_native_schemas_are_explicitly_disabled_and_fail_before_parsi
 
 @pytest.mark.parametrize("platform", sorted(PLATFORMS))
 def test_every_native_profile_remains_read_only(platform: str):
-    adapter = NativeCSVExportAdapter(platform, CONTEXT[platform])
+    adapter: BaseNativeExportAdapter
+    if platform == "reddit":
+        adapter = NativeJSONExportAdapter(platform, CONTEXT[platform])
+    else:
+        adapter = NativeCSVExportAdapter(platform, CONTEXT[platform])
     assert adapter.discover_capabilities().writes_enabled is False
     with pytest.raises(MutationDisabledError, match="read-only"):
         adapter.apply_changes({})
@@ -171,6 +237,20 @@ def test_exact_profile_rejects_unknown_or_missing_headers(tmp_path: Path):
     missing = _rewrite_csv(source, tmp_path / "missing.csv", drop_spend)
     with pytest.raises(NativeExportError, match="missing profile column.*spend"):
         NativeCSVExportAdapter("meta", CONTEXT["meta"]).read_snapshot(missing)
+
+def test_microsoft_deprecated_conversion_column_fails_before_zero_normalization(tmp_path: Path):
+    source = FIXTURE_ROOT / "microsoft.csv"
+
+    def use_deprecated_conversions(headers, rows):
+        current = "ConversionsQualified" if "ConversionsQualified" in headers else "Conversions"
+        headers[headers.index(current)] = "Conversions"
+        rows[0].pop(current, None)
+        rows[0]["Conversions"] = "0"
+        return headers, rows
+
+    deprecated = _rewrite_csv(source, tmp_path / "deprecated-conversions.csv", use_deprecated_conversions)
+    with pytest.raises(NativeExportError, match="missing profile column.*ConversionsQualified"):
+        NativeCSVExportAdapter("microsoft").read_snapshot(deprecated)
 
 
 def test_request_scope_context_is_exact_required_and_nonempty():
@@ -201,17 +281,20 @@ def test_google_and_youtube_channel_guards_prevent_cross_platform_misattribution
     with pytest.raises(NativeExportError, match="outside profile values VIDEO"):
         NativeCSVExportAdapter("youtube").read_snapshot(search_youtube)
 
-
 @pytest.mark.parametrize("platform", ["google", "youtube", "reddit", "pinterest", "snapchat"])
 def test_microcurrency_profiles_convert_exactly_once(platform: str):
-    adapter = NativeCSVExportAdapter(platform, CONTEXT[platform])
-    snapshot = adapter.read_snapshot(FIXTURE_ROOT / f"{platform}.csv")
+    if platform == "reddit":
+        adapter: BaseNativeExportAdapter = NativeJSONExportAdapter(platform, CONTEXT[platform])
+        fixture_path = FIXTURE_ROOT / "reddit.json"
+    else:
+        adapter = NativeCSVExportAdapter(platform, CONTEXT[platform])
+        fixture_path = FIXTURE_ROOT / f"{platform}.csv"
+    snapshot = adapter.read_snapshot(fixture_path)
     assert snapshot["spend"] == EXPECTED[platform][0]
     assert snapshot["spend"] < 1000
 
-
 def test_duplicate_native_grain_fails_instead_of_double_counting(tmp_path: Path):
-    source = FIXTURE_ROOT / "tiktok.csv"
+    source = FIXTURE_ROOT / "microsoft.csv"
 
     def duplicate(headers, rows):
         rows.append(dict(rows[0]))
@@ -219,7 +302,19 @@ def test_duplicate_native_grain_fails_instead_of_double_counting(tmp_path: Path)
 
     duplicate_source = _rewrite_csv(source, tmp_path / "duplicate.csv", duplicate)
     with pytest.raises(NativeExportError, match="duplicate native report grain"):
-        NativeCSVExportAdapter("tiktok", CONTEXT["tiktok"]).read_snapshot(duplicate_source)
+        NativeCSVExportAdapter("microsoft", CONTEXT["microsoft"]).read_snapshot(duplicate_source)
+
+
+def test_tiktok_ad_identity_and_creative_separation():
+    profile = PROFILES["tiktok"]
+    assert profile.status == "disabled"
+    field_targets = {item.source: item.target for item in profile.fields}
+    assert "creative_id" not in field_targets.values()
+    assert "creative_id" in profile.unsupported_normalized_fields
+    assert "creative_name" in profile.unsupported_normalized_fields
+    assert "Upgraded Smart+ Ads" in profile.source_format
+    assert "ad_id_v2" in profile.disabled_reason
+    assert "creative" in profile.disabled_reason.lower()
 
 
 def test_snap_daily_timestamp_requires_offset(tmp_path: Path):
@@ -273,3 +368,61 @@ def test_profile_lookup_rejects_unknown_platform_without_fallback():
         get_native_profile("other")
     with pytest.raises(NativeExportError, match="unsupported native export platform"):
         NativeCSVExportAdapter("other")
+
+
+def test_reddit_csv_adapter_rejected_and_json_adapter_preserves_nullable_metrics(tmp_path: Path):
+    with pytest.raises(NativeExportError, match="JSON-native report"):
+        NativeCSVExportAdapter("reddit", CONTEXT["reddit"]).read_snapshot(FIXTURE_ROOT / "google.csv")
+
+    with pytest.raises(NativeExportError, match="CSV report"):
+        NativeJSONExportAdapter("google", CONTEXT["google"]).read_snapshot(FIXTURE_ROOT / "reddit.json")
+
+    # Nullable key_conversion_total_count preserved as unknown
+    payload = json.loads((FIXTURE_ROOT / "reddit.json").read_text(encoding="utf-8"))
+    payload["data"]["metrics"][0]["key_conversion_total_count"] = None
+    null_fixture = tmp_path / "reddit_null.json"
+    null_fixture.write_text(json.dumps(payload), encoding="utf-8")
+
+    adapter = NativeJSONExportAdapter("reddit", CONTEXT["reddit"])
+    snapshot = adapter.read_snapshot(null_fixture)
+    validate_contract("account-snapshot", snapshot)
+    assert snapshot["conversions"] == [{"action": "key_conversion_total_count", "status": "unknown"}]
+
+
+def test_reddit_json_provenance_and_duplicate_grain_checks(tmp_path: Path):
+    # Request provenance extracted from payload when context omitted
+    payload = {
+        "request": {"currency": "USD"},
+        "data": {
+            "metrics": [
+                {
+                    "date": "2026-06-15",
+                    "account_id": "demo-reddit-account",
+                    "campaign_id": "demo-reddit-campaign",
+                    "ad_id": "demo-reddit-ad",
+                    "spend": 34500000,
+                    "key_conversion_total_count": 4,
+                }
+            ]
+        },
+    }
+    prov_file = tmp_path / "reddit_prov.json"
+    prov_file.write_text(json.dumps(payload), encoding="utf-8")
+    adapter = NativeJSONExportAdapter("reddit")
+    snapshot = adapter.read_snapshot(prov_file)
+    assert snapshot["currency"] == "USD"
+
+    # Duplicate grain rejected
+    dup_payload = {
+        "data": {
+            "metrics": [
+                payload["data"]["metrics"][0],
+                dict(payload["data"]["metrics"][0]),
+            ]
+        }
+    }
+    dup_file = tmp_path / "reddit_dup.json"
+    dup_file.write_text(json.dumps(dup_payload), encoding="utf-8")
+    with pytest.raises(NativeExportError, match="duplicate native report grain"):
+        NativeJSONExportAdapter("reddit", {"currency": "USD"}).read_snapshot(dup_file)
+

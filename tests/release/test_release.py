@@ -186,14 +186,32 @@ def test_release_manifest_schema_and_types_fail_closed(tmp_path: Path, case: str
     root = _repository(tmp_path)
     artifacts = build_release(root, tmp_path / "dist")
     manifest = json.loads(artifacts["manifest"].read_text(encoding="utf-8"))
-    if case == "top-field": manifest["unexpected"] = True
-    elif case == "bool-size": manifest["files"][0]["size"] = True
-    elif case == "float-size": manifest["archive"]["size"] = float(manifest["archive"]["size"])
-    elif case == "archive-field": manifest["archive"]["unexpected"] = "x"
-    else: manifest["product"]["name"] = "forged"
-    artifacts["manifest"].write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    if case == "top-field":
+        manifest["unexpected"] = True
+    elif case == "bool-size":
+        manifest["files"][0]["size"] = True
+    elif case == "float-size":
+        manifest["archive"]["size"] = float(manifest["archive"]["size"])
+    elif case == "archive-field":
+        manifest["archive"]["unexpected"] = "x"
+    else:
+        manifest["product"]["name"] = "forged"
+    artifacts["manifest"].write_text(
+        json.dumps(manifest, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
     lines = artifacts["checksums"].read_text(encoding="utf-8").splitlines()
-    artifacts["checksums"].write_text("\n".join(f"{hashlib.sha256(artifacts['manifest'].read_bytes()).hexdigest()}  release-manifest.json" if line.endswith("  release-manifest.json") else line for line in lines) + "\n", encoding="utf-8")
+    manifest_checksum = hashlib.sha256(artifacts["manifest"].read_bytes()).hexdigest()
+    artifacts["checksums"].write_text(
+        "\n".join(
+            f"{manifest_checksum}  release-manifest.json"
+            if line.endswith("  release-manifest.json")
+            else line
+            for line in lines
+        )
+        + "\n",
+        encoding="utf-8",
+    )
     with pytest.raises(ReleaseError):
         verify_release(tmp_path / "dist", _commit(root), root)
 
@@ -213,10 +231,11 @@ def test_external_runtime_manifest_is_exact_and_archived(tmp_path: Path) -> None
     root = _repository(tmp_path)
     document = release._load_external_runtime_dependencies(root)
     assert {item["id"] for item in document["dependencies"]} == {"playwright-browser-payload", "weasyprint-native-libraries"}
-    artifacts = build_release(root, tmp_path / "dist")
+    build_release(root, tmp_path / "dist")
     verify_release(tmp_path / "dist", _commit(root), root)
     path = root / "control-plane/manifests/external-runtime-dependencies.json"
-    value = json.loads(path.read_text(encoding="utf-8")); value["dependencies"][0]["included_in_python_sbom"] = True
+    value = json.loads(path.read_text(encoding="utf-8"))
+    value["dependencies"][0]["included_in_python_sbom"] = True
     path.write_text(json.dumps(value, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     with pytest.raises(ReleaseError, match="reviewed document|boundary"):
         release._load_external_runtime_dependencies(root)
@@ -481,13 +500,29 @@ def test_claude_command_contract_distinguishes_plugin_namespace() -> None:
         assert "/claude-ads:ads" in text
 
 
-def test_release_grounding_gate_validates_control_registry_and_profiles() -> None:
+def test_release_grounding_gate_fails_closed_on_demoted_load_bearing_claim(tmp_path: Path) -> None:
     root = RELEASE_SCRIPT.parents[1]
-    result = check_grounding_and_capabilities(root, release.date(2026, 7, 11))
-    assert result["registered_control_count"] == 412
-    assert result["source_grounded_control_count"] > 0
-    assert result["enabled_scoring_profile_count"] == 0
-    assert result["disabled_scoring_profile_count"] == 12
+    evidence = check_grounding_and_capabilities(root, release.date(2026, 8, 25))
+    assert evidence["load_bearing_claim_count"] > 0
+
+    import shutil
+
+    fake_root = tmp_path / "repo"
+    manifests = fake_root / "control-plane/manifests"
+    manifests.mkdir(parents=True)
+    shutil.copytree(root / "control-plane/manifests", manifests, dirs_exist_ok=True)
+    claim_path = manifests / "claim-ledger.json"
+    claim_data = json.loads(claim_path.read_text(encoding="utf-8"))
+    claim_data["claims"][0]["verdict"] = "demoted"
+    claim_data["claims"][0]["load_bearing"] = True
+    demoted_id = claim_data["claims"][0]["id"]
+    claim_path.write_text(json.dumps(claim_data), encoding="utf-8")
+
+    with pytest.raises(
+        release.ReleaseError,
+        match=f"load-bearing claim is not verified: {demoted_id}",
+    ):
+        check_grounding_and_capabilities(fake_root, release.date(2026, 8, 25))
 
 
 def test_release_gate_fails_closed_without_external_model_review_and_ci_evidence() -> None:

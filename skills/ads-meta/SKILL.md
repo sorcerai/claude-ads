@@ -31,6 +31,29 @@ description: "Audit Meta Ads measurement, Pixel and Conversions API, attribution
 - Do not issue universal pause, bid, budget, learning-phase, or attribution rules.
 - Keep every account change as a draft until the main mutation gate passes.
 
+
+## Meta read and data boundaries
+
+- Use a warehouse-first analysis contract. Analysis workers read run/client-bound
+  snapshots with lineage, not a direct Meta read loop.
+- Direct Meta reads are limited to bounded ingestion, cache recovery, or future
+  mutation pre/post verification. Queue, cache, request budget, pacing,
+  usage-header monitoring, and bounded backoff protect rate limits and abuse
+  controls. Rate-limit and abuse controls are not proof that high call volume
+  automatically violates Platform Terms.
+- Warehouse storage is recommended, not mandated. Meta data separation keeps
+  advertiser data separate from other platform data and separates each
+  advertiser's data. Only the end advertiser or people acting on its behalf may
+  access Meta Platform Data. Document purpose, retention, deletion, and
+  service-provider duties. Do not mix cross-platform advertiser data unless the
+  exact applicable terms allow it.
+- The current account live-read is not installed. Account mutation disabled.
+  Any future mutation requires fresh independent pre/post verification.
+- Ingestion enforces a platform-native 15-minute freshness SLA and 28-day finalization
+  semantics on immutable fetched_at/extracted_at timestamps. Do not infer freshness
+  from measurement_context.as_of (which indicates coverage window end) or
+  EvidenceRecord.observed_at. Stale snapshots fail closed before scoring or reporting.
+
 ## Output
 
 Return platform health, evidence coverage, regulatory exposure, observations,

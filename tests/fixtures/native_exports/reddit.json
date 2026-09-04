@@ -1,0 +1,14 @@
+{
+  "data": {
+    "metrics": [
+      {
+        "date": "2026-06-15",
+        "account_id": "demo-reddit-account",
+        "campaign_id": "demo-reddit-campaign",
+        "ad_id": "demo-reddit-ad",
+        "spend": 34500000,
+        "key_conversion_total_count": 4
+      }
+    ]
+  }
+}

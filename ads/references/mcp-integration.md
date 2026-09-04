@@ -2,6 +2,7 @@
 
 **Verified:** 2026-07-11
 **Refresh due:** 2026-08-10
+**Meta sections checked:** 2026-08-31; refresh due 2026-09-30
 **Scope:** capability discovery and safe operation; not proof of configured access
 
 An MCP server is a transport and tool surface, not an authorization to change an
@@ -23,24 +24,31 @@ availability, tool count, write support, production status, or tested safety in
 this repository. No other advertising MCP is considered current merely because a
 third party or prior release mentioned it.
 
-## No Meta ads MCP, and why a connector would not help anyway
+The Google, Amazon, TikTok, and Microsoft rows remain overdue and must not be
+treated as current until their sources are refreshed.
 
-**Checked:** 2026-08-22 (this subsection only; the table above remains overdue)
+## Meta Ads MCP metadata, not authority
 
-No first-party Meta Ads MCP appears in the evidence table, and none is connected
-in the current environment.
+**Checked:** 2026-08-31
 
-More importantly, an ads MCP would not substitute for Ad Library access even if
-one existed. The MCPs above are Marketing API surfaces: they read *your own
-authorized ad account*. The Ad Library is a public transparency archive covering
-*other advertisers*. Different API, different authorization, different data. An
-account connector cannot return a competitor's ads, so it cannot remove the
-identity-confirmation prerequisite in CLM-0213.
+Meta-hosted Ads MCP OAuth metadata is published at the protected-resource
+endpoint ([`meta-mcp-protected-resource-metadata`](https://mcp.facebook.com/.well-known/oauth-protected-resource/ads))
+and authorization-server endpoint ([`meta-mcp-authorization-metadata`](https://mcp.facebook.com/.well-known/oauth-authorization-server/ads)).
+These endpoints publish OAuth authorization metadata only. Their existence
+does not prove tools, availability, safety, or Ad Library access.
+The current account live-read is not installed, and account mutation is disabled.
 
-Connectors that do help competitor work are SERP-side rather than platform-side.
-`mcp__search-ops__find_serp_competitors` accepts `resultTypes: ["paid"]` and needs
-no advertising-platform credential. Label its output a third-party estimate, never
-a competitor account fact, and note that it bills a paid provider per call.
+An Ads MCP would not substitute for Ad Library access. Marketing API or MCP
+surfaces read an authorized advertiser account. The Ad Library is a separate
+public transparency archive for other advertisers, with separate
+authorization and data. An account connector cannot return a competitor's ads,
+so it cannot remove the identity-confirmation prerequisite in CLM-0213.
+
+Connectors that help competitor work are SERP-side rather than platform-side.
+`mcp__search-ops__find_serp_competitors` accepts `resultTypes: ["paid"]` and
+needs no advertising-platform credential. Label its output a third-party
+estimate, never a competitor account fact, and note that it bills a paid
+provider per call.
 
 ## Discovery packet
 
@@ -79,6 +87,36 @@ Only the exact tested operation may be enabled.
 4. Redact credentials, personal data, and account IDs from durable artifacts.
 5. Reconcile a sample with the native UI/export before relying on the result.
 6. Record partial pages, sampling, timezones, currencies, and transient errors.
+
+## Warehouse-first read contract
+
+Analysis workers use a warehouse-first contract. They read run/client-bound
+snapshots, not a live provider loop. Warehouse storage is recommended, not
+mandated, but every analysis input must be a bounded, immutable snapshot with
+lineage to its ingestion run.
+
+Direct Meta reads are limited to bounded ingestion, cache recovery, or future
+mutation pre/post verification. There is no direct Meta read in an analysis
+worker loop. Ingestion must use a queue, cache, bounded request budget, pacing,
+batch or asynchronous work where supported, usage-header monitoring, and
+bounded backoff.
+Rate-limit and abuse controls are not proof that high call volume automatically
+violates Platform Terms. See
+[`meta-marketing-api-rate-limits-official`](https://developers.facebook.com/documentation/ads-commerce/marketing-api/overview/rate-limiting),
+[`meta-marketing-api-troubleshooting-official`](https://developers.facebook.com/documentation/ads-commerce/marketing-api/troubleshooting),
+and [`meta-insights-best-practices-official`](https://developers.facebook.com/documentation/ads-commerce/marketing-api/insights/best-practices).
+
+## Meta data separation and retention
+
+Keep Meta advertiser data separate from other platform datasets and keep data
+maintained for one advertiser separate from other advertisers. Only the end
+advertiser or people acting on its behalf may access Meta Platform Data. Do not
+mix cross-platform advertiser data unless the exact applicable terms allow it.
+Document purpose, retention period, deletion path, and service-provider duties
+for stored data. Minimize raw responses and credentials, and delete snapshots
+when their documented purpose and retention period end. See
+[`meta-platform-terms-official`](https://developers.facebook.com/terms/) and
+[`meta-developer-policies-official`](https://developers.facebook.com/devpolicy/).
 
 ## Write workflow
 

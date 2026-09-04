@@ -40,6 +40,12 @@ capability loses its test evidence, or required remote CI does not pass.
   verify, failure, audit, and rollback.
 - URL, redirect, DNS, browser-subresource, output-path, symlink, archive, and
   parser-differential defenses pass adversarial tests.
+- Report writes accept portable relative destinations only. POSIX writers use
+  descriptor-relative traversal, replacement, cleanup, and identity checks
+  inside a current-user-owned `0700` root. Windows writers are restricted to a
+  non-reparse root beneath the current user's home and are tested in the native
+  Windows matrix. The boundary excludes administrators and malicious processes
+  running as the same operating-system principal; those require an OS sandbox.
 - Untrusted content cannot change instructions or mutation authority.
 - Secrets and personal data are absent from tracked files, fixtures, reports,
   logs, task packets, archives, and Git history.

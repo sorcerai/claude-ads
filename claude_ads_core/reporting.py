@@ -1,8 +1,8 @@
 """Deterministic, privacy-aware renderers for validated report bundles.
 
 JSON remains the canonical artifact.  This module produces human-readable
-views without recalculating scores, loading remote assets, or embedding the
-source bundle in the output.
+views after validating and recomputing scores through the supplied control
+registry, without loading remote assets or embedding the source bundle in the output.
 """
 
 from __future__ import annotations
@@ -12,12 +12,20 @@ import importlib
 import json
 import os
 import re
+import secrets
 import stat
+import subprocess
 import tempfile
 from pathlib import Path
-from typing import Any, Mapping, Sequence
+from typing import Any, Mapping
+
 
 from .contracts import ContractError, validate_contract
+from .control_registry import ControlRegistry, RegistryError
+
+_POSIX_CAPABILITY_FUNCS = {
+    name: getattr(os, name, None) for name in ("open", "mkdir", "stat", "rename", "unlink")
+}
 
 
 class ReportRenderError(ValueError):
@@ -29,10 +37,13 @@ class PDFDependencyError(ReportRenderError):
 
 
 _EMAIL_RE = re.compile(r"(?<![\w.+-])[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}(?![\w.-])")
-_BEARER_RE = re.compile(r"(?i)\bbearer\s+[A-Za-z0-9._~+/=-]+")
+_BEARER_RE = re.compile(r"(?i)\bbearer[ \t]+[A-Za-z0-9._~+/=-]+")
+_HEADER_SECRET_RE = re.compile(
+    r"(?im)(\b(?:authorization|proxy-authorization|cookie|set-cookie)[ \t]*:[ \t]*)[^\r\n]*"
+)
 _SECRET_ASSIGNMENT_RE = re.compile(
     r"(?i)\b(access[_-]?token|refresh[_-]?token|api[_-]?key|client[_-]?secret|"
-    r"password|passwd|authorization|cookie)\s*([:=])\s*([^\s&;,]+)"
+    r"password|passwd|authorization|cookie)\s*([:=])\s*(?!\[REDACTED\])([^\s&;,]+)"
 )
 _SENSITIVE_KEY_RE = re.compile(
     r"(?i)(^|[_-])(access[_-]?token|refresh[_-]?token|api[_-]?key|client[_-]?secret|"
@@ -50,6 +61,7 @@ _COMPLETENESS_LABELS = {"complete": "Complete", "partial": "Partial", "failed": 
 
 def _redact_text(value: str) -> str:
     value = _CONTROL_CHARS_RE.sub("", value).replace("\r\n", "\n").replace("\r", "\n")
+    value = _HEADER_SECRET_RE.sub(lambda match: f"{match.group(1)}[REDACTED]", value)
     value = _BEARER_RE.sub("Bearer [REDACTED]", value)
     value = _SECRET_ASSIGNMENT_RE.sub(lambda match: f"{match.group(1)}{match.group(2)}[REDACTED]", value)
     return _EMAIL_RE.sub("[REDACTED EMAIL]", value)
@@ -90,10 +102,11 @@ def _canonical_json(value: Any) -> str:
     return json.dumps(_redact_value(value), ensure_ascii=False, sort_keys=True, separators=(",", ":"))
 
 
-def _validated_bundle(bundle: Mapping[str, Any]) -> Mapping[str, Any]:
+def _validated_bundle(bundle: Mapping[str, Any], registry: ControlRegistry) -> Mapping[str, Any]:
     try:
         validate_contract("report-bundle", bundle)
-    except ContractError as exc:
+        registry.validate_report_scoring(bundle)
+    except (ContractError, RegistryError) as exc:
         raise ReportRenderError(f"invalid report bundle: {exc}") from exc
     for field in ("contradictions", "actions"):
         if field in bundle and not isinstance(bundle[field], list):
@@ -153,12 +166,50 @@ def _actions(bundle: Mapping[str, Any]) -> list[Any]:
         for finding in _findings(bundle)
         if finding["status"] in {"fail", "unknown"} and _text(finding.get("recommendation"))
     ]
+def _measurement_context_items(snapshot: Mapping[str, Any]) -> list[tuple[str, str]]:
+    context = snapshot["measurement_context"]
+
+    def display(value: Any) -> str:
+        if value is None:
+            return "None supplied"
+        if value == "unknown":
+            return "Unknown"
+        return _text(value)
+
+    def display_list(values: Any) -> str:
+        return ", ".join(_text(value) for value in values) or "None supplied"
 
 
-def render_markdown(bundle: Mapping[str, Any]) -> str:
+    def display_window(window: Any) -> str:
+        if window is None:
+            return "None supplied"
+        return f"{_text(window['value'])} {_text(window['unit'])}"
+
+    return [
+        ("Profile ID", display(context["profile_id"])),
+        ("Source format", display(context["source_format"])),
+        ("Source IDs", display_list(context["source_ids"])),
+        ("Report grain", display_list(context["report_grain"])),
+        ("Timezone", display(context["timezone"])),
+        ("Currency", display(context["currency"])),
+        ("Conversion definition", display(context["conversion_definition"])),
+        ("Conversion actions", display_list(context["conversion_actions"])),
+        ("Attribution model", display(context["attribution_model"])),
+        ("Click attribution window", display_window(context["click_attribution_window"])),
+        ("View attribution window", display_window(context["view_attribution_window"])),
+        ("Counting behavior", display(context["counting_behavior"])),
+        ("As of", display(context["as_of"])),
+        ("Data finalization", display(context["data_finalization"])),
+        ("Modeled-data treatment", display(context["modeled_data_treatment"])),
+        ("Missing fields", display_list(context["missing_fields"])),
+        ("Unsupported fields", display_list(context["unsupported_fields"])),
+    ]
+
+
+def render_markdown(bundle: Mapping[str, Any], *, registry: ControlRegistry) -> str:
     """Render a validated ReportBundle as deterministic Markdown."""
 
-    bundle = _validated_bundle(bundle)
+    bundle = _validated_bundle(bundle, registry)
     manifest = bundle["run_manifest"]
     snapshot = bundle["account_snapshot"]
     scoring = bundle["scoring"]
@@ -180,14 +231,20 @@ def render_markdown(bundle: Mapping[str, Any]) -> str:
         f"- Account: {_md(account.get('name') or account['account_id'])}",
         f"- Window: {_md(snapshot['window']['start'])} to {_md(snapshot['window']['end'])}",
         f"- Privacy class: {_md(str(manifest['privacy_class']).title())}",
-        "",
-        "## Decision status",
-        "",
-        f"- Run completeness: **{_COMPLETENESS_LABELS[completeness]}**",
-        f"- Evidence status: **{_STATUS_LABELS[score_status]}**",
-        f"- Health score: **{_score_text(scoring['health_score'])}**",
-        f"- Evidence coverage: **{_coverage_text(scoring['evidence_coverage'])}**",
     ]
+    lines.extend(("", "## Measurement context", ""))
+    lines.extend(f"- {label}: {_md(value)}" for label, value in _measurement_context_items(snapshot))
+    lines.extend(
+        (
+            "",
+            "## Decision status",
+            "",
+            f"- Run completeness: **{_COMPLETENESS_LABELS[completeness]}**",
+            f"- Evidence status: **{_STATUS_LABELS[score_status]}**",
+            f"- Health score: **{_score_text(scoring['health_score'])}**",
+            f"- Evidence coverage: **{_coverage_text(scoring['evidence_coverage'])}**",
+        )
+    )
     if completeness != "complete":
         lines.extend(("", "> WARNING: Required work did not complete; this report must not be presented as a complete audit."))
     if score_status == "provisional":
@@ -254,7 +311,7 @@ def render_markdown(bundle: Mapping[str, Any]) -> str:
     else:
         lines.append("No follow-up actions were reported.")
 
-    lines.extend(("", "---", "", "Generated deterministically from ReportBundle JSON. Scores were not recalculated.", ""))
+    lines.extend(("", "---", "", "Generated deterministically from ReportBundle JSON. Scores were recomputed from the supplied control registry and verified against this ReportBundle before rendering.", ""))
     return "\n".join(lines)
 
 
@@ -265,10 +322,10 @@ main{max-width:960px;margin:32px auto;padding:40px;background:var(--paper);box-s
 """.strip()
 
 
-def render_html(bundle: Mapping[str, Any]) -> str:
+def render_html(bundle: Mapping[str, Any], *, registry: ControlRegistry) -> str:
     """Render a validated ReportBundle as self-contained deterministic HTML."""
 
-    bundle = _validated_bundle(bundle)
+    bundle = _validated_bundle(bundle, registry)
     manifest = bundle["run_manifest"]
     snapshot = bundle["account_snapshot"]
     scoring = bundle["scoring"]
@@ -328,6 +385,10 @@ def render_html(bundle: Mapping[str, Any]) -> str:
         else "<p>No follow-up actions were reported.</p>"
     )
     warnings_html = "".join(f'<p class="warning"><strong>Warning:</strong> {_html(item)}</p>' for item in warnings)
+    context_html = "".join(
+        f"<dt>{_html(label)}</dt><dd>{_html(value)}</dd>"
+        for label, value in _measurement_context_items(snapshot)
+    )
 
     return (
         "<!doctype html>\n<html lang=\"en\"><head><meta charset=\"utf-8\">"
@@ -342,6 +403,7 @@ def render_html(bundle: Mapping[str, Any]) -> str:
         f"<dt>Account</dt><dd>{_html(account.get('name') or account['account_id'])}</dd>"
         f"<dt>Window</dt><dd>{_html(snapshot['window']['start'])} to {_html(snapshot['window']['end'])}</dd>"
         f"<dt>Privacy class</dt><dd>{_html(str(manifest['privacy_class']).title())}</dd></dl>"
+        f"<h2>Measurement context</h2><dl class=\"meta\">{context_html}</dl>"
         "<h2>Decision status</h2><div class=\"metrics\">"
         f'<div class="metric">Run completeness<strong>{_html(_COMPLETENESS_LABELS[completeness])}</strong></div>'
         f'<div class="metric">Evidence status<strong>{_html(_STATUS_LABELS[score_status])}</strong></div>'
@@ -350,15 +412,15 @@ def render_html(bundle: Mapping[str, Any]) -> str:
         + warnings_html
         + f"<h2>Category health</h2><ul>{category_html}</ul><h2>Findings</h2>{findings_html}"
         + f"<h2>Contradictions</h2>{contradictions_html}<h2>Prioritized actions</h2>{actions_html}"
-        + "<footer>Generated deterministically from ReportBundle JSON. Scores were not recalculated.</footer>"
+        + "<footer>Generated deterministically from ReportBundle JSON. Scores were recomputed from the supplied control registry and verified against this ReportBundle before rendering.</footer>"
         + "</main></body></html>\n"
     )
 
 
-def render_pdf(bundle: Mapping[str, Any]) -> bytes:
+def render_pdf(bundle: Mapping[str, Any], *, registry: ControlRegistry) -> bytes:
     """Render PDF bytes through the optional WeasyPrint bridge."""
 
-    source = render_html(bundle)
+    source = render_html(bundle, registry=registry)
     try:
         weasyprint = importlib.import_module("weasyprint")
     except (ImportError, OSError) as exc:
@@ -370,91 +432,812 @@ def render_pdf(bundle: Mapping[str, Any]) -> bytes:
         result = weasyprint.HTML(string=source, base_url=None).write_pdf()
     except Exception as exc:
         raise ReportRenderError(f"PDF rendering failed: {exc}") from exc
-    if not isinstance(result, bytes):
-        raise ReportRenderError("PDF renderer returned an invalid result")
+    if (
+        not isinstance(result, bytes)
+        or len(result) <= len(b"%PDF-")
+        or not result.startswith(b"%PDF-")
+        or not result.rstrip(b" \t\r\n\f\x00").endswith(b"%%EOF")
+    ):
+        raise ReportRenderError("PDF renderer returned invalid PDF output")
     return result
 
 
-def render_report(bundle: Mapping[str, Any], output_format: str) -> str | bytes:
+def render_report(
+    bundle: Mapping[str, Any], output_format: str, *, registry: ControlRegistry
+) -> str | bytes:
     """Render *bundle* to ``markdown``, ``html``, or ``pdf``."""
 
     normalized = output_format.lower()
     if normalized in {"md", "markdown"}:
-        return render_markdown(bundle)
+        return render_markdown(bundle, registry=registry)
     if normalized == "html":
-        return render_html(bundle)
+        return render_html(bundle, registry=registry)
     if normalized == "pdf":
-        return render_pdf(bundle)
+        return render_pdf(bundle, registry=registry)
     raise ReportRenderError("format must be one of: markdown, html, pdf")
 
 
-def resolve_report_path(root: str | Path, destination: str | Path) -> Path:
-    """Resolve a relative output path beneath *root*, rejecting symlinks."""
+def _validate_report_destination(destination: str | Path) -> Path:
+    """Validate report destination syntax without touching the filesystem."""
 
-    relative = Path(destination)
-    if relative.is_absolute() or not relative.name or any(part in {"", ".", ".."} for part in relative.parts):
+    raw = destination.as_posix() if isinstance(destination, Path) else str(destination)
+    device_digits = str.maketrans({"¹": "1", "²": "2", "³": "3"})
+    reserved = {"con", "prn", "aux", "nul"} | {f"com{index}" for index in range(1, 10)} | {
+        f"lpt{index}" for index in range(1, 10)
+    }
+    parts = raw.split("/")
+    if (
+        not raw
+        or raw.startswith("/")
+        or raw.startswith("//")
+        or re.match(r"^[A-Za-z]:", raw)
+        or "\\" in raw
+        or ":" in raw
+        or re.search(r'[\x00-\x1f<>\"|?*]', raw)
+        or any(
+            not part
+            or part in {".", ".."}
+            or part[-1] in ". "
+            or part.split(".", 1)[0].translate(device_digits).casefold() in reserved
+            for part in parts
+        )
+    ):
         raise ReportRenderError("report output must be a non-empty relative path without traversal")
-    root_path = Path(root)
-    root_path.mkdir(parents=True, exist_ok=True)
-    root_resolved = root_path.resolve(strict=True)
-    if not root_resolved.is_dir():
-        raise ReportRenderError("report root must be a directory")
+    return Path(*parts)
 
-    parent = root_resolved
-    for part in relative.parts[:-1]:
-        candidate = parent / part
-        if os.path.lexists(candidate):
-            mode = candidate.lstat().st_mode
-            if stat.S_ISLNK(mode):
-                raise ReportRenderError("report output parent must not be a symlink")
-            if not stat.S_ISDIR(mode):
-                raise ReportRenderError("report output parent must be a directory")
-        else:
-            candidate.mkdir(mode=0o700)
-        parent = candidate
 
-    destination_path = parent / relative.name
-    if os.path.lexists(destination_path) and stat.S_ISLNK(destination_path.lstat().st_mode):
-        raise ReportRenderError("report output must not be a symlink")
+def resolve_report_path(root: str | Path, destination: str | Path) -> Path:
+    """Return the nominal absolute output path without touching the filesystem."""
+
     try:
-        parent.resolve(strict=True).relative_to(root_resolved)
+        root_path = Path(root).absolute()
+    except (OSError, RuntimeError) as exc:
+        raise ReportRenderError(f"report root normalization failed: {exc}") from exc
+    return root_path / _validate_report_destination(destination)
+
+
+def _require_posix_capabilities() -> None:
+    required = ("open", "mkdir", "stat", "rename", "unlink")
+    supports_dir_fd = getattr(os, "supports_dir_fd", ())
+    if (
+        os.name != "posix"
+        or not hasattr(os, "O_DIRECTORY")
+        or not hasattr(os, "O_NOFOLLOW")
+        or not hasattr(os, "O_CLOEXEC")
+        or not callable(getattr(os, "getuid", None))
+    ):
+        raise ReportRenderError("report output requires POSIX directory capabilities")
+    if any(
+        not hasattr(os, name)
+        or (
+            getattr(os, name) not in supports_dir_fd
+            and _POSIX_CAPABILITY_FUNCS[name] not in supports_dir_fd
+        )
+        for name in required
+    ):
+        raise ReportRenderError("report output requires POSIX directory capabilities")
+    supports_follow_symlinks = getattr(os, "supports_follow_symlinks", ())
+    if os.stat not in supports_follow_symlinks and _POSIX_CAPABILITY_FUNCS["stat"] not in supports_follow_symlinks:
+        raise ReportRenderError("report output requires POSIX no-follow stat capability")
+
+
+def _directory_flags() -> int:
+    return os.O_DIRECTORY | os.O_NOFOLLOW | getattr(os, "O_CLOEXEC", 0)
+
+
+def _check_private_directory(file_descriptor: int, label: str) -> os.stat_result:
+    info = os.fstat(file_descriptor)
+    if not stat.S_ISDIR(info.st_mode):
+        raise ReportRenderError(f"report {label} must be a directory")
+    if info.st_uid != os.getuid():
+        raise ReportRenderError(f"report {label} must be owned by the current user")
+    if info.st_mode & 0o077:
+        raise ReportRenderError(f"report {label} must be private (mode must not grant group or other access)")
+    return info
+
+
+def _open_posix_parent(root_fd: int, parts: tuple[str, ...]) -> tuple[int, list[int]]:
+    parent_fd = root_fd
+    opened = [root_fd]
+    try:
+        for part in parts:
+            try:
+                entry = os.stat(part, dir_fd=parent_fd, follow_symlinks=False)
+            except FileNotFoundError:
+                os.mkdir(part, mode=0o700, dir_fd=parent_fd)
+                os.fsync(parent_fd)
+                entry = os.stat(part, dir_fd=parent_fd, follow_symlinks=False)
+            if stat.S_ISLNK(entry.st_mode):
+                raise ReportRenderError("report output parent must not be a symlink")
+            if not stat.S_ISDIR(entry.st_mode):
+                raise ReportRenderError("report output parent must be a directory")
+            child_fd = os.open(part, _directory_flags(), dir_fd=parent_fd)
+            opened.append(child_fd)
+            _check_private_directory(child_fd, "output parent")
+            parent_fd = child_fd
+    except BaseException as primary_error:
+        close_errors: list[BaseException] = []
+        for file_descriptor in reversed(opened[1:]):
+            try:
+                os.close(file_descriptor)
+            except BaseException as close_error:
+                close_errors.append(close_error)
+        if close_errors:
+            details = "; ".join(str(error) for error in close_errors)
+            close_context = f"parent descriptor cleanup failed: {details}"
+            if isinstance(primary_error, Exception):
+                raise ReportRenderError(f"{primary_error}; {close_context}") from primary_error
+            primary_error.add_note(close_context)
+        raise
+    return parent_fd, opened
+
+
+def _read_exact(file_descriptor: int) -> bytes:
+    chunks: list[bytes] = []
+    while True:
+        chunk = os.read(file_descriptor, 1024 * 1024)
+        if not chunk:
+            return b"".join(chunks)
+        chunks.append(chunk)
+
+
+def _verify_posix_namespace(
+    root_path: Path,
+    relative: Path,
+    held_root: os.stat_result,
+    held_parent: os.stat_result,
+    held_leaf: os.stat_result,
+    expected: bytes,
+) -> None:
+    fresh_fds: list[int] = []
+    verification_error: BaseException | None = None
+    close_errors: list[BaseException] = []
+    try:
+        fresh_root_fd = os.open(root_path, _directory_flags())
+        fresh_fds.append(fresh_root_fd)
+        fresh_root = _check_private_directory(fresh_root_fd, "root")
+        if (fresh_root.st_dev, fresh_root.st_ino) != (held_root.st_dev, held_root.st_ino):
+            raise ReportRenderError("report root namespace identity changed")
+        fresh_parent_fd = fresh_root_fd
+        for part in relative.parts[:-1]:
+            entry = os.stat(part, dir_fd=fresh_parent_fd, follow_symlinks=False)
+            if stat.S_ISLNK(entry.st_mode):
+                raise ReportRenderError("report output parent must not be a symlink")
+            if not stat.S_ISDIR(entry.st_mode):
+                raise ReportRenderError("report output parent must be a directory")
+            fresh_parent_fd = os.open(part, _directory_flags(), dir_fd=fresh_parent_fd)
+            fresh_fds.append(fresh_parent_fd)
+            _check_private_directory(fresh_parent_fd, "output parent")
+        fresh_parent = os.fstat(fresh_parent_fd)
+        if (fresh_parent.st_dev, fresh_parent.st_ino) != (held_parent.st_dev, held_parent.st_ino):
+            raise ReportRenderError("report output parent namespace identity changed")
+        leaf_fd = os.open(
+            relative.name,
+            os.O_RDONLY | getattr(os, "O_BINARY", 0) | os.O_NOFOLLOW | getattr(os, "O_CLOEXEC", 0),
+            dir_fd=fresh_parent_fd,
+        )
+        fresh_fds.append(leaf_fd)
+        leaf = os.fstat(leaf_fd)
+        if not stat.S_ISREG(leaf.st_mode):
+            raise ReportRenderError("report output verification found a non-regular file")
+        if (leaf.st_dev, leaf.st_ino) != (held_leaf.st_dev, held_leaf.st_ino):
+            raise ReportRenderError("report output namespace identity changed")
+        if _read_exact(leaf_fd) != expected:
+            raise ReportRenderError("report output verification found unexpected content")
+        os.fsync(fresh_parent_fd)
+    except BaseException as exc:
+        verification_error = exc
+    finally:
+        for file_descriptor in reversed(fresh_fds):
+            try:
+                os.close(file_descriptor)
+            except BaseException as exc:
+                close_errors.append(exc)
+    if close_errors:
+        details = "; ".join(str(error) for error in close_errors)
+        base_close_error = next((error for error in close_errors if not isinstance(error, Exception)), None)
+        if base_close_error is not None:
+            if verification_error is not None:
+                base_close_error.add_note(str(verification_error))
+            base_close_error.add_note(f"report output verification descriptor close failed: {details}")
+            raise base_close_error
+        close_error = ReportRenderError(f"report output verification close failed: {details}")
+        if verification_error is not None:
+            if isinstance(verification_error, Exception):
+                raise ReportRenderError(f"{verification_error}; {close_error}") from verification_error
+            verification_error.add_note(str(close_error))
+            raise verification_error
+        raise close_error
+    if verification_error is not None:
+        raise verification_error
+def _atomic_write_posix(root: str | Path, destination: str | Path, expected: bytes) -> Path:
+    _require_posix_capabilities()
+    relative = _validate_report_destination(destination)
+    try:
+        root_path = Path(root).absolute()
+    except (OSError, RuntimeError) as exc:
+        raise ReportRenderError(f"report root normalization failed: {exc}") from exc
+    try:
+        root_path.mkdir(parents=True, exist_ok=True, mode=0o700)
+    except OSError as exc:
+        raise ReportRenderError(f"report root creation failed: {exc}") from exc
+
+    root_fd = None
+    parent_fd = None
+    opened_parent_fds: list[int] = []
+    temporary_name: str | None = None
+    temporary_owned = False
+    replace_called = False
+    replace_returned = False
+    temporary_absence_verified = False
+    replacement_committed = False
+    outcome_unknown = False
+    primary_error: BaseException | None = None
+    close_errors: list[BaseException] = []
+    result = root_path / relative
+
+    def normalize_error(error: BaseException) -> BaseException:
+        if isinstance(error, ReportRenderError):
+            normalized: BaseException = error
+        elif isinstance(error, Exception):
+            normalized = ReportRenderError(f"report output operation failed: {error}")
+        else:
+            normalized = error
+        if replacement_committed and isinstance(normalized, Exception) and "replacement occurred" not in str(normalized):
+            normalized = ReportRenderError(
+                f"report output replacement occurred but verification/durability failed: {normalized}"
+            )
+        return normalized
+
+    try:
+        root_fd = os.open(root_path, _directory_flags())
+        held_root = _check_private_directory(root_fd, "root")
+        parent_fd, opened_parent_fds = _open_posix_parent(root_fd, tuple(relative.parts[:-1]))
+        held_parent = os.fstat(parent_fd)
+        try:
+            destination_info = os.stat(relative.name, dir_fd=parent_fd, follow_symlinks=False)
+        except FileNotFoundError:
+            destination_info = None
+        if destination_info is not None:
+            if stat.S_ISLNK(destination_info.st_mode):
+                raise ReportRenderError("report output must not be a symlink")
+            if not stat.S_ISREG(destination_info.st_mode):
+                raise ReportRenderError("report output must be a regular file")
+
+        temporary_name = f".{relative.name}.{secrets.token_hex(16)}"
+        temporary_flags = (
+            os.O_RDWR
+            | os.O_CREAT
+            | os.O_EXCL
+            | os.O_NOFOLLOW
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_BINARY", 0)
+        )
+        try:
+            temporary_fd = os.open(temporary_name, temporary_flags, 0o600, dir_fd=parent_fd)
+        except OSError as exc:
+            raise ReportRenderError(f"report output temporary file open failed: {exc}") from exc
+        temporary_owned = True
+        stage_error: BaseException | None = None
+        try:
+            data = memoryview(expected)
+            written = 0
+            while written < len(data):
+                count = os.write(temporary_fd, data[written:])
+                if count <= 0:
+                    raise OSError("write returned no progress")
+                written += count
+            os.fsync(temporary_fd)
+            temporary_info = os.fstat(temporary_fd)
+            if not stat.S_ISREG(temporary_info.st_mode):
+                raise ReportRenderError("report temporary file must be regular")
+        except BaseException as exc:
+            stage_error = exc
+        finally:
+            try:
+                os.close(temporary_fd)
+            except BaseException as exc:
+                if stage_error is None:
+                    stage_error = ReportRenderError(f"report output close failed: {exc}") if isinstance(exc, Exception) else exc
+                elif isinstance(stage_error, Exception):
+                    stage_error = ReportRenderError(f"{stage_error}; report output close failed: {exc}")
+                else:
+                    stage_error.add_note(f"report output close failed: {exc}")
+        if stage_error is not None:
+            raise stage_error
+
+        replace_called = True
+        try:
+            os.replace(
+                temporary_name,
+                relative.name,
+                src_dir_fd=parent_fd,
+                dst_dir_fd=parent_fd,
+            )
+            replace_returned = True
+        except OSError as exc:
+            raise ReportRenderError(f"report output replacement failed: {exc}") from exc
+        except BaseException as exc:
+            outcome_unknown = True
+            exc.add_note("report output replacement outcome is unknown")
+            raise
+
+        try:
+            os.stat(temporary_name, dir_fd=parent_fd, follow_symlinks=False)
+        except FileNotFoundError:
+            temporary_absence_verified = True
+            replacement_committed = temporary_absence_verified
+            temporary_owned = False
+        except OSError as exc:
+            outcome_unknown = True
+            raise ReportRenderError(f"report output replacement outcome is unknown: {exc}") from exc
+        except BaseException as exc:
+            outcome_unknown = True
+            exc.add_note("report output replacement outcome is unknown")
+            raise
+        else:
+            no_op_error = ReportRenderError("report output replacement was a no-op: temporary file remains")
+            try:
+                os.unlink(temporary_name, dir_fd=parent_fd)
+            except BaseException as exc:
+                if isinstance(exc, Exception):
+                    raise ReportRenderError(f"{no_op_error}; temporary cleanup failed: {exc}") from no_op_error
+                exc.add_note(str(no_op_error))
+                raise
+            temporary_owned = False
+            raise no_op_error
+
+        try:
+            leaf_fd = os.open(
+                relative.name,
+                os.O_RDONLY | os.O_NOFOLLOW | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_BINARY", 0),
+                dir_fd=parent_fd,
+            )
+            verification_error: BaseException | None = None
+            try:
+                held_leaf = os.fstat(leaf_fd)
+                if not stat.S_ISREG(held_leaf.st_mode):
+                    raise ReportRenderError("report output verification found a non-regular file")
+                if (held_leaf.st_dev, held_leaf.st_ino) != (temporary_info.st_dev, temporary_info.st_ino):
+                    raise ReportRenderError("report output verification found unexpected file identity")
+                if _read_exact(leaf_fd) != expected:
+                    raise ReportRenderError("report output verification found unexpected content")
+            except BaseException as exc:
+                verification_error = exc
+            finally:
+                try:
+                    os.close(leaf_fd)
+                except BaseException as exc:
+                    if verification_error is None:
+                        verification_error = (
+                            ReportRenderError(f"report output verification close failed: {exc}")
+                            if isinstance(exc, Exception)
+                            else exc
+                        )
+                    elif isinstance(verification_error, Exception):
+                        verification_error = ReportRenderError(f"{verification_error}; verification close failed: {exc}")
+                    else:
+                        verification_error.add_note(f"verification close failed: {exc}")
+            if verification_error is not None:
+                raise verification_error
+            os.fsync(parent_fd)
+            _verify_posix_namespace(root_path, relative, held_root, held_parent, held_leaf, expected)
+        except BaseException as exc:
+            if isinstance(exc, Exception):
+                raise ReportRenderError(
+                    f"report output replacement occurred but verification/durability failed: {exc}"
+                ) from exc
+            exc.add_note("report output replacement occurred before verification/durability interruption")
+            raise
+    except BaseException as exc:
+        if temporary_owned and temporary_name is not None and parent_fd is not None and not outcome_unknown and not replacement_committed and (
+            not replace_called or not replace_returned
+        ):
+            try:
+                os.unlink(temporary_name, dir_fd=parent_fd)
+                temporary_owned = False
+            except BaseException as cleanup_error:
+                if isinstance(exc, Exception):
+                    exc = ReportRenderError(f"{exc}; temporary cleanup failed: {cleanup_error}")
+                else:
+                    exc.add_note(f"temporary cleanup failed: {cleanup_error}")
+        primary_error = normalize_error(exc)
+    finally:
+        for file_descriptor in reversed(opened_parent_fds):
+            try:
+                os.close(file_descriptor)
+            except BaseException as exc:
+                close_errors.append(exc)
+        if root_fd is not None and root_fd not in opened_parent_fds:
+            try:
+                os.close(root_fd)
+            except BaseException as exc:
+                close_errors.append(exc)
+
+    if close_errors:
+        details = "; ".join(str(error) for error in close_errors)
+        base_close_error = next((error for error in close_errors if not isinstance(error, Exception)), None)
+        if base_close_error is not None:
+            if primary_error is not None:
+                base_close_error.add_note(str(primary_error))
+            if replacement_committed:
+                base_close_error.add_note("report output replacement occurred before descriptor close failure")
+            base_close_error.add_note(f"descriptor close failed: {details}")
+            primary_error = base_close_error
+        else:
+            close_error = (
+                ReportRenderError(
+                    f"report output replacement occurred but descriptor close failed: {details}"
+                )
+                if replacement_committed
+                else ReportRenderError(f"report output descriptor close failed: {details}")
+            )
+            if primary_error is None:
+                primary_error = close_error
+            elif isinstance(primary_error, Exception):
+                primary_error = ReportRenderError(f"{primary_error}; {close_error}")
+            else:
+                primary_error.add_note(str(close_error))
+    if primary_error is not None:
+        raise primary_error
+    return result
+
+
+def _windows_reparse(info: os.stat_result) -> bool:
+    try:
+        attributes = info.st_file_attributes
+    except AttributeError as exc:
+        raise ReportRenderError("report Windows link metadata is unavailable") from exc
+    return bool(attributes & 0x400)
+
+
+_WINDOWS_TRUSTED_SIDS = frozenset(
+    {
+        "S-1-5-18",  # LocalSystem
+        "S-1-5-32-544",  # Built-in Administrators
+    }
+)
+_WINDOWS_MUTATING_RIGHTS = (
+    "fullcontrol",
+    "modify",
+    "write",
+    "writedata",
+    "appenddata",
+    "createfiles",
+    "createdirectories",
+    "delete",
+    "changepermissions",
+    "takeownership",
+    "writeattributes",
+    "writeextendedattributes",
+)
+
+_WINDOWS_ACL_QUERY = r"""
+$ErrorActionPreference = 'Stop'
+[Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
+$acl = Get-Acl -LiteralPath $args[0]
+$current = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+$owner = $acl.GetOwner([Security.Principal.SecurityIdentifier]).Value
+$access = @($acl.Access | ForEach-Object {
+    $sid = $_.IdentityReference.Translate([Security.Principal.SecurityIdentifier]).Value
+    [pscustomobject]@{
+        sid = $sid
+        type = [string]$_.AccessControlType
+        rights = [string]$_.FileSystemRights
+        inherited = [bool]$_.IsInherited
+    }
+})
+[pscustomobject]@{ owner_sid = $owner; current_sid = $current; access = $access } |
+    ConvertTo-Json -Compress -Depth 8
+""".strip()
+
+_WINDOWS_ACL_APPLY = r"""
+$ErrorActionPreference = 'Stop'
+$acl = Get-Acl -LiteralPath $args[0]
+$sid = New-Object System.Security.Principal.SecurityIdentifier(
+    [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+)
+$acl.SetAccessRuleProtection($true, $false)
+foreach ($rule in @($acl.Access)) {
+    [void]$acl.RemoveAccessRuleSpecific($rule)
+}
+$rule = New-Object System.Security.AccessControl.FileSystemAccessRule(
+    $sid,
+    [System.Security.AccessControl.FileSystemRights]::FullControl,
+    [System.Security.AccessControl.AccessControlType]::Allow
+)
+$acl.AddAccessRule($rule)
+Set-Acl -LiteralPath $args[0] -AclObject $acl
+""".strip()
+
+
+def _windows_acl_snapshot(path: Path) -> Mapping[str, Any]:
+    try:
+        result = subprocess.run(
+            ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", _WINDOWS_ACL_QUERY, str(path)],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="strict",
+            check=False,
+            shell=False,
+        )
+    except (OSError, UnicodeError, subprocess.SubprocessError) as exc:
+        raise ReportRenderError(f"report Windows ACL query failed: {exc}") from exc
+    if result.returncode != 0:
+        detail = result.stderr.strip() or "unknown error"
+        raise ReportRenderError(f"report Windows ACL query failed: {detail}")
+    try:
+        snapshot = json.loads(result.stdout)
+    except (TypeError, ValueError, UnicodeError) as exc:
+        raise ReportRenderError("report Windows ACL query returned invalid data") from exc
+    if not isinstance(snapshot, Mapping):
+        raise ReportRenderError("report Windows ACL query returned invalid data")
+    access = snapshot.get("access")
+    if isinstance(access, Mapping):
+        access = [access]
+    if not isinstance(access, list):
+        raise ReportRenderError("report Windows ACL query returned unverifiable DACL")
+    normalized = dict(snapshot)
+    normalized["access"] = access
+    return normalized
+
+
+def _validate_windows_acl(path: Path, label: str) -> None:
+    snapshot = _windows_acl_snapshot(path)
+    owner_sid = snapshot.get("owner_sid")
+    current_sid = snapshot.get("current_sid")
+    access = snapshot.get("access")
+    if not isinstance(owner_sid, str) or not owner_sid:
+        raise ReportRenderError(f"report {label} owner is unverifiable")
+    if not isinstance(current_sid, str) or not current_sid:
+        raise ReportRenderError(f"report {label} current user is unverifiable")
+    owner_folded = owner_sid.casefold()
+    current_folded = current_sid.casefold()
+    if owner_folded != current_folded and owner_sid.upper() not in _WINDOWS_TRUSTED_SIDS:
+        raise ReportRenderError(f"report {label} must be owned by current user or a trusted Windows identity")
+    if not isinstance(access, list) or not access:
+        raise ReportRenderError(f"report {label} DACL is unprotected or unverifiable")
+
+    for entry in access:
+        if not isinstance(entry, Mapping):
+            raise ReportRenderError(f"report {label} DACL is unverifiable")
+        sid = entry.get("sid")
+        access_type = entry.get("type")
+        rights = entry.get("rights")
+        if not isinstance(sid, str) or not sid or not isinstance(access_type, str) or not isinstance(rights, str):
+            raise ReportRenderError(f"report {label} DACL is unverifiable")
+        sid_folded = sid.casefold()
+        rights_folded = rights.casefold()
+        if access_type.casefold() == "deny":
+            if sid_folded == current_folded and any(token in rights_folded for token in _WINDOWS_MUTATING_RIGHTS):
+                raise ReportRenderError(f"report {label} DACL denies current-user access")
+            continue
+        if access_type.casefold() != "allow":
+            raise ReportRenderError(f"report {label} DACL is unverifiable")
+        if (
+            sid_folded != current_folded
+            and sid.upper() not in _WINDOWS_TRUSTED_SIDS
+            and any(token in rights_folded for token in _WINDOWS_MUTATING_RIGHTS)
+        ):
+            raise ReportRenderError(f"report {label} DACL is permissive")
+
+
+def _protect_windows_path(path: Path) -> None:
+    try:
+        result = subprocess.run(
+            ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", _WINDOWS_ACL_APPLY, str(path)],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="strict",
+            check=False,
+            shell=False,
+        )
+    except (OSError, UnicodeError, subprocess.SubprocessError) as exc:
+        raise ReportRenderError(f"report Windows ACL protection failed: {exc}") from exc
+    if result.returncode != 0:
+        detail = result.stderr.strip() or "unknown error"
+        raise ReportRenderError(f"report Windows ACL protection failed: {detail}")
+    _validate_windows_acl(path, "output")
+
+
+
+def _validate_windows_tree(root_path: Path, destination: Path) -> Path:
+    try:
+        home = Path.home().resolve()
+    except (OSError, RuntimeError) as exc:
+        raise ReportRenderError(f"report home normalization failed: {exc}") from exc
+    _validate_windows_acl(home, "home")
+    try:
+        root_path.resolve(strict=False).relative_to(home)
+        root_path.relative_to(home)
     except (OSError, ValueError) as exc:
-        raise ReportRenderError("report output escapes the configured root") from exc
-    return destination_path
+        raise ReportRenderError("report root must be beneath the current user's home") from exc
+
+    current = home
+    relative_root = root_path.relative_to(home)
+    for part in relative_root.parts:
+        current = current / part
+        if current.exists() or current.is_symlink():
+            info = current.lstat()
+            if stat.S_ISLNK(info.st_mode) or _windows_reparse(info):
+                raise ReportRenderError("report root must not contain links or reparse points")
+            if not stat.S_ISDIR(info.st_mode):
+                raise ReportRenderError("report root must be a directory")
+            _validate_windows_acl(current, "root")
+        else:
+            current.mkdir(mode=0o700)
+            _protect_windows_path(current)
+
+    parent = root_path
+    for part in destination.parts[:-1]:
+        parent = parent / part
+        if parent.exists() or parent.is_symlink():
+            info = parent.lstat()
+            if stat.S_ISLNK(info.st_mode) or _windows_reparse(info):
+                raise ReportRenderError("report output parent must not contain links or reparse points")
+            if not stat.S_ISDIR(info.st_mode):
+                raise ReportRenderError("report output parent must be a directory")
+            _validate_windows_acl(parent, "output parent")
+        else:
+            parent.mkdir(mode=0o700)
+            _protect_windows_path(parent)
+
+    leaf = parent / destination.name
+    if leaf.exists() or leaf.is_symlink():
+        info = leaf.lstat()
+        if stat.S_ISLNK(info.st_mode) or _windows_reparse(info):
+            raise ReportRenderError("report output must not be a link or reparse point")
+        if not stat.S_ISREG(info.st_mode):
+            raise ReportRenderError("report output must be a regular file")
+        _validate_windows_acl(leaf, "output")
+    return leaf
+
+
+def _atomic_write_windows(root: str | Path, destination: str | Path, expected: bytes) -> Path:
+    relative = _validate_report_destination(destination)
+    try:
+        root_path = Path(root).expanduser().absolute()
+    except (OSError, RuntimeError) as exc:
+        raise ReportRenderError(f"report root normalization failed: {exc}") from exc
+    try:
+        output_path = _validate_windows_tree(root_path, relative)
+    except ReportRenderError:
+        raise
+    except OSError as exc:
+        raise ReportRenderError(f"report output path validation failed: {exc}") from exc
+    try:
+        file_descriptor, temporary_name = tempfile.mkstemp(prefix=f".{output_path.name}.", dir=output_path.parent)
+    except OSError as exc:
+        raise ReportRenderError(f"report output temporary file failed: {exc}") from exc
+
+    temporary_path = Path(temporary_name)
+    temporary_owned = True
+    replace_called = False
+    replace_returned = False
+    temporary_absence_verified = False
+    replacement_committed = False
+    outcome_unknown = False
+    primary_error: BaseException | None = None
+    stage_error: BaseException | None = None
+    try:
+        try:
+            data = memoryview(expected)
+            written = 0
+            while written < len(data):
+                count = os.write(file_descriptor, data[written:])
+                if count <= 0:
+                    raise OSError("write returned no progress")
+                written += count
+            os.fsync(file_descriptor)
+        except BaseException as exc:
+            stage_error = exc
+        finally:
+            try:
+                os.close(file_descriptor)
+            except BaseException as exc:
+                if stage_error is None:
+                    stage_error = ReportRenderError(f"report output close failed: {exc}") if isinstance(exc, Exception) else exc
+                elif isinstance(stage_error, Exception):
+                    stage_error = ReportRenderError(f"{stage_error}; report output close failed: {exc}")
+                else:
+                    stage_error.add_note(f"report output close failed: {exc}")
+        if stage_error is not None:
+            raise stage_error
+
+        _protect_windows_path(temporary_path)
+        _validate_windows_tree(root_path, relative)
+        replace_called = True
+        try:
+            os.replace(temporary_path, output_path)
+            replace_returned = True
+        except OSError as exc:
+            raise ReportRenderError(f"report output replacement failed: {exc}") from exc
+        except BaseException as exc:
+            outcome_unknown = True
+            exc.add_note("report output replacement outcome is unknown")
+            raise
+        _protect_windows_path(output_path)
+
+        try:
+            temporary_path.lstat()
+        except FileNotFoundError:
+            temporary_absence_verified = True
+            replacement_committed = temporary_absence_verified
+            temporary_owned = False
+        except BaseException as exc:
+            outcome_unknown = True
+            if isinstance(exc, Exception):
+                raise ReportRenderError(f"report output replacement outcome is unknown: {exc}") from exc
+            exc.add_note("report output replacement outcome is unknown")
+            raise
+        else:
+            no_op_error = ReportRenderError("report output replacement was a no-op: temporary file remains")
+            try:
+                temporary_path.unlink()
+            except BaseException as exc:
+                if isinstance(exc, Exception):
+                    raise ReportRenderError(f"{no_op_error}; temporary cleanup failed: {exc}") from no_op_error
+                exc.add_note(str(no_op_error))
+                raise
+            temporary_owned = False
+            raise no_op_error
+
+        try:
+            with output_path.open("rb") as stream:
+                actual = stream.read()
+        except BaseException as exc:
+            if isinstance(exc, Exception):
+                raise ReportRenderError(f"report output replacement occurred but verification failed: {exc}") from exc
+            exc.add_note("report output replacement occurred before verification interruption")
+            raise
+        if actual != expected:
+            raise ReportRenderError(
+                "report output replacement occurred but verification found unexpected content"
+            )
+        return output_path
+    except BaseException as exc:
+        if temporary_owned and not outcome_unknown and not replacement_committed and (not replace_called or not replace_returned):
+            try:
+                temporary_path.unlink(missing_ok=True)
+                temporary_owned = False
+            except BaseException as cleanup_error:
+                if isinstance(exc, Exception):
+                    exc = ReportRenderError(f"{exc}; temporary cleanup failed: {cleanup_error}")
+                else:
+                    exc.add_note(f"temporary cleanup failed: {cleanup_error}")
+        if isinstance(exc, ReportRenderError):
+            primary_error = exc
+        elif isinstance(exc, Exception):
+            primary_error = ReportRenderError(f"report output operation failed: {exc}")
+        else:
+            primary_error = exc
+    if primary_error is not None:
+        raise primary_error
+    return output_path
 
 
 def atomic_write_report(root: str | Path, destination: str | Path, content: str | bytes) -> Path:
     """Atomically write report content beneath a safe root."""
 
-    output_path = resolve_report_path(root, destination)
-    file_descriptor, temporary_name = tempfile.mkstemp(prefix=f".{output_path.name}.", dir=output_path.parent)
-    temporary_path = Path(temporary_name)
-    try:
-        mode = "wb" if isinstance(content, bytes) else "w"
-        kwargs = {} if isinstance(content, bytes) else {"encoding": "utf-8", "newline": "\n"}
-        with os.fdopen(file_descriptor, mode, **kwargs) as handle:
-            handle.write(content)
-            handle.flush()
-            os.fsync(handle.fileno())
-        os.chmod(temporary_path, 0o600)
-        # Recheck after writing so a swapped parent or destination cannot be
-        # silently followed at commit time.
-        checked_path = resolve_report_path(root, destination)
-        if checked_path.parent.resolve(strict=True) != output_path.parent.resolve(strict=True):
-            raise ReportRenderError("report output parent changed during write")
-        os.replace(temporary_path, checked_path)
-        return checked_path
-    except Exception:
-        temporary_path.unlink(missing_ok=True)
-        raise
-
+    _validate_report_destination(destination)
+    expected_bytes = content if isinstance(content, bytes) else content.encode("utf-8")
+    if os.name == "posix":
+        return _atomic_write_posix(root, destination, expected_bytes)
+    if os.name == "nt":
+        return _atomic_write_windows(root, destination, expected_bytes)
+    raise ReportRenderError("report output writing unsupported on this platform")
 
 def write_report_bundle(
     bundle: Mapping[str, Any],
     output_format: str,
     root: str | Path,
     destination: str | Path,
+    *,
+    registry: ControlRegistry,
 ) -> Path:
     """Validate, render, and atomically write a report bundle."""
 
-    return atomic_write_report(root, destination, render_report(bundle, output_format))
+    _validate_report_destination(destination)
+    return atomic_write_report(root, destination, render_report(bundle, output_format, registry=registry))

@@ -245,9 +245,67 @@ function Main {
         $OwnerSid = $FileSecurity.GetOwner([System.Security.Principal.SecurityIdentifier])
         $CallerSids = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
         if ($null -ne $Identity.User) { [void]$CallerSids.Add($Identity.User.Value) }
-        foreach ($Group in @($Identity.Groups)) { [void]$CallerSids.Add($Group.Value) }
+        [void]$CallerSids.Add("S-1-5-18")
+        [void]$CallerSids.Add("S-1-5-32-544")
         if ($null -eq $OwnerSid -or -not $CallerSids.Contains($OwnerSid.Value)) {
             throw "Ownership authority is not owned by the current Windows identity: $Path"
+        }
+    }
+
+    function Assert-PrivateDirectoryChain([string]$Path, [string]$Root) {
+        if ([Environment]::OSVersion.Platform -ne [PlatformID]::Win32NT) { return }
+        $Identity = [System.Security.Principal.WindowsIdentity]::GetCurrent()
+        $TrustedSids = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+        if ($null -ne $Identity.User) { [void]$TrustedSids.Add($Identity.User.Value) }
+        [void]$TrustedSids.Add("S-1-5-18")      # LocalSystem
+        [void]$TrustedSids.Add("S-1-5-32-544")  # Builtin Administrators
+        $ProfileRoot = Get-NormalizedInstallRoot (Get-ClaudeAdsUserHome)
+        $ProfilePrefix = Get-RootPrefix $ProfileRoot
+        if (-not $Root.Equals($ProfileRoot, $PathComparison) -and
+            -not $Root.StartsWith($ProfilePrefix, $PathComparison)) {
+            throw "Retired file root is outside the current user profile: $Root"
+        }
+        $Current = [IO.Path]::GetDirectoryName([IO.Path]::GetFullPath($Path))
+        $WriteRights = [System.Security.AccessControl.FileSystemRights]::WriteData `
+            -bor [System.Security.AccessControl.FileSystemRights]::CreateFiles `
+            -bor [System.Security.AccessControl.FileSystemRights]::AppendData `
+            -bor [System.Security.AccessControl.FileSystemRights]::CreateDirectories `
+            -bor [System.Security.AccessControl.FileSystemRights]::Delete `
+            -bor [System.Security.AccessControl.FileSystemRights]::DeleteSubdirectoriesAndFiles `
+            -bor [System.Security.AccessControl.FileSystemRights]::ChangePermissions `
+            -bor [System.Security.AccessControl.FileSystemRights]::TakeOwnership
+        while ($true) {
+            [void](Assert-NoReparseChain $Current $Root)
+            $DirectoryItem = Get-Item -LiteralPath $Current -Force -ErrorAction SilentlyContinue
+            if ($null -eq $DirectoryItem -or -not $DirectoryItem.PSIsContainer) {
+                throw "Retired file parent is not a directory: $Current"
+            }
+            $Sections = [System.Security.AccessControl.AccessControlSections]::Owner `
+                -bor [System.Security.AccessControl.AccessControlSections]::Access
+            if ($PSVersionTable.PSEdition -eq 'Core') {
+                $DirectoryInfo = [System.IO.DirectoryInfo]::new($Current)
+                $Security = [System.IO.FileSystemAclExtensions]::GetAccessControl($DirectoryInfo, $Sections)
+            } else {
+                $Security = [System.IO.Directory]::GetAccessControl($Current, $Sections)
+            }
+            $OwnerSid = $Security.GetOwner([System.Security.Principal.SecurityIdentifier])
+            if ($null -eq $OwnerSid -or -not $TrustedSids.Contains($OwnerSid.Value)) {
+                throw "Retired file parent is not owned by a trusted identity: $Current"
+            }
+            foreach ($Rule in @($Security.GetAccessRules($true, $true, [System.Security.Principal.SecurityIdentifier]))) {
+                $Sid = $Rule.IdentityReference.Value
+                if ($Rule.AccessControlType -eq [System.Security.AccessControl.AccessControlType]::Allow `
+                    -and (($Rule.FileSystemRights -band $WriteRights) -ne 0) `
+                    -and -not $TrustedSids.Contains($Sid)) {
+                    throw "Retired file parent grants untrusted write access: $Current"
+                }
+            }
+            if ($Current.Equals($ProfileRoot, $PathComparison)) { break }
+            $Parent = [IO.Path]::GetDirectoryName($Current)
+            if ([string]::IsNullOrEmpty($Parent) -or $Parent.Equals($Current, $PathComparison)) {
+                throw "Retired file parent escapes the current user profile: $Path"
+            }
+            $Current = $Parent
         }
     }
 
@@ -575,6 +633,34 @@ function Main {
             }
         }
 
+        # Retire exact prior files before copying any new file. Runtime state
+        # is retained under -NoDeps only when explicitly owned by this target.
+        $RetainedRuntimeFiles = [System.Collections.Generic.HashSet[string]]::new($StringComparer)
+        $RetainedRuntimeDirs = [System.Collections.Generic.HashSet[string]]::new($StringComparer)
+        if ($NoDeps) {
+            if ($PriorFiles.Contains($ReceiptPath)) { [void]$RetainedRuntimeFiles.Add($ReceiptPath) }
+            if ($PriorRecursiveDirs.Contains($VenvDir)) { [void]$RetainedRuntimeDirs.Add($VenvDir) }
+        }
+        foreach ($RetiredFile in @($PriorFiles)) {
+            if ($PlannedFiles.Contains($RetiredFile) -or $RetainedRuntimeFiles.Contains($RetiredFile)) {
+                continue
+            }
+            [void](Assert-ConfiguredDestination $RetiredFile)
+            [void](Assert-NoReparseChain $RetiredFile (Get-ContainingConfiguredRoot $RetiredFile))
+            $RetiredItem = Get-Item -LiteralPath $RetiredFile -Force -ErrorAction SilentlyContinue
+            if ($null -eq $RetiredItem) { continue }
+            if ([Environment]::OSVersion.Platform -ne [PlatformID]::Win32NT) {
+                throw "Refusing to remove retired files from non-Windows PowerShell; use install.sh."
+            }
+            if ($RetiredItem.PSIsContainer -or
+                (($RetiredItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0)) {
+                throw "Refusing to remove unsafe retired file: $RetiredFile"
+            }
+            Assert-PrivateDirectoryChain $RetiredFile (Get-ContainingConfiguredRoot $RetiredFile)
+            Assert-CurrentUserOwnedFile $RetiredFile
+            Remove-Item -LiteralPath $RetiredFile -Force
+        }
+
         # All conflict checks passed.  Recheck each destination immediately
         # before copying so a concurrent replacement cannot bypass the guard.
         New-Item -ItemType Directory -Path $SkillBase -Force | Out-Null
@@ -601,19 +687,17 @@ function Main {
             Copy-Item -LiteralPath $PlannedFile.Source -Destination $PlannedFile.Destination -Force
         }
 
-        # Commit exact canonical ownership before dependency installation so a
-        # later pip failure remains recoverable with uninstall.  Preserve safe
-        # prior entries that disappeared from this distribution (and a managed
-        # runtime during -NoDeps) so an upgrade never strands owned artifacts.
+
+        # Commit exact canonical ownership before dependency installation.
         $ManifestFiles = [System.Collections.Generic.HashSet[string]]::new($StringComparer)
-        [void]$ManifestFiles.UnionWith($PriorFiles)
         [void]$ManifestFiles.UnionWith($PlannedFiles)
+        [void]$ManifestFiles.UnionWith($RetainedRuntimeFiles)
         $ManifestDirectories = [System.Collections.Generic.HashSet[string]]::new($StringComparer)
         [void]$ManifestDirectories.UnionWith($PriorDirectories)
         [void]$ManifestDirectories.UnionWith($OwnedPlannedDirs)
         $ManifestRecursiveDirs = [System.Collections.Generic.HashSet[string]]::new($StringComparer)
-        [void]$ManifestRecursiveDirs.UnionWith($PriorRecursiveDirs)
         [void]$ManifestRecursiveDirs.UnionWith($RecursiveDirs)
+        [void]$ManifestRecursiveDirs.UnionWith($RetainedRuntimeDirs)
         $Manifest = @{
             version = 1
             target = $Target
