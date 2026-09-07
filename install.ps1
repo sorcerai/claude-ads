@@ -650,7 +650,7 @@ function Main {
             $RetiredItem = Get-Item -LiteralPath $RetiredFile -Force -ErrorAction SilentlyContinue
             if ($null -eq $RetiredItem) { continue }
             if ([Environment]::OSVersion.Platform -ne [PlatformID]::Win32NT) {
-                throw "Refusing to remove retired files from non-Windows PowerShell; use install.sh."
+                throw "Non-Windows PowerShell: use install.sh."
             }
             if ($RetiredItem.PSIsContainer -or
                 (($RetiredItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0)) {
