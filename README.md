@@ -228,7 +228,7 @@ skills/               platform and lifecycle skills
 agents/               platform, cross-platform, research, and verifier workers
 claude_ads_core/      typed contracts, adapters, validation, and scoring
 control-plane/        evidence, capability, safety, maturity, and release state
-scripts/              browser, creative, reporting, and release helpers
+scripts/              browser, creative, reporting, fleet, and release helpers
 evals/                routing and behavioral evaluation cases
 tests/                deterministic, security, installer, and adapter tests
 ```

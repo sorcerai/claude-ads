@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import platform
 import shutil
 import subprocess
 from pathlib import Path
@@ -52,11 +53,13 @@ def _fake_python(tmp_path: Path, target: str, fail_venv: bool = False) -> Path:
     directory.mkdir()
     script = directory / "python3"
     if target.count("|") == 3:
-        target += "|glibc|2.17|supported" if "|linux|" in target else "|none|11.0|supported"
+        target += (
+            "|glibc|2.17|supported" if "|linux|" in target else "|none|11.0|supported"
+        )
     script.write_text(
         "#!/bin/sh\n"
         f"if [ \"$1\" = \"-c\" ]; then printf '%s\\n' '{target}'; exit 0; fi\n"
-        + ("exit 42\n" if fail_venv else "exec /usr/bin/python3 \"$@\"\n"),
+        + ("exit 42\n" if fail_venv else 'exec /usr/bin/python3 "$@"\n'),
         encoding="utf-8",
     )
     script.chmod(0o755)
@@ -151,7 +154,10 @@ def _powershell_uninstall(
 def test_bash_installer_syntax_and_no_global_pip_escape_hatch():
     for script in ("install.sh", "uninstall.sh"):
         result = subprocess.run(
-            ["bash", "-n", str(ROOT / script)], capture_output=True, text=True, check=False
+            ["bash", "-n", str(ROOT / script)],
+            capture_output=True,
+            text=True,
+            check=False,
         )
         assert result.returncode == 0, result.stderr
 
@@ -215,7 +221,9 @@ def test_bash_installer_syntax_and_no_global_pip_escape_hatch():
     assert "Assert-SafeRecursiveTree" in powershell_uninstall
     assert "Refusing reparse-point uninstall path" in powershell_uninstall
     assert "System.IO.File]::GetAccessControl" in powershell_uninstall
-    assert "System.IO.FileSystemAclExtensions]::GetAccessControl" in powershell_uninstall
+    assert (
+        "System.IO.FileSystemAclExtensions]::GetAccessControl" in powershell_uninstall
+    )
     assert "Get-Acl" not in powershell_uninstall
 
 
@@ -244,12 +252,22 @@ def test_manifest_owned_uninstall_preserves_unrelated_ads_skill(tmp_path):
 def test_installer_includes_portable_interface_and_all_platform_surfaces(tmp_path):
     skills, agents = _install(tmp_path)
     assert (skills / "ads" / "agents" / "openai.yaml").is_file()
-    for platform in (
-        "google", "meta", "youtube", "linkedin", "tiktok", "microsoft",
-        "apple", "amazon", "reddit", "pinterest", "snapchat", "x",
+    for platform_name in (
+        "google",
+        "meta",
+        "youtube",
+        "linkedin",
+        "tiktok",
+        "microsoft",
+        "apple",
+        "amazon",
+        "reddit",
+        "pinterest",
+        "snapchat",
+        "x",
     ):
-        assert (skills / f"ads-{platform}" / "SKILL.md").is_file()
-        assert (agents / f"audit-{platform}.md").is_file()
+        assert (skills / f"ads-{platform_name}" / "SKILL.md").is_file()
+        assert (agents / f"audit-{platform_name}.md").is_file()
 
 
 @BASH_INSTALLER_ONLY
@@ -431,7 +449,7 @@ def test_bash_upgrade_rejects_group_writable_root_before_retired_cleanup(tmp_pat
 
 
 @BASH_INSTALLER_ONLY
-@pytest.mark.skipif(os.uname().sysname != "Darwin", reason="Darwin ACL guard only")
+@pytest.mark.skipif(platform.system() != "Darwin", reason="Darwin ACL guard only")
 def test_bash_upgrade_rejects_extended_acl_metadata_before_cleanup(tmp_path):
     skills, agents = _install(tmp_path)
     stale = skills / "ads" / "scripts" / "claude_ads_core" / "retired.json"
@@ -464,7 +482,7 @@ def test_bash_upgrade_rejects_extended_acl_metadata_before_cleanup(tmp_path):
 
 
 @BASH_INSTALLER_ONLY
-@pytest.mark.skipif(os.uname().sysname != "Darwin", reason="Darwin ACL guard only")
+@pytest.mark.skipif(platform.system() != "Darwin", reason="Darwin ACL guard only")
 def test_bash_upgrade_allows_protective_deny_acl_before_cleanup(tmp_path):
     skills, agents = _install(tmp_path)
     stale = skills / "ads" / "scripts" / "claude_ads_core" / "retired.json"
@@ -634,8 +652,19 @@ def test_unsupported_python_fails_before_any_destination_mutation(tmp_path):
     skills, agents = tmp_path / "skills", tmp_path / "agents"
     fake_bin = _fake_python(tmp_path, "cpython|3.14|linux|x86_64")
     result = subprocess.run(
-        ["bash", str(ROOT / "install.sh"), "--target=claude", "--source=local", f"--skill-dir={skills}", f"--agent-dir={agents}"],
-        cwd=ROOT, env={**os.environ, "PATH": f"{fake_bin}:{os.environ['PATH']}"}, capture_output=True, text=True, check=False,
+        [
+            "bash",
+            str(ROOT / "install.sh"),
+            "--target=claude",
+            "--source=local",
+            f"--skill-dir={skills}",
+            f"--agent-dir={agents}",
+        ],
+        cwd=ROOT,
+        env={**os.environ, "PATH": f"{fake_bin}:{os.environ['PATH']}"},
+        capture_output=True,
+        text=True,
+        check=False,
     )
     assert result.returncode != 0
     assert "No verified dependency lock target" in result.stderr
@@ -646,10 +675,23 @@ def test_unsupported_python_fails_before_any_destination_mutation(tmp_path):
 @BASH_INSTALLER_ONLY
 def test_musl_linux_fails_before_any_destination_mutation(tmp_path):
     skills, agents = tmp_path / "skills", tmp_path / "agents"
-    fake_bin = _fake_python(tmp_path, "cpython|3.12|linux|x86_64|musl|1.2.5|unsupported")
+    fake_bin = _fake_python(
+        tmp_path, "cpython|3.12|linux|x86_64|musl|1.2.5|unsupported"
+    )
     result = subprocess.run(
-        ["bash", str(ROOT / "install.sh"), "--target=claude", "--source=local", f"--skill-dir={skills}", f"--agent-dir={agents}"],
-        cwd=ROOT, env={**os.environ, "PATH": f"{fake_bin}:{os.environ['PATH']}"}, capture_output=True, text=True, check=False,
+        [
+            "bash",
+            str(ROOT / "install.sh"),
+            "--target=claude",
+            "--source=local",
+            f"--skill-dir={skills}",
+            f"--agent-dir={agents}",
+        ],
+        cwd=ROOT,
+        env={**os.environ, "PATH": f"{fake_bin}:{os.environ['PATH']}"},
+        capture_output=True,
+        text=True,
+        check=False,
     )
     assert result.returncode != 0
     assert "musl Linux is unsupported" in result.stderr
@@ -665,14 +707,30 @@ def test_dependency_failure_leaves_complete_ownership_manifest_for_uninstall(tmp
     stale_receipt.write_text('{"stale": true}\n', encoding="utf-8")
     fake_bin = _fake_python(tmp_path, "cpython|3.12|linux|x86_64", fail_venv=True)
     result = subprocess.run(
-        ["bash", str(ROOT / "install.sh"), "--target=claude", "--source=local", f"--skill-dir={skills}", f"--agent-dir={agents}"],
-        cwd=ROOT, env={**os.environ, "PATH": f"{fake_bin}:{os.environ['PATH']}"}, capture_output=True, text=True, check=False,
+        [
+            "bash",
+            str(ROOT / "install.sh"),
+            "--target=claude",
+            "--source=local",
+            f"--skill-dir={skills}",
+            f"--agent-dir={agents}",
+        ],
+        cwd=ROOT,
+        env={**os.environ, "PATH": f"{fake_bin}:{os.environ['PATH']}"},
+        capture_output=True,
+        text=True,
+        check=False,
     )
     assert result.returncode != 0
     assert (skills / ".claude-ads-claude.manifest").is_file()
     assert (skills / "ads" / "requirements.lock").is_file()
     assert not stale_receipt.exists()
-    uninstall = _run("uninstall.sh", "--target=claude", f"--skill-dir={skills}", f"--agent-dir={agents}")
+    uninstall = _run(
+        "uninstall.sh",
+        "--target=claude",
+        f"--skill-dir={skills}",
+        f"--agent-dir={agents}",
+    )
     assert uninstall.returncode == 0, uninstall.stdout + uninstall.stderr
     assert not (skills / "ads" / "requirements.lock").exists()
 
@@ -726,7 +784,9 @@ def test_powershell_installer_rejects_unowned_main_file_before_any_mutation(tmp_
 
 
 @POWERSHELL_ONLY
-def test_powershell_installer_preflights_late_agent_collision_before_skill_mutation(tmp_path):
+def test_powershell_installer_preflights_late_agent_collision_before_skill_mutation(
+    tmp_path,
+):
     skills = tmp_path / "skills"
     agents = tmp_path / "agents"
     agent_name = next((ROOT / "agents").glob("*.md")).name
@@ -766,7 +826,10 @@ def test_powershell_installer_invalid_manifest_cannot_authorize_overwrite(tmp_pa
     install = _powershell_install(skills, agents)
 
     assert install.returncode != 0
-    assert "Install destination escapes configured roots" in install.stdout + install.stderr
+    assert (
+        "Install destination escapes configured roots"
+        in install.stdout + install.stderr
+    )
     assert main_skill.read_text(encoding="utf-8") == "user-owned\n"
     assert not (skills / "ads" / "references").exists()
     assert not agents.exists()
@@ -854,13 +917,20 @@ def test_powershell_installer_rejects_overlapping_roots_before_mutation(tmp_path
     install = _powershell_install(skills, agents)
 
     assert install.returncode != 0
-    assert "Skill and agent install roots must not overlap" in install.stdout + install.stderr
+    assert (
+        "Skill and agent install roots must not overlap"
+        in install.stdout + install.stderr
+    )
     assert not skills.exists()
 
 
 @POWERSHELL_ONLY
-@pytest.mark.skipif(os.name != "nt", reason="Managed PowerShell install target is Windows-only")
-def test_powershell_installer_rejects_unowned_managed_environment_before_mutation(tmp_path):
+@pytest.mark.skipif(
+    os.name != "nt", reason="Managed PowerShell install target is Windows-only"
+)
+def test_powershell_installer_rejects_unowned_managed_environment_before_mutation(
+    tmp_path,
+):
     skills = tmp_path / "skills"
     agents = tmp_path / "agents"
     unowned_venv = skills / "ads" / ".venv"
@@ -871,7 +941,10 @@ def test_powershell_installer_rejects_unowned_managed_environment_before_mutatio
     install = _powershell_install(skills, agents, no_deps=False)
 
     assert install.returncode != 0
-    assert "Refusing to reuse unowned managed environment" in install.stdout + install.stderr
+    assert (
+        "Refusing to reuse unowned managed environment"
+        in install.stdout + install.stderr
+    )
     assert sentinel.read_text(encoding="utf-8") == "do not delete\n"
     assert not (skills / "ads" / "SKILL.md").exists()
     assert not agents.exists()
@@ -888,7 +961,6 @@ def test_powershell_install_uninstall_round_trip_preserves_unrelated_skill(tmp_p
     installed_core = skills / "ads" / "scripts" / "claude_ads_core"
     for schema_name in REMOVED_V1_SCHEMA_NAMES:
         assert not (installed_core / "schemas" / "v1" / schema_name).exists()
-
 
     # The exact path is now recorded by the validated prior manifest, so a
     # repeat install may replace it and must restore the distribution content.
@@ -963,7 +1035,10 @@ def test_powershell_uninstall_rejects_non_exact_manifest_before_deletion(tmp_pat
     uninstall = _powershell_uninstall(skills, agents)
 
     assert uninstall.returncode != 0
-    assert "Invalid or mismatched ownership manifest" in uninstall.stdout + uninstall.stderr
+    assert (
+        "Invalid or mismatched ownership manifest"
+        in uninstall.stdout + uninstall.stderr
+    )
     assert (skills / "ads" / "SKILL.md").is_file()
     assert manifest_path.is_file()
 
@@ -1012,7 +1087,15 @@ def test_windows_uninstall_rejects_junction_inside_recursive_owned_directory(tmp
     recursive = skills / "ads" / "owned-runtime"
     recursive.mkdir()
     junction = subprocess.run(
-        ["cmd.exe", "/d", "/c", "mklink", "/J", str(recursive / "escape"), str(outside)],
+        [
+            "cmd.exe",
+            "/d",
+            "/c",
+            "mklink",
+            "/J",
+            str(recursive / "escape"),
+            str(outside),
+        ],
         check=False,
         capture_output=True,
         text=True,
@@ -1026,7 +1109,10 @@ def test_windows_uninstall_rejects_junction_inside_recursive_owned_directory(tmp
     uninstall = _powershell_uninstall(skills, agents, executable=executable)
 
     assert uninstall.returncode != 0
-    assert "reparse point inside recursive ownership directory" in uninstall.stdout + uninstall.stderr
+    assert (
+        "reparse point inside recursive ownership directory"
+        in uninstall.stdout + uninstall.stderr
+    )
     assert sentinel.read_text(encoding="utf-8") == "preserve\n"
     assert (skills / "ads" / "SKILL.md").is_file()
     assert manifest_path.is_file()
@@ -1047,8 +1133,13 @@ def test_windows_installer_managed_repeat_rejects_descendant_junction(tmp_path):
     (venv / "Lib").mkdir(parents=True)
     junction = subprocess.run(
         [
-            "cmd.exe", "/d", "/c", "mklink", "/J",
-            str(venv / "Lib" / "site-packages"), str(outside),
+            "cmd.exe",
+            "/d",
+            "/c",
+            "mklink",
+            "/J",
+            str(venv / "Lib" / "site-packages"),
+            str(outside),
         ],
         check=False,
         capture_output=True,
@@ -1060,12 +1151,13 @@ def test_windows_installer_managed_repeat_rejects_descendant_junction(tmp_path):
     manifest["recursive_directories"].append(str(venv.resolve()))
     manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
 
-    repeat = _powershell_install(
-        skills, agents, no_deps=False, executable=executable
-    )
+    repeat = _powershell_install(skills, agents, no_deps=False, executable=executable)
 
     assert repeat.returncode != 0
-    assert "reparse point inside managed recursive directory" in repeat.stdout + repeat.stderr
+    assert (
+        "reparse point inside managed recursive directory"
+        in repeat.stdout + repeat.stderr
+    )
     assert sentinel.read_text(encoding="utf-8") == "preserve\n"
     assert (skills / "ads" / "SKILL.md").is_file()
     assert manifest_path.is_file()
@@ -1089,9 +1181,7 @@ def test_windows_powershell_51_parse_security_and_round_trip(tmp_path):
     unowned = blocked_skills / "ads" / "SKILL.md"
     unowned.parent.mkdir(parents=True)
     unowned.write_text("user-owned\n", encoding="utf-8")
-    blocked = _powershell_install(
-        blocked_skills, blocked_agents, executable=executable
-    )
+    blocked = _powershell_install(blocked_skills, blocked_agents, executable=executable)
     assert blocked.returncode != 0
     assert unowned.read_text(encoding="utf-8") == "user-owned\n"
     assert not blocked_agents.exists()
@@ -1138,4 +1228,3 @@ def test_powershell_repeat_removes_dropped_owned_file_before_uninstall(tmp_path)
     )
     assert str(installed_legacy.resolve()) not in manifest["files"]
     assert not installed_legacy.exists()
-

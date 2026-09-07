@@ -53,7 +53,11 @@ PACKAGE_FILES = {
 PACKAGE_EXCLUDED_PREFIXES = ("ads/research-sources/",)
 SENSITIVE_FILENAMES = {
     ".env",
+    "claude_fable_full_report.md",
     "credentials.json",
+    "fable_audit_output.md",
+    "fable_audit_prompt.txt",
+    "fable_full_report.md",
     "service-account.json",
     "service_account.json",
 }
@@ -83,7 +87,9 @@ SECRET_PATTERNS = {
     "Google API key": re.compile(r"\bAIza[A-Za-z0-9_-]{30,}\b"),
     "OpenAI API key": re.compile(r"\bsk-(?:proj-)?[A-Za-z0-9_-]{20,}\b"),
     "Slack token": re.compile(r"\bxox[baprs]-[A-Za-z0-9-]{20,}\b"),
-    "JWT": re.compile(r"\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b"),
+    "JWT": re.compile(
+        r"\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b"
+    ),
 }
 PRIVATE_PATH_PATTERNS = {
     "Unix home path": re.compile(r"(?<![A-Za-z0-9])(?:/var)?/home/[A-Za-z0-9._-]+/"),
@@ -92,9 +98,27 @@ PRIVATE_PATH_PATTERNS = {
     "personal tilde path": re.compile(
         r"(?i)(?<![A-Za-z0-9])~/(?:Desktop|Documents|Downloads|Dropbox|Music|OneDrive|Pictures|Videos)/"
     ),
-    "private Fable corpus path": re.compile(r"(?i)(?:/|\\)Desktop[/\\]Fable 5 Brain(?:/|\\)"),
+    "private Fable corpus path": re.compile(
+        r"(?i)(?:/|\\)Desktop[/\\]Fable 5 Brain(?:/|\\)"
+    ),
     "private Brainstein vault path": re.compile(
         r"(?i)(?:/|\\)Desktop[/\\]Vaults[/\\]Brainstein(?:/|\\)"
+    ),
+}
+
+# Personal contact surfaces: any click-to-chat deep link exposes a personal
+# phone number and is never public-safe (incident beads claude-ads-bph).
+PRIVATE_CONTENT_PATTERNS = {
+    "WhatsApp deep link": re.compile(r"(?i)\bwa\.me/\d{7,15}\b"),
+    "WhatsApp phone parameter": re.compile(
+        r"(?i)api\.whatsapp\.com/send\?(?:[^>\s]*&)?phone=\d+"
+    ),
+    # Standalone NANP E.164 digits (1 + area + exchange + line) catch bare
+    # constants like a hardcoded personal number used as a validation value.
+    # Alphanumeric boundaries exclude sha256-digest substring false
+    # positives while keeping prose/slash-delimited constants detectable.
+    "bare E.164 phone number": re.compile(
+        r"(?<![A-Za-z0-9])1[2-9]\d{2}[2-9]\d{6}(?![A-Za-z0-9])"
     ),
 }
 WINDOWS_RESERVED_NAMES = {
@@ -112,9 +136,15 @@ ZIP_TIMESTAMP = (1980, 1, 1, 0, 0, 0)
 # notice review. The inventory digest is filled from the reviewed canonical
 # document; keeping it in executable verifier code makes self-consistent
 # archive/manifest/SBOM/checksum forgery fail closed.
-EXPECTED_DEPENDENCY_INVENTORY_SHA256 = "96068e41790113e03b4ed2f5fbf142af63dec2ea27e998264b9ffa1b455d48bb"
-EXPECTED_THIRD_PARTY_NOTICES_SHA256 = "b90c38b4cce60c06c0090be31ee721d3482640923d9ff6f3c711c047317746d0"
-EXPECTED_EXTERNAL_RUNTIME_DEPENDENCIES_SHA256 = "c5962746f3a49570c810525c5a8557a3884e64e3b764476ff18cb65741853bc2"
+EXPECTED_DEPENDENCY_INVENTORY_SHA256 = (
+    "96068e41790113e03b4ed2f5fbf142af63dec2ea27e998264b9ffa1b455d48bb"
+)
+EXPECTED_THIRD_PARTY_NOTICES_SHA256 = (
+    "b90c38b4cce60c06c0090be31ee721d3482640923d9ff6f3c711c047317746d0"
+)
+EXPECTED_EXTERNAL_RUNTIME_DEPENDENCIES_SHA256 = (
+    "c5962746f3a49570c810525c5a8557a3884e64e3b764476ff18cb65741853bc2"
+)
 INVENTORY_RESOLVED_AT = "2026-07-11T00:00:00Z"
 INVENTORY_SOURCE_DATE_EPOCH = 1783728000
 INVENTORY_PYTHON_REQUIRES = ">=3.11,<3.13"
@@ -131,26 +161,47 @@ INVENTORY_SUBJECT_BINDING = (
 )
 
 REVIEWED_LICENSE_EXPRESSIONS = {
-    "brotli": "MIT", "certifi": "MPL-2.0", "cffi": "MIT-0",
-    "charset-normalizer": "MIT", "colorama": "BSD-3-Clause",
-    "contourpy": "BSD-3-Clause", "cryptography": "Apache-2.0 OR BSD-3-Clause",
-    "cssselect2": "BSD-3-Clause", "cycler": "BSD-3-Clause", "fonttools": "MIT",
-    "greenlet": "MIT AND Python-2.0", "idna": "BSD-3-Clause",
-    "iniconfig": "MIT", "kiwisolver": "BSD-3-Clause",
+    "brotli": "MIT",
+    "certifi": "MPL-2.0",
+    "cffi": "MIT-0",
+    "charset-normalizer": "MIT",
+    "colorama": "BSD-3-Clause",
+    "contourpy": "BSD-3-Clause",
+    "cryptography": "Apache-2.0 OR BSD-3-Clause",
+    "cssselect2": "BSD-3-Clause",
+    "cycler": "BSD-3-Clause",
+    "fonttools": "MIT",
+    "greenlet": "MIT AND Python-2.0",
+    "idna": "BSD-3-Clause",
+    "iniconfig": "MIT",
+    "kiwisolver": "BSD-3-Clause",
     "matplotlib": "LicenseRef-Matplotlib-1.3",
     "numpy": "BSD-3-Clause AND 0BSD AND MIT AND Zlib AND CC0-1.0",
-    "packaging": "Apache-2.0 OR BSD-2-Clause", "pillow": "MIT-CMU",
-    "playwright": "Apache-2.0", "pluggy": "MIT", "pycparser": "BSD-3-Clause",
-    "pydyf": "BSD-3-Clause", "pyee": "MIT", "pygments": "BSD-2-Clause",
+    "packaging": "Apache-2.0 OR BSD-2-Clause",
+    "pillow": "MIT-CMU",
+    "playwright": "Apache-2.0",
+    "pluggy": "MIT",
+    "pycparser": "BSD-3-Clause",
+    "pydyf": "BSD-3-Clause",
+    "pyee": "MIT",
+    "pygments": "BSD-2-Clause",
     "pyparsing": "MIT",
     "pyphen": "GPL-2.0-or-later OR LGPL-2.1-or-later OR MPL-1.1",
-    "pytest": "MIT", "python-dateutil": "Apache-2.0 OR BSD-3-Clause",
-    "pyyaml": "MIT", "reportlab": "BSD-3-Clause", "requests": "Apache-2.0",
-    "six": "MIT", "tinycss2": "BSD-3-Clause", "tinyhtml5": "MIT",
-    "typing-extensions": "PSF-2.0", "urllib3": "MIT",
-    "weasyprint": "BSD-3-Clause", "webencodings": "BSD-3-Clause",
+    "pytest": "MIT",
+    "python-dateutil": "Apache-2.0 OR BSD-3-Clause",
+    "pyyaml": "MIT",
+    "reportlab": "BSD-3-Clause",
+    "requests": "Apache-2.0",
+    "six": "MIT",
+    "tinycss2": "BSD-3-Clause",
+    "tinyhtml5": "MIT",
+    "typing-extensions": "PSF-2.0",
+    "urllib3": "MIT",
+    "weasyprint": "BSD-3-Clause",
+    "webencodings": "BSD-3-Clause",
     "zopfli": "Apache-2.0",
 }
+
 
 class ReleaseError(RuntimeError):
     """A release gate failed."""
@@ -169,7 +220,11 @@ def _load_local_module(root: Path, relative: str, module_name: str):
 
 def _git(root: Path, *args: str) -> bytes:
     result = subprocess.run(
-        ["git", *args], cwd=root, check=False, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+        ["git", *args],
+        cwd=root,
+        check=False,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
     )
     if result.returncode:
         message = result.stderr.decode("utf-8", errors="replace").strip()
@@ -188,21 +243,33 @@ def package_files(paths: list[str]) -> list[str]:
     return [
         path
         for path in paths
-        if (path in PACKAGE_FILES or any(path.startswith(prefix) for prefix in PACKAGE_PREFIXES))
+        if (
+            path in PACKAGE_FILES
+            or any(path.startswith(prefix) for prefix in PACKAGE_PREFIXES)
+        )
         and not any(path.startswith(prefix) for prefix in PACKAGE_EXCLUDED_PREFIXES)
     ]
 
 
 def _assert_clean_head_release_subject(root: Path) -> list[str]:
-    status = _git(root, "status", "--porcelain=v1", "--untracked-files=all").decode("utf-8")
+    status = _git(root, "status", "--porcelain=v1", "--untracked-files=all").decode(
+        "utf-8"
+    )
     if status:
         raise ReleaseError("release packaging requires a clean index and worktree")
-    head_paths = _git(root, "ls-tree", "-r", "--name-only", "HEAD").decode("utf-8").splitlines()
+    head_paths = (
+        _git(root, "ls-tree", "-r", "--name-only", "HEAD").decode("utf-8").splitlines()
+    )
     selected = package_files(sorted(head_paths))
     for relative in selected:
         head_data = _git(root, "show", f"HEAD:{relative}")
-        if not (root / relative).is_file() or (root / relative).read_bytes() != head_data:
-            raise ReleaseError(f"release input differs from HEAD-tracked content: {relative}")
+        if (
+            not (root / relative).is_file()
+            or (root / relative).read_bytes() != head_data
+        ):
+            raise ReleaseError(
+                f"release input differs from HEAD-tracked content: {relative}"
+            )
     return selected
 
 
@@ -242,8 +309,12 @@ def _read_text(path: Path) -> str | None:
 def _parse_yaml(text: str, path: str) -> object:
     try:
         import yaml
-    except ImportError as exc:  # pragma: no cover - exercised in dependency-free installs
-        raise ReleaseError("PyYAML is required for YAML and frontmatter audits") from exc
+    except (
+        ImportError
+    ) as exc:  # pragma: no cover - exercised in dependency-free installs
+        raise ReleaseError(
+            "PyYAML is required for YAML and frontmatter audits"
+        ) from exc
     try:
         return yaml.safe_load(text)
     except yaml.YAMLError as exc:
@@ -255,7 +326,9 @@ def _frontmatter(text: str, path: str) -> dict[str, object]:
     if not lines or lines[0].strip() != "---":
         raise ReleaseError(f"missing YAML frontmatter in {path}")
     try:
-        end = next(index for index, line in enumerate(lines[1:], 1) if line.strip() == "---")
+        end = next(
+            index for index, line in enumerate(lines[1:], 1) if line.strip() == "---"
+        )
     except StopIteration as exc:
         raise ReleaseError(f"unterminated YAML frontmatter in {path}") from exc
     value = _parse_yaml("\n".join(lines[1:end]), path)
@@ -273,7 +346,11 @@ def _audit_manifest_consistency(root: Path, tracked: set[str]) -> list[str]:
     plugin = json.loads((root / plugin_path).read_text(encoding="utf-8"))
     marketplace = json.loads((root / marketplace_path).read_text(encoding="utf-8"))
     entries = marketplace.get("plugins") if isinstance(marketplace, dict) else None
-    if not isinstance(entries, list) or len(entries) != 1 or not isinstance(entries[0], dict):
+    if (
+        not isinstance(entries, list)
+        or len(entries) != 1
+        or not isinstance(entries[0], dict)
+    ):
         return ["marketplace manifest must contain exactly one plugin object"]
     entry = entries[0]
     for field in ("name", "version", "license", "repository"):
@@ -303,12 +380,19 @@ def audit_repository(root: Path) -> list[str]:
             errors.append(f"{relative}: {issue}")
         collision = folded.setdefault(relative.casefold(), relative)
         if collision != relative:
-            errors.append(f"case-insensitive path collision: {collision!r} and {relative!r}")
+            errors.append(
+                f"case-insensitive path collision: {collision!r} and {relative!r}"
+            )
 
         filename = PurePosixPath(relative).name.casefold()
         if filename in SENSITIVE_FILENAMES or filename.startswith(".env."):
             errors.append(f"sensitive filename must not be tracked: {relative}")
-        if PurePosixPath(relative).suffix.casefold() in {".key", ".p12", ".pfx", ".pem"}:
+        if PurePosixPath(relative).suffix.casefold() in {
+            ".key",
+            ".p12",
+            ".pfx",
+            ".pem",
+        }:
             errors.append(f"credential-like file must not be tracked: {relative}")
 
         path = root / relative
@@ -349,11 +433,15 @@ def audit_repository(root: Path) -> list[str]:
                         f"{relative}: frontmatter name {name!r} must equal {expected_name!r}"
                     )
                 if not isinstance(description, str) or not description.strip():
-                    errors.append(f"{relative}: frontmatter description must be a non-empty string")
+                    errors.append(
+                        f"{relative}: frontmatter description must be a non-empty string"
+                    )
                 if isinstance(name, str):
                     previous = skill_names.setdefault(name, relative)
                     if previous != relative:
-                        errors.append(f"duplicate skill name {name!r}: {previous} and {relative}")
+                        errors.append(
+                            f"duplicate skill name {name!r}: {previous} and {relative}"
+                        )
 
         for label, pattern in SECRET_PATTERNS.items():
             if pattern.search(text):
@@ -361,12 +449,20 @@ def audit_repository(root: Path) -> list[str]:
         for label, pattern in PRIVATE_PATH_PATTERNS.items():
             if pattern.search(text):
                 errors.append(f"{relative}: contains {label}")
+        for label, pattern in PRIVATE_CONTENT_PATTERNS.items():
+            if pattern.search(text):
+                errors.append(f"{relative}: contains {label}")
 
     errors.extend(_audit_manifest_consistency(root, set(tracked)))
     selected = package_files(tracked)
     if not selected:
         errors.append("public-safe package selection is empty")
-    for required in ("LICENSE", "README.md", ".claude-plugin/plugin.json", "ads/SKILL.md"):
+    for required in (
+        "LICENSE",
+        "README.md",
+        ".claude-plugin/plugin.json",
+        "ads/SKILL.md",
+    ):
         if required not in selected:
             errors.append(f"required release file is missing or untracked: {required}")
     return sorted(set(errors))
@@ -377,7 +473,9 @@ def _sha256(data: bytes) -> str:
 
 
 def _canonical_json_sha256(value: object) -> str:
-    return _sha256(json.dumps(value, sort_keys=True, separators=(",", ":")).encode("utf-8"))
+    return _sha256(
+        json.dumps(value, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    )
 
 
 def _canonical_package_name(value: str) -> str:
@@ -389,12 +487,18 @@ def _packaging_types():
         from packaging.markers import Marker
         from packaging.requirements import Requirement
         from packaging.version import Version
-    except ImportError as exc:  # pragma: no cover - release environments install pytest/packaging
-        raise ReleaseError("packaging is required to validate the dependency inventory") from exc
+    except (
+        ImportError
+    ) as exc:  # pragma: no cover - release environments install pytest/packaging
+        raise ReleaseError(
+            "packaging is required to validate the dependency inventory"
+        ) from exc
     return Marker, Requirement, Version
 
 
-def _wheel_is_compatible(filename: str, target: dict[str, object], name: str, version: str) -> None:
+def _wheel_is_compatible(
+    filename: str, target: dict[str, object], name: str, version: str
+) -> None:
     """Validate distribution identity and the complete wheel tag set for one target."""
     try:
         from packaging.utils import canonicalize_name, parse_wheel_filename
@@ -403,7 +507,9 @@ def _wheel_is_compatible(filename: str, target: dict[str, object], name: str, ve
     try:
         distribution, wheel_version, _build, tags = parse_wheel_filename(filename)
     except Exception as exc:
-        raise ReleaseError(f"invalid wheel filename for {target['id']}/{name}: {filename}") from exc
+        raise ReleaseError(
+            f"invalid wheel filename for {target['id']}/{name}: {filename}"
+        ) from exc
     if canonicalize_name(distribution) != name or str(wheel_version) != version:
         raise ReleaseError(f"wheel identity mismatch for {target['id']}/{name}")
 
@@ -411,7 +517,9 @@ def _wheel_is_compatible(filename: str, target: dict[str, object], name: str, ve
     # universal wheels advertise py2.py3, which expands to include that tag.
     if all(tag.abi == "none" and tag.platform == "any" for tag in tags):
         if not any(tag.interpreter == "py3" for tag in tags):
-            raise ReleaseError(f"pure wheel is not py3-compatible: {target['id']}/{name}")
+            raise ReleaseError(
+                f"pure wheel is not py3-compatible: {target['id']}/{name}"
+            )
         return
     if any(tag.platform == "any" for tag in tags):
         raise ReleaseError(f"wheel mixes pure and platform tags: {target['id']}/{name}")
@@ -421,11 +529,15 @@ def _wheel_is_compatible(filename: str, target: dict[str, object], name: str, ve
         interpreter = tag.interpreter
         if tag.abi == "none":
             if interpreter != "py3":
-                raise ReleaseError(f"platform wheel is not py3-compatible: {target['id']}/{name}")
+                raise ReleaseError(
+                    f"platform wheel is not py3-compatible: {target['id']}/{name}"
+                )
         elif tag.abi == "abi3":
             match = re.fullmatch(r"cp3(\d+)", interpreter)
             if not match or int(match.group(1)) > target_minor:
-                raise ReleaseError(f"wheel ABI is incompatible with {target['id']}/{name}")
+                raise ReleaseError(
+                    f"wheel ABI is incompatible with {target['id']}/{name}"
+                )
         elif interpreter != target["abi"] or tag.abi != target["abi"]:
             raise ReleaseError(f"wheel ABI is incompatible with {target['id']}/{name}")
 
@@ -435,7 +547,9 @@ def _wheel_is_compatible(filename: str, target: dict[str, object], name: str, ve
         compatible_baseline = False
         for platform_tag in platforms:
             if "musllinux" in platform_tag or not platform_tag.endswith("_x86_64"):
-                raise ReleaseError(f"wheel platform is incompatible with {target['id']}/{name}")
+                raise ReleaseError(
+                    f"wheel platform is incompatible with {target['id']}/{name}"
+                )
             if platform_tag == "manylinux1_x86_64":
                 compatible_baseline = True
             elif platform_tag == "manylinux2010_x86_64":
@@ -445,22 +559,34 @@ def _wheel_is_compatible(filename: str, target: dict[str, object], name: str, ve
             else:
                 match = re.fullmatch(r"manylinux_(\d+)_(\d+)_x86_64", platform_tag)
                 if not match:
-                    raise ReleaseError(f"wheel platform is incompatible with {target['id']}/{name}")
+                    raise ReleaseError(
+                        f"wheel platform is incompatible with {target['id']}/{name}"
+                    )
                 if (int(match.group(1)), int(match.group(2))) <= (2, 17):
                     compatible_baseline = True
         if not compatible_baseline:
-            raise ReleaseError(f"wheel requires a newer glibc baseline: {target['id']}/{name}")
+            raise ReleaseError(
+                f"wheel requires a newer glibc baseline: {target['id']}/{name}"
+            )
     elif os_name == "macos":
         expected_arches = {"universal2", "arm64" if arch == "arm64" else "x86_64"}
         for platform_tag in platforms:
-            match = re.fullmatch(r"macosx_(\d+)_(\d+)_(arm64|x86_64|universal2)", platform_tag)
+            match = re.fullmatch(
+                r"macosx_(\d+)_(\d+)_(arm64|x86_64|universal2)", platform_tag
+            )
             if not match or match.group(3) not in expected_arches:
-                raise ReleaseError(f"wheel platform is incompatible with {target['id']}/{name}")
+                raise ReleaseError(
+                    f"wheel platform is incompatible with {target['id']}/{name}"
+                )
             if (int(match.group(1)), int(match.group(2))) > (11, 0):
-                raise ReleaseError(f"wheel requires a newer macOS baseline: {target['id']}/{name}")
+                raise ReleaseError(
+                    f"wheel requires a newer macOS baseline: {target['id']}/{name}"
+                )
     elif os_name == "windows":
         if platforms != {"win_amd64"}:
-            raise ReleaseError(f"wheel platform is incompatible with {target['id']}/{name}")
+            raise ReleaseError(
+                f"wheel platform is incompatible with {target['id']}/{name}"
+            )
     else:  # pragma: no cover - target matrix validation rejects this first
         raise ReleaseError(f"unknown wheel target OS: {os_name}")
 
@@ -471,11 +597,23 @@ def _load_target_evidence(root: Path, target_id: str) -> tuple[dict[str, object]
         data = path.read_bytes()
         evidence = json.loads(data)
     except (OSError, json.JSONDecodeError) as exc:
-        raise ReleaseError(f"cannot load target resolver evidence for {target_id}: {exc}") from exc
+        raise ReleaseError(
+            f"cannot load target resolver evidence for {target_id}: {exc}"
+        ) from exc
     expected_fields = {
-        "schema_version", "evidence_id", "resolved_at", "source_date_epoch",
-        "source_report_sha256", "source_pip_version", "source_environment", "normalization_notes",
-        "evidence_class", "environment", "resolver", "platform_policy", "components",
+        "schema_version",
+        "evidence_id",
+        "resolved_at",
+        "source_date_epoch",
+        "source_report_sha256",
+        "source_pip_version",
+        "source_environment",
+        "normalization_notes",
+        "evidence_class",
+        "environment",
+        "resolver",
+        "platform_policy",
+        "components",
     }
     if not isinstance(evidence, dict) or set(evidence) != expected_fields:
         raise ReleaseError(f"target resolver evidence fields mismatch: {target_id}")
@@ -484,11 +622,17 @@ def _load_target_evidence(root: Path, target_id: str) -> tuple[dict[str, object]
         or evidence.get("evidence_id") != target_id
         or evidence.get("resolved_at") != INVENTORY_RESOLVED_AT
         or evidence.get("source_date_epoch") != INVENTORY_SOURCE_DATE_EPOCH
-        or evidence.get("evidence_class") != "cross-target-pip-resolution-requiring-native-ci-confirmation"
+        or evidence.get("evidence_class")
+        != "cross-target-pip-resolution-requiring-native-ci-confirmation"
         or evidence.get("resolver") != "pip / PyPI"
-        or evidence.get("platform_policy") != "Exact lowest-common lock with target-selected PyPI wheels"
-        or not re.fullmatch(r"[0-9a-f]{64}", str(evidence.get("source_report_sha256", "")))
-        or not re.fullmatch(r"\d+(?:\.\d+){1,3}", str(evidence.get("source_pip_version", "")))
+        or evidence.get("platform_policy")
+        != "Exact lowest-common lock with target-selected PyPI wheels"
+        or not re.fullmatch(
+            r"[0-9a-f]{64}", str(evidence.get("source_report_sha256", ""))
+        )
+        or not re.fullmatch(
+            r"\d+(?:\.\d+){1,3}", str(evidence.get("source_pip_version", ""))
+        )
         or not isinstance(evidence.get("source_environment"), dict)
         or not isinstance(evidence.get("normalization_notes"), list)
     ):
@@ -499,7 +643,10 @@ def _load_target_evidence(root: Path, target_id: str) -> tuple[dict[str, object]
 def _declared_requirements(root: Path) -> list[dict[str, str]]:
     _, Requirement, _ = _packaging_types()
     declared: list[dict[str, str]] = []
-    for source, profile in (("requirements.txt", "runtime"), ("requirements-dev.txt", "development")):
+    for source, profile in (
+        ("requirements.txt", "runtime"),
+        ("requirements-dev.txt", "development"),
+    ):
         for raw in (root / source).read_text(encoding="utf-8").splitlines():
             value = raw.split("#", 1)[0].strip()
             if not value or value.startswith("-"):
@@ -507,17 +654,44 @@ def _declared_requirements(root: Path) -> list[dict[str, str]]:
             try:
                 requirement = Requirement(value)
             except Exception as exc:
-                raise ReleaseError(f"invalid direct requirement in {source}: {value}") from exc
-            declared.append({"name": _canonical_package_name(requirement.name), "requirement": value, "source": source, "profile": profile})
-    project = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8")).get("project", {})
+                raise ReleaseError(
+                    f"invalid direct requirement in {source}: {value}"
+                ) from exc
+            declared.append(
+                {
+                    "name": _canonical_package_name(requirement.name),
+                    "requirement": value,
+                    "source": source,
+                    "profile": profile,
+                }
+            )
+    project = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8")).get(
+        "project", {}
+    )
     for value in project.get("dependencies", []):
         requirement = Requirement(value)
-        declared.append({"name": _canonical_package_name(requirement.name), "requirement": value, "source": "pyproject.toml#project.dependencies", "profile": "runtime"})
+        declared.append(
+            {
+                "name": _canonical_package_name(requirement.name),
+                "requirement": value,
+                "source": "pyproject.toml#project.dependencies",
+                "profile": "runtime",
+            }
+        )
     for group, values in sorted(project.get("optional-dependencies", {}).items()):
         for value in values:
             requirement = Requirement(value)
-            declared.append({"name": _canonical_package_name(requirement.name), "requirement": value, "source": f"pyproject.toml#project.optional-dependencies.{group}", "profile": "runtime"})
-    return sorted(declared, key=lambda item: (item["profile"], item["name"], item["source"]))
+            declared.append(
+                {
+                    "name": _canonical_package_name(requirement.name),
+                    "requirement": value,
+                    "source": f"pyproject.toml#project.optional-dependencies.{group}",
+                    "profile": "runtime",
+                }
+            )
+    return sorted(
+        declared, key=lambda item: (item["profile"], item["name"], item["source"])
+    )
 
 
 def _parse_hash_lock(path: Path) -> dict[str, dict[str, object]]:
@@ -529,18 +703,28 @@ def _parse_hash_lock(path: Path) -> dict[str, dict[str, object]]:
         if not value or value.startswith("#"):
             continue
         hashes = re.findall(r"--hash=sha256:([0-9a-f]{64})(?:\s|$)", value)
-        requirement_text = re.sub(r"\s*--hash=sha256:[0-9a-f]{64}(?:\s|$)", " ", value).strip()
+        requirement_text = re.sub(
+            r"\s*--hash=sha256:[0-9a-f]{64}(?:\s|$)", " ", value
+        ).strip()
         if "--hash" in requirement_text:
             raise ReleaseError(f"invalid lock hash in {path.name}")
         requirement = Requirement(requirement_text)
         name = _canonical_package_name(requirement.name)
         specs = list(requirement.specifier)
-        if len(specs) != 1 or specs[0].operator != "==" or specs[0].version.endswith(".*"):
+        if (
+            len(specs) != 1
+            or specs[0].operator != "=="
+            or specs[0].version.endswith(".*")
+        ):
             raise ReleaseError(f"{path.name} must use exact == pins: {requirement}")
         Version(specs[0].version)
         if name in entries or not hashes or len(hashes) != len(set(hashes)):
             raise ReleaseError(f"duplicate component or hash in {path.name}: {name}")
-        entries[name] = {"version": specs[0].version, "hashes": sorted(hashes), "marker": str(requirement.marker) if requirement.marker else None}
+        entries[name] = {
+            "version": specs[0].version,
+            "hashes": sorted(hashes),
+            "marker": str(requirement.marker) if requirement.marker else None,
+        }
     if not entries:
         raise ReleaseError(f"{path.name} is empty")
     return entries
@@ -552,25 +736,48 @@ def _load_dependency_inventory(root: Path) -> dict[str, object]:
         inventory = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         raise ReleaseError(f"cannot load dependency inventory: {exc}") from exc
-    required = {"schema_version", "inventory_id", "resolved_at", "resolution", "manifests", "direct_requirements", "targets", "component_catalog", "dependency_edges", "bundled_notices"}
+    required = {
+        "schema_version",
+        "inventory_id",
+        "resolved_at",
+        "resolution",
+        "manifests",
+        "direct_requirements",
+        "targets",
+        "component_catalog",
+        "dependency_edges",
+        "bundled_notices",
+    }
     if not isinstance(inventory, dict) or set(inventory) != required:
         raise ReleaseError("dependency inventory fields are incomplete or unknown")
-    if inventory.get("schema_version") != "1.0.0" or inventory.get("inventory_id") != "claude-ads-python-dependencies":
+    if (
+        inventory.get("schema_version") != "1.0.0"
+        or inventory.get("inventory_id") != "claude-ads-python-dependencies"
+    ):
         raise ReleaseError("dependency inventory identity/version mismatch")
     resolution = inventory.get("resolution")
     if inventory.get("resolved_at") != INVENTORY_RESOLVED_AT:
         raise ReleaseError("dependency inventory resolution timestamp mismatch")
     try:
-        parsed_resolved_at = datetime.fromisoformat(INVENTORY_RESOLVED_AT.replace("Z", "+00:00"))
+        parsed_resolved_at = datetime.fromisoformat(
+            INVENTORY_RESOLVED_AT.replace("Z", "+00:00")
+        )
     except ValueError as exc:  # pragma: no cover - constant is reviewed
         raise ReleaseError("invalid verifier resolution timestamp") from exc
     if int(parsed_resolved_at.timestamp()) != INVENTORY_SOURCE_DATE_EPOCH:
         raise ReleaseError("dependency inventory source epoch policy mismatch")
     resolution = inventory.get("resolution")
     expected_resolution_keys = {
-        "index", "managed_lock_python_range", "supported_python_versions", "implementation",
-        "source_date_epoch", "policy", "reviewed_metadata_sha256",
-        "third_party_notices_sha256", "target_evidence_class", "subject_binding",
+        "index",
+        "managed_lock_python_range",
+        "supported_python_versions",
+        "implementation",
+        "source_date_epoch",
+        "policy",
+        "reviewed_metadata_sha256",
+        "third_party_notices_sha256",
+        "target_evidence_class",
+        "subject_binding",
     }
     if not isinstance(resolution, dict) or set(resolution) != expected_resolution_keys:
         raise ReleaseError("dependency inventory resolution metadata is incomplete")
@@ -582,25 +789,46 @@ def _load_dependency_inventory(root: Path) -> dict[str, object]:
         or resolution.get("source_date_epoch") != INVENTORY_SOURCE_DATE_EPOCH
         or resolution.get("policy") != INVENTORY_POLICY
         or resolution.get("subject_binding") != INVENTORY_SUBJECT_BINDING
-        or resolution.get("target_evidence_class") != "cross-target-pip-resolution-requiring-native-ci-confirmation"
+        or resolution.get("target_evidence_class")
+        != "cross-target-pip-resolution-requiring-native-ci-confirmation"
     ):
         raise ReleaseError("dependency inventory resolution target policy mismatch")
     notices_path = root / "THIRD_PARTY_NOTICES.md"
     if (
         not notices_path.is_file()
         or _sha256(notices_path.read_bytes()) != EXPECTED_THIRD_PARTY_NOTICES_SHA256
-        or resolution.get("third_party_notices_sha256") != EXPECTED_THIRD_PARTY_NOTICES_SHA256
-        or not re.fullmatch(r"[0-9a-f]{64}", str(resolution.get("reviewed_metadata_sha256", "")))
+        or resolution.get("third_party_notices_sha256")
+        != EXPECTED_THIRD_PARTY_NOTICES_SHA256
+        or not re.fullmatch(
+            r"[0-9a-f]{64}", str(resolution.get("reviewed_metadata_sha256", ""))
+        )
     ):
         raise ReleaseError("dependency inventory resolution evidence is incomplete")
     manifests = inventory["manifests"]
-    expected_manifest_paths = {"requirements.txt", "requirements-dev.txt", "requirements.lock", "requirements-dev.lock", "pyproject.toml"}
-    if not isinstance(manifests, list) or {item.get("path") for item in manifests if isinstance(item, dict)} != expected_manifest_paths or len(manifests) != len(expected_manifest_paths):
-        raise ReleaseError("dependency inventory manifest coverage is incomplete or duplicated")
+    expected_manifest_paths = {
+        "requirements.txt",
+        "requirements-dev.txt",
+        "requirements.lock",
+        "requirements-dev.lock",
+        "pyproject.toml",
+    }
+    if (
+        not isinstance(manifests, list)
+        or {item.get("path") for item in manifests if isinstance(item, dict)}
+        != expected_manifest_paths
+        or len(manifests) != len(expected_manifest_paths)
+    ):
+        raise ReleaseError(
+            "dependency inventory manifest coverage is incomplete or duplicated"
+        )
     for item in manifests:
         manifest_path = root / item["path"]
-        if not manifest_path.is_file() or item.get("sha256") != _sha256(manifest_path.read_bytes()):
-            raise ReleaseError(f"dependency inventory manifest hash mismatch: {item.get('path')}")
+        if not manifest_path.is_file() or item.get("sha256") != _sha256(
+            manifest_path.read_bytes()
+        ):
+            raise ReleaseError(
+                f"dependency inventory manifest hash mismatch: {item.get('path')}"
+            )
 
     catalog: dict[tuple[str, str], dict[str, object]] = {}
     names_to_version: dict[str, str] = {}
@@ -608,11 +836,20 @@ def _load_dependency_inventory(root: Path) -> dict[str, object]:
         if not isinstance(component, dict):
             raise ReleaseError("dependency catalog entries must be objects")
         name, component_version = component.get("name"), component.get("version")
-        if not isinstance(name, str) or name != _canonical_package_name(name) or not isinstance(component_version, str) or not component_version.strip():
+        if (
+            not isinstance(name, str)
+            or name != _canonical_package_name(name)
+            or not isinstance(component_version, str)
+            or not component_version.strip()
+        ):
             raise ReleaseError("dependency catalog contains an invalid name/version")
         key = (name, component_version)
-        if key in catalog or (name in names_to_version and names_to_version[name] != component_version):
-            raise ReleaseError(f"duplicate or multi-version dependency component: {name}")
+        if key in catalog or (
+            name in names_to_version and names_to_version[name] != component_version
+        ):
+            raise ReleaseError(
+                f"duplicate or multi-version dependency component: {name}"
+            )
         names_to_version[name] = component_version
         license_expression = component.get("license_expression")
         if license_expression != REVIEWED_LICENSE_EXPRESSIONS.get(name):
@@ -620,13 +857,29 @@ def _load_dependency_inventory(root: Path) -> dict[str, object]:
         if component.get("purl") != f"pkg:pypi/{name}@{component_version}":
             raise ReleaseError(f"dependency component purl mismatch: {name}")
         provenance = component.get("license_provenance")
-        if not isinstance(provenance, dict) or set(provenance) != {"kind", "metadata_url", "evidence_sha256"} or provenance.get("kind") != "publisher-metadata-review" or provenance.get("metadata_url") != f"https://pypi.org/pypi/{name}/{component_version}/json" or not re.fullmatch(r"[0-9a-f]{64}", str(provenance.get("evidence_sha256", ""))):
-            raise ReleaseError(f"dependency component license provenance mismatch: {name}")
+        if (
+            not isinstance(provenance, dict)
+            or set(provenance) != {"kind", "metadata_url", "evidence_sha256"}
+            or provenance.get("kind") != "publisher-metadata-review"
+            or provenance.get("metadata_url")
+            != f"https://pypi.org/pypi/{name}/{component_version}/json"
+            or not re.fullmatch(
+                r"[0-9a-f]{64}", str(provenance.get("evidence_sha256", ""))
+            )
+        ):
+            raise ReleaseError(
+                f"dependency component license provenance mismatch: {name}"
+            )
         catalog[key] = component
     if set(REVIEWED_LICENSE_EXPRESSIONS) != set(names_to_version):
         raise ReleaseError("reviewed license component coverage mismatch")
-    reviewed_metadata = {name: catalog[(name, version)]["license_provenance"]["evidence_sha256"] for name, version in names_to_version.items()}
-    if resolution["reviewed_metadata_sha256"] != _canonical_json_sha256(reviewed_metadata):
+    reviewed_metadata = {
+        name: catalog[(name, version)]["license_provenance"]["evidence_sha256"]
+        for name, version in names_to_version.items()
+    }
+    if resolution["reviewed_metadata_sha256"] != _canonical_json_sha256(
+        reviewed_metadata
+    ):
         raise ReleaseError("reviewed publisher metadata binding mismatch")
 
     targets = inventory["targets"]
@@ -635,19 +888,32 @@ def _load_dependency_inventory(root: Path) -> dict[str, object]:
     expected_targets = {
         f"runtime-{platform}-{abi}": ("runtime", python, os_name, arch, abi, 33)
         for platform, os_name, arch in (
-            ("linux", "linux", "x86_64"), ("macos-arm", "macos", "arm64"),
-            ("macos-x86", "macos", "x86_64"), ("windows", "windows", "amd64"),
+            ("linux", "linux", "x86_64"),
+            ("macos-arm", "macos", "arm64"),
+            ("macos-x86", "macos", "x86_64"),
+            ("windows", "windows", "amd64"),
         )
         for abi, python in (("cp311", "3.11"), ("cp312", "3.12"))
     }
-    expected_targets.update({
-        f"development-{platform}-{abi}": ("development", python, os_name, arch, abi, 10 if os_name == "windows" else 9)
-        for platform, os_name, arch in (
-            ("linux", "linux", "x86_64"), ("macos-arm", "macos", "arm64"),
-            ("macos-x86", "macos", "x86_64"), ("windows", "windows", "amd64"),
-        )
-        for abi, python in (("cp311", "3.11"), ("cp312", "3.12"))
-    })
+    expected_targets.update(
+        {
+            f"development-{platform}-{abi}": (
+                "development",
+                python,
+                os_name,
+                arch,
+                abi,
+                10 if os_name == "windows" else 9,
+            )
+            for platform, os_name, arch in (
+                ("linux", "linux", "x86_64"),
+                ("macos-arm", "macos", "arm64"),
+                ("macos-x86", "macos", "x86_64"),
+                ("windows", "windows", "amd64"),
+            )
+            for abi, python in (("cp311", "3.11"), ("cp312", "3.12"))
+        }
+    )
     target_ids: set[str] = set()
     occurrence: dict[tuple[str, str], set[str]] = {key: set() for key in catalog}
     target_components: dict[str, dict[str, dict[str, object]]] = {}
@@ -658,35 +924,85 @@ def _load_dependency_inventory(root: Path) -> dict[str, object]:
             raise ReleaseError("dependency target IDs must be unique strings")
         target_ids.add(target_id)
         expected = expected_targets.get(target_id)
-        observed = (target.get("profile"), target.get("python_version"), target.get("os"), target.get("arch"), target.get("abi"), len(target.get("components", [])))
+        observed = (
+            target.get("profile"),
+            target.get("python_version"),
+            target.get("os"),
+            target.get("arch"),
+            target.get("abi"),
+            len(target.get("components", [])),
+        )
         if expected is None or observed != expected:
             raise ReleaseError(f"dependency target matrix mismatch: {target_id}")
-        if target.get("implementation") != "CPython" or target.get("resolver") != "pip / PyPI" or target.get("platform_policy") != "Exact lowest-common lock with target-selected PyPI wheels" or not re.fullmatch(r"[0-9a-f]{64}", str(target.get("resolution_evidence_sha256", ""))):
+        if (
+            target.get("implementation") != "CPython"
+            or target.get("resolver") != "pip / PyPI"
+            or target.get("platform_policy")
+            != "Exact lowest-common lock with target-selected PyPI wheels"
+            or not re.fullmatch(
+                r"[0-9a-f]{64}", str(target.get("resolution_evidence_sha256", ""))
+            )
+        ):
             raise ReleaseError(f"dependency target provenance mismatch: {target_id}")
         evidence, evidence_sha256 = _load_target_evidence(root, target_id)
         expected_environment = {
             key: target[key]
-            for key in ("profile", "python_version", "implementation", "os", "arch", "abi")
+            for key in (
+                "profile",
+                "python_version",
+                "implementation",
+                "os",
+                "arch",
+                "abi",
+            )
         }
-        if evidence_sha256 != target["resolution_evidence_sha256"] or evidence["environment"] != expected_environment:
-            raise ReleaseError(f"dependency target resolver evidence binding mismatch: {target_id}")
+        if (
+            evidence_sha256 != target["resolution_evidence_sha256"]
+            or evidence["environment"] != expected_environment
+        ):
+            raise ReleaseError(
+                f"dependency target resolver evidence binding mismatch: {target_id}"
+            )
         target_evidence[target_id] = evidence
         components: dict[str, dict[str, object]] = {}
         for component in target.get("components", []):
             name, component_version = component.get("name"), component.get("version")
             if name in components or (name, component_version) not in catalog:
-                raise ReleaseError(f"duplicate or unknown target component in {target_id}: {name}")
+                raise ReleaseError(
+                    f"duplicate or unknown target component in {target_id}: {name}"
+                )
             artifact = component.get("artifact")
-            if not isinstance(artifact, dict) or not re.fullmatch(r"[0-9a-f]{64}", str(artifact.get("sha256", ""))) or not str(artifact.get("url", "")).startswith("https://files.pythonhosted.org/"):
-                raise ReleaseError(f"target component lacks exact artifact evidence: {target_id}/{name}")
+            if (
+                not isinstance(artifact, dict)
+                or not re.fullmatch(r"[0-9a-f]{64}", str(artifact.get("sha256", "")))
+                or not str(artifact.get("url", "")).startswith(
+                    "https://files.pythonhosted.org/"
+                )
+            ):
+                raise ReleaseError(
+                    f"target component lacks exact artifact evidence: {target_id}/{name}"
+                )
             if artifact.get("filename") != str(artifact.get("url")).rsplit("/", 1)[-1]:
-                raise ReleaseError(f"target component artifact filename mismatch: {target_id}/{name}")
+                raise ReleaseError(
+                    f"target component artifact filename mismatch: {target_id}/{name}"
+                )
             parsed_url = urlsplit(str(artifact.get("url")))
-            if parsed_url.scheme != "https" or parsed_url.netloc != "files.pythonhosted.org" or parsed_url.query or parsed_url.fragment or unquote(PurePosixPath(parsed_url.path).name) != artifact.get("filename"):
-                raise ReleaseError(f"target component artifact URL binding mismatch: {target_id}/{name}")
+            if (
+                parsed_url.scheme != "https"
+                or parsed_url.netloc != "files.pythonhosted.org"
+                or parsed_url.query
+                or parsed_url.fragment
+                or unquote(PurePosixPath(parsed_url.path).name)
+                != artifact.get("filename")
+            ):
+                raise ReleaseError(
+                    f"target component artifact URL binding mismatch: {target_id}/{name}"
+                )
             _wheel_is_compatible(artifact["filename"], target, name, component_version)
             if component.get("purl") != f"pkg:pypi/{name}@{component_version}":
-                raise ReleaseError(f"target component purl mismatch: {target_id}/{name}")
+                raise ReleaseError(
+                    f"target component purl mismatch: {target_id}/{name}"
+                )
             components[name] = component
             occurrence[(name, component_version)].add(target_id)
         target_components[target_id] = components
@@ -701,50 +1017,105 @@ def _load_dependency_inventory(root: Path) -> dict[str, object]:
     inventory_declared = []
     for item in inventory["direct_requirements"]:
         requirement = Requirement(item["requirement"])
-        inventory_declared.append({"name": _canonical_package_name(requirement.name), "requirement": str(requirement), "source": item["source"], "profile": item["profile"]})
-    normalized_declared = [{**item, "requirement": str(Requirement(item["requirement"]))} for item in declared]
-    if sorted(inventory_declared, key=lambda item: (item["profile"], item["name"], item["source"])) != sorted(normalized_declared, key=lambda item: (item["profile"], item["name"], item["source"])):
+        inventory_declared.append(
+            {
+                "name": _canonical_package_name(requirement.name),
+                "requirement": str(requirement),
+                "source": item["source"],
+                "profile": item["profile"],
+            }
+        )
+    normalized_declared = [
+        {**item, "requirement": str(Requirement(item["requirement"]))}
+        for item in declared
+    ]
+    if sorted(
+        inventory_declared,
+        key=lambda item: (item["profile"], item["name"], item["source"]),
+    ) != sorted(
+        normalized_declared,
+        key=lambda item: (item["profile"], item["name"], item["source"]),
+    ):
         raise ReleaseError("dependency inventory direct requirement coverage mismatch")
     declared_names_by_profile = {
-        profile: {item["name"] for item in normalized_declared if item["profile"] == profile}
+        profile: {
+            item["name"] for item in normalized_declared if item["profile"] == profile
+        }
         for profile in ("runtime", "development")
     }
     for target in targets:
         profile = target["profile"]
         components = target_components[target["id"]]
-        observed_direct = {name for name, component in components.items() if component.get("direct") is True}
+        observed_direct = {
+            name
+            for name, component in components.items()
+            if component.get("direct") is True
+        }
         if observed_direct != declared_names_by_profile[profile] or any(
-            not isinstance(component.get("direct"), bool) for component in components.values()
+            not isinstance(component.get("direct"), bool)
+            for component in components.values()
         ):
-            raise ReleaseError(f"direct component flags mismatch declared requirements: {target['id']}")
+            raise ReleaseError(
+                f"direct component flags mismatch declared requirements: {target['id']}"
+            )
         for item in normalized_declared:
             if item["profile"] != profile:
                 continue
             component = components.get(item["name"])
-            if not component or not component.get("direct") or Version(component["version"]) not in Requirement(item["requirement"]).specifier:
-                raise ReleaseError(f"direct requirement is missing or constraint-mismatched in {target['id']}: {item['name']}")
+            if (
+                not component
+                or not component.get("direct")
+                or Version(component["version"])
+                not in Requirement(item["requirement"]).specifier
+            ):
+                raise ReleaseError(
+                    f"direct requirement is missing or constraint-mismatched in {target['id']}: {item['name']}"
+                )
     for target in targets:
         if target_evidence[target["id"]]["components"] != target["components"]:
-            raise ReleaseError(f"dependency target component evidence mismatch: {target['id']}")
+            raise ReleaseError(
+                f"dependency target component evidence mismatch: {target['id']}"
+            )
 
     runtime_lock = _parse_hash_lock(root / "requirements.lock")
     development_lock = _parse_hash_lock(root / "requirements-dev.lock")
     for profile, lock in (("runtime", runtime_lock), ("development", development_lock)):
         relevant = [target for target in targets if target["profile"] == profile]
-        expected_names = {name for target in relevant for name in target_components[target["id"]]}
+        expected_names = {
+            name for target in relevant for name in target_components[target["id"]]
+        }
         if set(lock) != expected_names:
             raise ReleaseError(f"{profile} lock component coverage mismatch")
         for name, locked in lock.items():
-            versions = {target_components[target["id"]][name]["version"] for target in relevant if name in target_components[target["id"]]}
-            hashes = {target_components[target["id"]][name]["artifact"]["sha256"] for target in relevant if name in target_components[target["id"]]}
+            versions = {
+                target_components[target["id"]][name]["version"]
+                for target in relevant
+                if name in target_components[target["id"]]
+            }
+            hashes = {
+                target_components[target["id"]][name]["artifact"]["sha256"]
+                for target in relevant
+                if name in target_components[target["id"]]
+            }
             if versions != {locked["version"]} or hashes != set(locked["hashes"]):
                 raise ReleaseError(f"{profile} lock target artifact mismatch: {name}")
             if name == "colorama" and locked["marker"] != 'sys_platform == "win32"':
-                raise ReleaseError("development lock must retain the win32-only colorama marker")
+                raise ReleaseError(
+                    "development lock must retain the win32-only colorama marker"
+                )
 
     catalog_names = set(names_to_version)
     edges_seen: set[tuple[str, str, str]] = set()
-    edge_fields = {"profile", "from", "to", "requirement", "specifier", "marker", "extras", "publisher_metadata_sha256"}
+    edge_fields = {
+        "profile",
+        "from",
+        "to",
+        "requirement",
+        "specifier",
+        "marker",
+        "extras",
+        "publisher_metadata_sha256",
+    }
     _, Requirement, Version = _packaging_types()
     for edge in inventory["dependency_edges"]:
         if not isinstance(edge, dict) or set(edge) != edge_fields:
@@ -752,7 +1123,11 @@ def _load_dependency_inventory(root: Path) -> dict[str, object]:
         if edge.get("profile") not in {"runtime", "development"}:
             raise ReleaseError("dependency graph edge profile mismatch")
         key = (edge["profile"], edge.get("from"), edge.get("requirement"))
-        if key in edges_seen or edge.get("from") not in catalog_names or edge.get("to") not in catalog_names:
+        if (
+            key in edges_seen
+            or edge.get("from") not in catalog_names
+            or edge.get("to") not in catalog_names
+        ):
             raise ReleaseError("dependency graph contains a duplicate or dangling edge")
         edges_seen.add(key)
         if not isinstance(edge.get("requirement"), str) or not edge["requirement"]:
@@ -760,35 +1135,61 @@ def _load_dependency_inventory(root: Path) -> dict[str, object]:
         try:
             requirement = Requirement(edge["requirement"])
         except Exception as exc:
-            raise ReleaseError("dependency graph contains an invalid publisher requirement") from exc
+            raise ReleaseError(
+                "dependency graph contains an invalid publisher requirement"
+            ) from exc
         if (
             _canonical_package_name(requirement.name) != edge["to"]
             or str(requirement.specifier) != edge["specifier"]
-            or (str(requirement.marker) if requirement.marker else None) != edge["marker"]
+            or (str(requirement.marker) if requirement.marker else None)
+            != edge["marker"]
             or sorted(requirement.extras) != edge["extras"]
             or not isinstance(edge["extras"], list)
-            or any(not isinstance(extra, str) or not re.fullmatch(r"[a-z0-9]+(?:[-_.][a-z0-9]+)*", extra) for extra in edge["extras"])
-            or edge["publisher_metadata_sha256"] != catalog[(edge["from"], names_to_version[edge["from"]])]["license_provenance"]["evidence_sha256"]
+            or any(
+                not isinstance(extra, str)
+                or not re.fullmatch(r"[a-z0-9]+(?:[-_.][a-z0-9]+)*", extra)
+                for extra in edge["extras"]
+            )
+            or edge["publisher_metadata_sha256"]
+            != catalog[(edge["from"], names_to_version[edge["from"]])][
+                "license_provenance"
+            ]["evidence_sha256"]
         ):
             raise ReleaseError("dependency graph publisher metadata mismatch")
     for profile in ("runtime", "development"):
-        if not any(edge["profile"] == profile for edge in inventory["dependency_edges"]):
+        if not any(
+            edge["profile"] == profile for edge in inventory["dependency_edges"]
+        ):
             raise ReleaseError(f"dependency graph is empty for {profile}")
     try:
         from packaging.markers import Marker, default_environment
     except ImportError as exc:  # pragma: no cover
-        raise ReleaseError("packaging markers are required for dependency graph validation") from exc
+        raise ReleaseError(
+            "packaging markers are required for dependency graph validation"
+        ) from exc
     for target in targets:
         profile = target["profile"]
         components = target_components[target["id"]]
         environment = default_environment()
-        environment.update({
-            "implementation_name": "cpython", "platform_python_implementation": "CPython",
-            "python_version": target["python_version"], "python_full_version": target["python_version"] + ".0",
-            "sys_platform": {"linux": "linux", "macos": "darwin", "windows": "win32"}[target["os"]],
-            "platform_system": {"linux": "Linux", "macos": "Darwin", "windows": "Windows"}[target["os"]],
-            "platform_machine": target["arch"],
-        })
+        environment.update(
+            {
+                "implementation_name": "cpython",
+                "platform_python_implementation": "CPython",
+                "python_version": target["python_version"],
+                "python_full_version": target["python_version"] + ".0",
+                "sys_platform": {
+                    "linux": "linux",
+                    "macos": "darwin",
+                    "windows": "win32",
+                }[target["os"]],
+                "platform_system": {
+                    "linux": "Linux",
+                    "macos": "Darwin",
+                    "windows": "Windows",
+                }[target["os"]],
+                "platform_machine": target["arch"],
+            }
+        )
         adjacency: dict[str, list[dict[str, object]]] = {}
         for edge in inventory["dependency_edges"]:
             if edge["profile"] == profile:
@@ -801,13 +1202,23 @@ def _load_dependency_inventory(root: Path) -> dict[str, object]:
             contexts = active_extras[parent] or {""}
             for edge in adjacency.get(parent, []):
                 marker = edge["marker"]
-                if marker and not any(Marker(marker).evaluate({**environment, "extra": extra}) for extra in contexts):
+                if marker and not any(
+                    Marker(marker).evaluate({**environment, "extra": extra})
+                    for extra in contexts
+                ):
                     continue
                 dependency = edge["to"]
                 if dependency not in components:
-                    raise ReleaseError(f"dependency edge target absent from closure: {target['id']}/{dependency}")
-                if Version(components[dependency]["version"]) not in Requirement(edge["requirement"]).specifier:
-                    raise ReleaseError(f"dependency edge constraint mismatch: {target['id']}/{parent}->{dependency}")
+                    raise ReleaseError(
+                        f"dependency edge target absent from closure: {target['id']}/{dependency}"
+                    )
+                if (
+                    Version(components[dependency]["version"])
+                    not in Requirement(edge["requirement"]).specifier
+                ):
+                    raise ReleaseError(
+                        f"dependency edge constraint mismatch: {target['id']}/{parent}->{dependency}"
+                    )
                 new_extras = set(edge["extras"]) - active_extras.get(dependency, set())
                 if dependency not in reachable or new_extras:
                     reachable.add(dependency)
@@ -815,10 +1226,20 @@ def _load_dependency_inventory(root: Path) -> dict[str, object]:
                     pending.append(dependency)
         if reachable != set(components):
             missing = ", ".join(sorted(set(components) - reachable))
-            raise ReleaseError(f"dependency graph has unreachable target components in {target['id']}: {missing}")
-    expected_notice_ids = {f"{name}-selected-wheel-documents" for name in names_to_version}
-    notice_ids = {notice.get("id") for notice in inventory["bundled_notices"] if isinstance(notice, dict)}
-    if notice_ids != expected_notice_ids or len(notice_ids) != len(inventory["bundled_notices"]):
+            raise ReleaseError(
+                f"dependency graph has unreachable target components in {target['id']}: {missing}"
+            )
+    expected_notice_ids = {
+        f"{name}-selected-wheel-documents" for name in names_to_version
+    }
+    notice_ids = {
+        notice.get("id")
+        for notice in inventory["bundled_notices"]
+        if isinstance(notice, dict)
+    }
+    if notice_ids != expected_notice_ids or len(notice_ids) != len(
+        inventory["bundled_notices"]
+    ):
         raise ReleaseError("reviewed bundled notice set mismatch")
     artifacts_by_component = {
         name: {
@@ -830,21 +1251,48 @@ def _load_dependency_inventory(root: Path) -> dict[str, object]:
         for name in names_to_version
     }
     for notice in inventory["bundled_notices"]:
-        if not isinstance(notice, dict) or set(notice) != {"id", "component", "summary", "documents", "documentless_artifact_sha256s"}:
+        if not isinstance(notice, dict) or set(notice) != {
+            "id",
+            "component",
+            "summary",
+            "documents",
+            "documentless_artifact_sha256s",
+        }:
             raise ReleaseError("bundled notice fields mismatch")
         expected_component = notice["id"].removesuffix("-selected-wheel-documents")
         expected_summary = f"Preserve every license/notice-like file embedded in each selected {expected_component} wheel; artifacts listed as documentless contain no matching embedded path."
-        if notice["component"] != expected_component or notice["summary"] != expected_summary:
-            raise ReleaseError(f"reviewed bundled notice content mismatch: {notice['id']}")
+        if (
+            notice["component"] != expected_component
+            or notice["summary"] != expected_summary
+        ):
+            raise ReleaseError(
+                f"reviewed bundled notice content mismatch: {notice['id']}"
+            )
         documents = notice["documents"]
         documentless = notice["documentless_artifact_sha256s"]
-        if not isinstance(documents, list) or not isinstance(documentless, list) or documentless != sorted(set(documentless)) or not set(documentless).issubset(artifacts_by_component[expected_component]):
-            raise ReleaseError(f"bundled notice documentless evidence mismatch: {notice['id']}")
+        if (
+            not isinstance(documents, list)
+            or not isinstance(documentless, list)
+            or documentless != sorted(set(documentless))
+            or not set(documentless).issubset(
+                artifacts_by_component[expected_component]
+            )
+        ):
+            raise ReleaseError(
+                f"bundled notice documentless evidence mismatch: {notice['id']}"
+            )
         covered_artifacts: set[str] = set()
         document_keys: set[tuple[str, str]] = set()
         for document in documents:
-            if not isinstance(document, dict) or set(document) != {"path", "sha256", "text", "artifact_sha256s"}:
-                raise ReleaseError(f"bundled notice document fields mismatch: {notice['id']}")
+            if not isinstance(document, dict) or set(document) != {
+                "path",
+                "sha256",
+                "text",
+                "artifact_sha256s",
+            }:
+                raise ReleaseError(
+                    f"bundled notice document fields mismatch: {notice['id']}"
+                )
             path_value, text_value = document["path"], document["text"]
             if (
                 not isinstance(path_value, str)
@@ -852,23 +1300,38 @@ def _load_dependency_inventory(root: Path) -> dict[str, object]:
                 or not isinstance(text_value, str)
                 or _sha256(text_value.encode("utf-8")) != document["sha256"]
                 or not isinstance(document["artifact_sha256s"], list)
-                or document["artifact_sha256s"] != sorted(set(document["artifact_sha256s"]))
-                or not set(document["artifact_sha256s"]).issubset(artifacts_by_component[expected_component])
+                or document["artifact_sha256s"]
+                != sorted(set(document["artifact_sha256s"]))
+                or not set(document["artifact_sha256s"]).issubset(
+                    artifacts_by_component[expected_component]
+                )
             ):
-                raise ReleaseError(f"bundled notice document evidence mismatch: {notice['id']}")
+                raise ReleaseError(
+                    f"bundled notice document evidence mismatch: {notice['id']}"
+                )
             key = (path_value, document["sha256"])
             if key in document_keys:
                 raise ReleaseError(f"duplicate bundled notice document: {notice['id']}")
             document_keys.add(key)
             covered_artifacts.update(document["artifact_sha256s"])
-        if covered_artifacts & set(documentless) or covered_artifacts | set(documentless) != artifacts_by_component[expected_component]:
-            raise ReleaseError(f"bundled notice selected-wheel coverage mismatch: {notice['id']}")
+        if (
+            covered_artifacts & set(documentless)
+            or covered_artifacts | set(documentless)
+            != artifacts_by_component[expected_component]
+        ):
+            raise ReleaseError(
+                f"bundled notice selected-wheel coverage mismatch: {notice['id']}"
+            )
     for component in catalog.values():
         expected_ids = [f"{component['name']}-selected-wheel-documents"]
         if component.get("bundled_notice_ids") != expected_ids:
-            raise ReleaseError(f"component bundled notice assignment mismatch: {component['name']}")
+            raise ReleaseError(
+                f"component bundled notice assignment mismatch: {component['name']}"
+            )
     if _sha256(path.read_bytes()) != EXPECTED_DEPENDENCY_INVENTORY_SHA256:
-        raise ReleaseError("dependency inventory differs from the exact independently reviewed document")
+        raise ReleaseError(
+            "dependency inventory differs from the exact independently reviewed document"
+        )
     return inventory
 
 
@@ -878,28 +1341,70 @@ def _load_external_runtime_dependencies(root: Path) -> dict[str, object]:
         raw = path.read_bytes()
         document = json.loads(raw)
     except (OSError, json.JSONDecodeError) as exc:
-        raise ReleaseError(f"cannot load external runtime dependency manifest: {exc}") from exc
+        raise ReleaseError(
+            f"cannot load external runtime dependency manifest: {exc}"
+        ) from exc
     if _sha256(raw) != EXPECTED_EXTERNAL_RUNTIME_DEPENDENCIES_SHA256:
-        raise ReleaseError("external runtime dependency manifest differs from the reviewed document")
-    if not isinstance(document, dict) or set(document) != {"schema_version", "subject", "scope", "sources", "dependencies"}:
+        raise ReleaseError(
+            "external runtime dependency manifest differs from the reviewed document"
+        )
+    if not isinstance(document, dict) or set(document) != {
+        "schema_version",
+        "subject",
+        "scope",
+        "sources",
+        "dependencies",
+    }:
         raise ReleaseError("external runtime dependency manifest fields mismatch")
-    if document["schema_version"] != "1.0.0" or document["subject"] != "claude-ads-external-runtime-dependencies":
+    if (
+        document["schema_version"] != "1.0.0"
+        or document["subject"] != "claude-ads-external-runtime-dependencies"
+    ):
         raise ReleaseError("external runtime dependency manifest identity mismatch")
     sources = document["sources"]
     dependencies = document["dependencies"]
-    expected_source_ids = {"playwright-python-intro", "playwright-browsers", "playwright-ci", "weasyprint-69-install", "cyclonedx-1.5-json"}
-    if not isinstance(sources, list) or {item.get("id") for item in sources if isinstance(item, dict)} != expected_source_ids or len(sources) != len(expected_source_ids):
+    expected_source_ids = {
+        "playwright-python-intro",
+        "playwright-browsers",
+        "playwright-ci",
+        "weasyprint-69-install",
+        "cyclonedx-1.5-json",
+    }
+    if (
+        not isinstance(sources, list)
+        or {item.get("id") for item in sources if isinstance(item, dict)}
+        != expected_source_ids
+        or len(sources) != len(expected_source_ids)
+    ):
         raise ReleaseError("external runtime dependency source coverage mismatch")
     for source in sources:
-        if set(source) != {"id", "url", "publisher", "accessed_at"} or not str(source["url"]).startswith("https://") or source["accessed_at"] != "2026-07-11" or not source["publisher"]:
+        if (
+            set(source) != {"id", "url", "publisher", "accessed_at"}
+            or not str(source["url"]).startswith("https://")
+            or source["accessed_at"] != "2026-07-11"
+            or not source["publisher"]
+        ):
             raise ReleaseError("external runtime dependency source metadata mismatch")
-    if not isinstance(dependencies, list) or {item.get("id") for item in dependencies if isinstance(item, dict)} != {"playwright-browser-payload", "weasyprint-native-libraries"} or len(dependencies) != 2:
+    if (
+        not isinstance(dependencies, list)
+        or {item.get("id") for item in dependencies if isinstance(item, dict)}
+        != {"playwright-browser-payload", "weasyprint-native-libraries"}
+        or len(dependencies) != 2
+    ):
         raise ReleaseError("external runtime dependency coverage mismatch")
     for dependency in dependencies:
-        if dependency.get("included_in_python_lock") is not False or dependency.get("included_in_python_sbom") is not False or dependency.get("cross_platform_feature_attestation") != "not-claimed":
+        if (
+            dependency.get("included_in_python_lock") is not False
+            or dependency.get("included_in_python_sbom") is not False
+            or dependency.get("cross_platform_feature_attestation") != "not-claimed"
+        ):
             raise ReleaseError("external runtime dependency boundary mismatch")
         source_ids = dependency.get("source_ids")
-        if not isinstance(source_ids, list) or not source_ids or not set(source_ids).issubset(expected_source_ids):
+        if (
+            not isinstance(source_ids, list)
+            or not source_ids
+            or not set(source_ids).issubset(expected_source_ids)
+        ):
             raise ReleaseError("external runtime dependency source binding mismatch")
     return document
 
@@ -914,7 +1419,9 @@ def _build_sbom_from_inventory(
     catalog = inventory["component_catalog"]
     target_artifacts: dict[tuple[str, str], list[dict[str, str]]] = {}
     direct_names: set[str] = set()
-    runtime_targets = [target for target in inventory["targets"] if target["profile"] == "runtime"]
+    runtime_targets = [
+        target for target in inventory["targets"] if target["profile"] == "runtime"
+    ]
     for target in runtime_targets:
         for component in target["components"]:
             key = (component["name"], component["version"])
@@ -928,54 +1435,126 @@ def _build_sbom_from_inventory(
         key = (item["name"], item["version"])
         if key not in target_artifacts:
             continue
-        artifacts = sorted(target_artifacts[key], key=lambda value: (value["target"], value["filename"]))
+        artifacts = sorted(
+            target_artifacts[key],
+            key=lambda value: (value["target"], value["filename"]),
+        )
         hashes = sorted({artifact["sha256"] for artifact in artifacts})
         artifact_groups: dict[tuple[str, str, str], list[str]] = {}
         for artifact in artifacts:
-            artifact_groups.setdefault((artifact["url"], artifact["sha256"], artifact["filename"]), []).append(artifact["target"])
+            artifact_groups.setdefault(
+                (artifact["url"], artifact["sha256"], artifact["filename"]), []
+            ).append(artifact["target"])
         external_references = [
             {
-                "type": "distribution", "url": url,
+                "type": "distribution",
+                "url": url,
                 "hashes": [{"alg": "SHA-256", "content": digest}],
                 "comment": "targets=" + ",".join(sorted(targets)),
             }
             for (url, digest, _filename), targets in sorted(artifact_groups.items())
         ]
-        components.append({
-            "type": "library", "bom-ref": item["purl"], "name": item["name"], "version": item["version"], "purl": item["purl"],
-            "scope": "required",
-            "licenses": [{"expression": item["license_expression"]}],
-            "hashes": [{"alg": "SHA-256", "content": digest} for digest in hashes],
-            "externalReferences": external_references,
-            "properties": [
-                {"name": "claude-ads:direct", "value": str(item["name"] in direct_names).lower()},
-                {"name": "claude-ads:target-occurrences", "value": ",".join(item["target_occurrences"])},
-                {"name": "claude-ads:license-provenance", "value": item["license_provenance"]["metadata_url"]},
-                {"name": "claude-ads:bundled-notices", "value": ",".join(item["bundled_notice_ids"]) or "none"},
-            ],
-        })
+        components.append(
+            {
+                "type": "library",
+                "bom-ref": item["purl"],
+                "name": item["name"],
+                "version": item["version"],
+                "purl": item["purl"],
+                "scope": "required",
+                "licenses": [{"expression": item["license_expression"]}],
+                "hashes": [{"alg": "SHA-256", "content": digest} for digest in hashes],
+                "externalReferences": external_references,
+                "properties": [
+                    {
+                        "name": "claude-ads:direct",
+                        "value": str(item["name"] in direct_names).lower(),
+                    },
+                    {
+                        "name": "claude-ads:target-occurrences",
+                        "value": ",".join(item["target_occurrences"]),
+                    },
+                    {
+                        "name": "claude-ads:license-provenance",
+                        "value": item["license_provenance"]["metadata_url"],
+                    },
+                    {
+                        "name": "claude-ads:bundled-notices",
+                        "value": ",".join(item["bundled_notice_ids"]) or "none",
+                    },
+                ],
+            }
+        )
     components.sort(key=lambda item: item["name"])
-    component_purls = {item["name"]: item["purl"] for item in catalog if (item["name"], item["version"]) in target_artifacts}
+    component_purls = {
+        item["name"]: item["purl"]
+        for item in catalog
+        if (item["name"], item["version"]) in target_artifacts
+    }
     dependencies = []
     app_ref = f"pkg:generic/{product_name}@{version}"
-    dependencies.append({"ref": app_ref, "dependsOn": sorted(component_purls[name] for name in direct_names)})
+    dependencies.append(
+        {
+            "ref": app_ref,
+            "dependsOn": sorted(component_purls[name] for name in direct_names),
+        }
+    )
     for name in sorted(component_purls):
-        targets = sorted({edge["to"] for edge in inventory["dependency_edges"] if edge["profile"] == "runtime" and edge["from"] == name})
-        dependencies.append({"ref": component_purls[name], "dependsOn": [component_purls[target] for target in targets]})
-    identity = json.dumps({"commit": commit, "components": components, "dependencies": dependencies}, sort_keys=True, separators=(",", ":"))
+        targets = sorted(
+            {
+                edge["to"]
+                for edge in inventory["dependency_edges"]
+                if edge["profile"] == "runtime" and edge["from"] == name
+            }
+        )
+        dependencies.append(
+            {
+                "ref": component_purls[name],
+                "dependsOn": [component_purls[target] for target in targets],
+            }
+        )
+    identity = json.dumps(
+        {"commit": commit, "components": components, "dependencies": dependencies},
+        sort_keys=True,
+        separators=(",", ":"),
+    )
     serial = uuid.uuid5(uuid.NAMESPACE_URL, f"claude-ads:{version}:{identity}")
     return {
-        "bomFormat": "CycloneDX", "specVersion": "1.5", "serialNumber": f"urn:uuid:{serial}", "version": 1,
-        "metadata": {"component": {"type": "application", "bom-ref": app_ref, "name": product_name, "version": version, "purl": app_ref, "licenses": [{"expression": "MIT"}]}, "properties": [{"name": "claude-ads:source-commit", "value": commit}, {"name": "claude-ads:dependency-inventory-sha256", "value": inventory_sha256}]},
-        "components": components, "dependencies": dependencies,
+        "bomFormat": "CycloneDX",
+        "specVersion": "1.5",
+        "serialNumber": f"urn:uuid:{serial}",
+        "version": 1,
+        "metadata": {
+            "component": {
+                "type": "application",
+                "bom-ref": app_ref,
+                "name": product_name,
+                "version": version,
+                "purl": app_ref,
+                "licenses": [{"expression": "MIT"}],
+            },
+            "properties": [
+                {"name": "claude-ads:source-commit", "value": commit},
+                {
+                    "name": "claude-ads:dependency-inventory-sha256",
+                    "value": inventory_sha256,
+                },
+            ],
+        },
+        "components": components,
+        "dependencies": dependencies,
     }
 
 
 def build_sbom(root: Path, product_name: str, version: str) -> dict[str, object]:
     inventory = _load_dependency_inventory(root)
     commit = _git(root, "rev-parse", "HEAD").decode("ascii").strip()
-    inventory_sha256 = _sha256((root / "control-plane/manifests/dependency-inventory.json").read_bytes())
-    return _build_sbom_from_inventory(inventory, product_name, version, commit, inventory_sha256)
+    inventory_sha256 = _sha256(
+        (root / "control-plane/manifests/dependency-inventory.json").read_bytes()
+    )
+    return _build_sbom_from_inventory(
+        inventory, product_name, version, commit, inventory_sha256
+    )
 
 
 def _json_bytes(value: object) -> bytes:
@@ -983,9 +1562,16 @@ def _json_bytes(value: object) -> bytes:
 
 
 def _product(root: Path) -> tuple[str, str]:
-    manifest = json.loads((root / ".claude-plugin/plugin.json").read_text(encoding="utf-8"))
+    manifest = json.loads(
+        (root / ".claude-plugin/plugin.json").read_text(encoding="utf-8")
+    )
     name, version = manifest.get("name"), manifest.get("version")
-    if not isinstance(name, str) or not isinstance(version, str) or not name or not version:
+    if (
+        not isinstance(name, str)
+        or not isinstance(version, str)
+        or not name
+        or not version
+    ):
         raise ReleaseError("plugin manifest requires string name and version")
     return name, version
 
@@ -1017,7 +1603,9 @@ def build_release(root: Path, output_dir: Path) -> dict[str, Path]:
             info.create_system = 3
             info.compress_type = zipfile.ZIP_DEFLATED
             info.external_attr = (stat.S_IFREG | mode) << 16
-            archive.writestr(info, data, compress_type=zipfile.ZIP_DEFLATED, compresslevel=9)
+            archive.writestr(
+                info, data, compress_type=zipfile.ZIP_DEFLATED, compresslevel=9
+            )
             file_records.append(
                 {
                     "path": relative,
@@ -1049,7 +1637,9 @@ def build_release(root: Path, output_dir: Path) -> dict[str, Path]:
 
     checksum_targets = (archive_path, manifest_path, sbom_path)
     checksums_path.write_text(
-        "".join(f"{_sha256(path.read_bytes())}  {path.name}\n" for path in checksum_targets),
+        "".join(
+            f"{_sha256(path.read_bytes())}  {path.name}\n" for path in checksum_targets
+        ),
         encoding="utf-8",
         newline="\n",
     )
@@ -1062,19 +1652,32 @@ def build_release(root: Path, output_dir: Path) -> dict[str, Path]:
 
 
 def _verify_sbom_document(sbom: object, inventory: object, commit: str) -> None:
-    if not isinstance(sbom, dict) or sbom.get("bomFormat") != "CycloneDX" or sbom.get("specVersion") != "1.5":
+    if (
+        not isinstance(sbom, dict)
+        or sbom.get("bomFormat") != "CycloneDX"
+        or sbom.get("specVersion") != "1.5"
+    ):
         raise ReleaseError("SBOM is not a supported CycloneDX inventory")
     if not isinstance(inventory, dict):
         raise ReleaseError("archived dependency inventory is invalid")
-    runtime_targets = [target for target in inventory.get("targets", []) if target.get("profile") == "runtime"]
+    runtime_targets = [
+        target
+        for target in inventory.get("targets", [])
+        if target.get("profile") == "runtime"
+    ]
     runtime_occurrences: dict[tuple[str, str], list[dict[str, object]]] = {}
     runtime_direct: set[str] = set()
     for target in runtime_targets:
         for component in target.get("components", []):
-            runtime_occurrences.setdefault((component["name"], component["version"]), []).append(component)
+            runtime_occurrences.setdefault(
+                (component["name"], component["version"]), []
+            ).append(component)
             if component.get("direct"):
                 runtime_direct.add(component["name"])
-    catalog = {(item["name"], item["version"]): item for item in inventory.get("component_catalog", [])}
+    catalog = {
+        (item["name"], item["version"]): item
+        for item in inventory.get("component_catalog", [])
+    }
     components = sbom.get("components")
     if not isinstance(components, list) or len(components) != len(runtime_occurrences):
         raise ReleaseError("SBOM runtime component coverage mismatch")
@@ -1084,26 +1687,46 @@ def _verify_sbom_document(sbom: object, inventory: object, commit: str) -> None:
             raise ReleaseError("SBOM component is not an object")
         key = (component.get("name"), component.get("version"))
         expected = catalog.get(key)
-        if expected is None or component.get("purl") != expected.get("purl") or component.get("bom-ref") != expected.get("purl"):
-            raise ReleaseError(f"SBOM contains an unknown or mismatched component: {key[0]}")
+        if (
+            expected is None
+            or component.get("purl") != expected.get("purl")
+            or component.get("bom-ref") != expected.get("purl")
+        ):
+            raise ReleaseError(
+                f"SBOM contains an unknown or mismatched component: {key[0]}"
+            )
         if component["bom-ref"] in refs:
             raise ReleaseError(f"SBOM contains a duplicate component: {key[0]}")
         refs.add(component["bom-ref"])
-        if component.get("licenses") != [{"expression": expected.get("license_expression")}]:
+        if component.get("licenses") != [
+            {"expression": expected.get("license_expression")}
+        ]:
             raise ReleaseError(f"SBOM component lacks the reviewed license: {key[0]}")
-        expected_hashes = sorted({item["artifact"]["sha256"] for item in runtime_occurrences[key]})
-        observed_hashes = sorted(item.get("content") for item in component.get("hashes", []) if item.get("alg") == "SHA-256")
+        expected_hashes = sorted(
+            {item["artifact"]["sha256"] for item in runtime_occurrences[key]}
+        )
+        observed_hashes = sorted(
+            item.get("content")
+            for item in component.get("hashes", [])
+            if item.get("alg") == "SHA-256"
+        )
         if observed_hashes != expected_hashes:
             raise ReleaseError(f"SBOM artifact hash coverage mismatch: {key[0]}")
     metadata = sbom.get("metadata")
     properties = metadata.get("properties", []) if isinstance(metadata, dict) else []
-    property_map = {item.get("name"): item.get("value") for item in properties if isinstance(item, dict)}
+    property_map = {
+        item.get("name"): item.get("value")
+        for item in properties
+        if isinstance(item, dict)
+    }
     if property_map.get("claude-ads:source-commit") != commit:
         raise ReleaseError("SBOM source commit binding mismatch")
     dependencies = sbom.get("dependencies")
     if not isinstance(dependencies, list) or len(dependencies) != len(refs) + 1:
         raise ReleaseError("SBOM dependency graph coverage mismatch")
-    dependency_refs = [item.get("ref") for item in dependencies if isinstance(item, dict)]
+    dependency_refs = [
+        item.get("ref") for item in dependencies if isinstance(item, dict)
+    ]
     if len(dependency_refs) != len(set(dependency_refs)):
         raise ReleaseError("SBOM dependency graph has duplicate refs")
     allowed_refs = refs | {metadata["component"]["bom-ref"]}
@@ -1112,57 +1735,135 @@ def _verify_sbom_document(sbom: object, inventory: object, commit: str) -> None:
     for dependency in dependencies:
         if not set(dependency.get("dependsOn", [])).issubset(refs):
             raise ReleaseError("SBOM dependency graph contains a dangling ref")
-    app = next(item for item in dependencies if item["ref"] == metadata["component"]["bom-ref"])
-    expected_direct = sorted(catalog[(name, next(version for candidate, version in runtime_occurrences if candidate == name))]["purl"] for name in runtime_direct)
+    app = next(
+        item for item in dependencies if item["ref"] == metadata["component"]["bom-ref"]
+    )
+    expected_direct = sorted(
+        catalog[
+            (
+                name,
+                next(
+                    version
+                    for candidate, version in runtime_occurrences
+                    if candidate == name
+                ),
+            )
+        ]["purl"]
+        for name in runtime_direct
+    )
     if app.get("dependsOn") != expected_direct:
-        raise ReleaseError("SBOM application dependency set includes non-runtime or missing direct components")
+        raise ReleaseError(
+            "SBOM application dependency set includes non-runtime or missing direct components"
+        )
 
 
-def verify_release(output_dir: Path, expected_commit: str, repository_root: Path) -> None:
-    if not isinstance(expected_commit, str) or not re.fullmatch(r"[0-9a-f]{40}", expected_commit):
+def verify_release(
+    output_dir: Path, expected_commit: str, repository_root: Path
+) -> None:
+    if not isinstance(expected_commit, str) or not re.fullmatch(
+        r"[0-9a-f]{40}", expected_commit
+    ):
         raise ReleaseError("trusted expected commit must be a full lowercase Git SHA-1")
     repository_root = repository_root.resolve()
-    trusted_paths = package_files(sorted(_git(repository_root, "ls-tree", "-r", "--name-only", expected_commit).decode("utf-8").splitlines()))
+    trusted_paths = package_files(
+        sorted(
+            _git(repository_root, "ls-tree", "-r", "--name-only", expected_commit)
+            .decode("utf-8")
+            .splitlines()
+        )
+    )
     manifest_path = output_dir / "release-manifest.json"
     try:
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         raise ReleaseError(f"release manifest is missing or invalid: {exc}") from exc
-    if not isinstance(manifest, dict) or set(manifest) != {"schema_version", "product", "source", "archive", "files"} or manifest.get("schema_version") != "1.0.0":
+    if (
+        not isinstance(manifest, dict)
+        or set(manifest) != {"schema_version", "product", "source", "archive", "files"}
+        or manifest.get("schema_version") != "1.0.0"
+    ):
         raise ReleaseError("release manifest fields/schema mismatch")
-    product, source, archive_meta, records = manifest["product"], manifest["source"], manifest["archive"], manifest["files"]
-    if not isinstance(product, dict) or set(product) != {"name", "version"} or not all(isinstance(product.get(key), str) and product[key] for key in ("name", "version")):
+    product, source, archive_meta, records = (
+        manifest["product"],
+        manifest["source"],
+        manifest["archive"],
+        manifest["files"],
+    )
+    if (
+        not isinstance(product, dict)
+        or set(product) != {"name", "version"}
+        or not all(
+            isinstance(product.get(key), str) and product[key]
+            for key in ("name", "version")
+        )
+    ):
         raise ReleaseError("release manifest product mismatch")
     try:
-        trusted_plugin = json.loads(_git(repository_root, "show", f"{expected_commit}:.claude-plugin/plugin.json"))
+        trusted_plugin = json.loads(
+            _git(
+                repository_root, "show", f"{expected_commit}:.claude-plugin/plugin.json"
+            )
+        )
     except json.JSONDecodeError as exc:
-        raise ReleaseError("trusted Git commit contains an invalid plugin manifest") from exc
+        raise ReleaseError(
+            "trusted Git commit contains an invalid plugin manifest"
+        ) from exc
     if (
         not re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*", product["name"])
-        or not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?", product["version"])
+        or not re.fullmatch(
+            r"[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?", product["version"]
+        )
         or not isinstance(trusted_plugin, dict)
         or trusted_plugin.get("name") != product["name"]
         or trusted_plugin.get("version") != product["version"]
     ):
-        raise ReleaseError("release manifest product differs from the trusted Git plugin identity")
-    if not isinstance(source, dict) or set(source) != {"commit"} or source.get("commit") != expected_commit:
+        raise ReleaseError(
+            "release manifest product differs from the trusted Git plugin identity"
+        )
+    if (
+        not isinstance(source, dict)
+        or set(source) != {"commit"}
+        or source.get("commit") != expected_commit
+    ):
         raise ReleaseError("release manifest does not bind the trusted expected commit")
-    if not isinstance(archive_meta, dict) or set(archive_meta) != {"file", "root", "sha256", "size"}:
+    if not isinstance(archive_meta, dict) or set(archive_meta) != {
+        "file",
+        "root",
+        "sha256",
+        "size",
+    }:
         raise ReleaseError("release manifest archive fields mismatch")
     expected_root = f"{product['name']}-{product['version']}"
-    if archive_meta.get("root") != expected_root or archive_meta.get("file") != f"{expected_root}.zip" or not re.fullmatch(r"[0-9a-f]{64}", str(archive_meta.get("sha256", ""))) or type(archive_meta.get("size")) is not int or archive_meta["size"] <= 0:
+    if (
+        archive_meta.get("root") != expected_root
+        or archive_meta.get("file") != f"{expected_root}.zip"
+        or not re.fullmatch(r"[0-9a-f]{64}", str(archive_meta.get("sha256", "")))
+        or type(archive_meta.get("size")) is not int
+        or archive_meta["size"] <= 0
+    ):
         raise ReleaseError("release manifest archive identity/type mismatch")
     if not isinstance(records, list) or not records:
         raise ReleaseError("release manifest files must be a nonempty array")
     record_paths: list[str] = []
     for record in records:
-        if not isinstance(record, dict) or set(record) != {"path", "sha256", "size", "mode"} or not isinstance(record.get("path"), str) or validate_portable_path(record["path"]) or not re.fullmatch(r"[0-9a-f]{64}", str(record.get("sha256", ""))) or type(record.get("size")) is not int or record["size"] < 0 or record.get("mode") not in {"0644", "0755"}:
+        if (
+            not isinstance(record, dict)
+            or set(record) != {"path", "sha256", "size", "mode"}
+            or not isinstance(record.get("path"), str)
+            or validate_portable_path(record["path"])
+            or not re.fullmatch(r"[0-9a-f]{64}", str(record.get("sha256", "")))
+            or type(record.get("size")) is not int
+            or record["size"] < 0
+            or record.get("mode") not in {"0644", "0755"}
+        ):
             raise ReleaseError("release manifest file record mismatch")
         record_paths.append(record["path"])
     if record_paths != sorted(set(record_paths)):
         raise ReleaseError("release manifest file paths are duplicated or unordered")
     if record_paths != trusted_paths:
-        raise ReleaseError("release manifest file list differs from the trusted Git commit")
+        raise ReleaseError(
+            "release manifest file list differs from the trusted Git commit"
+        )
 
     checksums_path = output_dir / "SHA256SUMS"
     if not checksums_path.is_file():
@@ -1180,11 +1881,19 @@ def verify_release(output_dir: Path, expected_commit: str, repository_root: Path
         if not path.is_file() or _sha256(path.read_bytes()) != expected:
             raise ReleaseError(f"checksum mismatch: {filename}")
 
-    expected_checksum_files = {archive_meta["file"], "release-manifest.json", "sbom.cdx.json"}
+    expected_checksum_files = {
+        archive_meta["file"],
+        "release-manifest.json",
+        "sbom.cdx.json",
+    }
     if set(checksum_records) != expected_checksum_files:
         raise ReleaseError("SHA256SUMS file set mismatch")
     archive_path = output_dir / archive_meta["file"]
-    if not archive_path.is_file() or archive_path.stat().st_size != archive_meta["size"] or _sha256(archive_path.read_bytes()) != archive_meta["sha256"]:
+    if (
+        not archive_path.is_file()
+        or archive_path.stat().st_size != archive_meta["size"]
+        or _sha256(archive_path.read_bytes()) != archive_meta["sha256"]
+    ):
         raise ReleaseError("archive digest disagrees with release manifest")
 
     expected_records = {record["path"]: record for record in records}
@@ -1202,18 +1911,42 @@ def verify_release(output_dir: Path, expected_commit: str, repository_root: Path
             record = expected_records[relative]
             data = archive.read(name)
             if len(data) != record["size"] or _sha256(data) != record["sha256"]:
-                raise ReleaseError(f"archive member disagrees with manifest: {relative}")
-            observed_mode = f"{(archive.getinfo(name).external_attr >> 16) & 0o7777:04o}"
+                raise ReleaseError(
+                    f"archive member disagrees with manifest: {relative}"
+                )
+            observed_mode = (
+                f"{(archive.getinfo(name).external_attr >> 16) & 0o7777:04o}"
+            )
             if observed_mode != record["mode"]:
-                raise ReleaseError(f"archive member mode disagrees with manifest: {relative}")
-            trusted_data = _git(repository_root, "show", f"{expected_commit}:{relative}")
-            trusted_tree = _git(repository_root, "ls-tree", expected_commit, "--", relative).decode("utf-8").strip()
-            trusted_mode = "0755" if trusted_tree.startswith("100755 ") else "0644" if trusted_tree.startswith("100644 ") else None
+                raise ReleaseError(
+                    f"archive member mode disagrees with manifest: {relative}"
+                )
+            trusted_data = _git(
+                repository_root, "show", f"{expected_commit}:{relative}"
+            )
+            trusted_tree = (
+                _git(repository_root, "ls-tree", expected_commit, "--", relative)
+                .decode("utf-8")
+                .strip()
+            )
+            trusted_mode = (
+                "0755"
+                if trusted_tree.startswith("100755 ")
+                else "0644"
+                if trusted_tree.startswith("100644 ")
+                else None
+            )
             if data != trusted_data or record["mode"] != trusted_mode:
-                raise ReleaseError(f"archive member differs from trusted Git commit: {relative}")
+                raise ReleaseError(
+                    f"archive member differs from trusted Git commit: {relative}"
+                )
             if relative in {
-                "requirements.txt", "requirements-dev.txt", "requirements.lock",
-                "requirements-dev.lock", "pyproject.toml", "THIRD_PARTY_NOTICES.md",
+                "requirements.txt",
+                "requirements-dev.txt",
+                "requirements.lock",
+                "requirements-dev.lock",
+                "pyproject.toml",
+                "THIRD_PARTY_NOTICES.md",
                 "control-plane/manifests/dependency-inventory.json",
                 "control-plane/manifests/external-runtime-dependencies.json",
                 ".claude-plugin/plugin.json",
@@ -1222,8 +1955,12 @@ def verify_release(output_dir: Path, expected_commit: str, repository_root: Path
 
     sbom = json.loads((output_dir / "sbom.cdx.json").read_text(encoding="utf-8"))
     required_archived = {
-        "requirements.txt", "requirements-dev.txt", "requirements.lock",
-        "requirements-dev.lock", "pyproject.toml", "THIRD_PARTY_NOTICES.md",
+        "requirements.txt",
+        "requirements-dev.txt",
+        "requirements.lock",
+        "requirements-dev.lock",
+        "pyproject.toml",
+        "THIRD_PARTY_NOTICES.md",
         "control-plane/manifests/dependency-inventory.json",
         "control-plane/manifests/external-runtime-dependencies.json",
         ".claude-plugin/plugin.json",
@@ -1237,19 +1974,33 @@ def verify_release(output_dir: Path, expected_commit: str, repository_root: Path
     if set(archived_dependency_files) != required_archived:
         raise ReleaseError("release archive lacks dependency inventory inputs")
     try:
-        archived_plugin = json.loads(archived_dependency_files[".claude-plugin/plugin.json"])
+        archived_plugin = json.loads(
+            archived_dependency_files[".claude-plugin/plugin.json"]
+        )
     except json.JSONDecodeError as exc:
         raise ReleaseError("archived plugin manifest is invalid") from exc
-    if not isinstance(archived_plugin, dict) or archived_plugin.get("name") != product["name"] or archived_plugin.get("version") != product["version"]:
-        raise ReleaseError("release product identity disagrees with archived plugin manifest")
-    inventory = json.loads(archived_dependency_files["control-plane/manifests/dependency-inventory.json"])
-    manifest_records = inventory.get("manifests", []) if isinstance(inventory, dict) else []
+    if (
+        not isinstance(archived_plugin, dict)
+        or archived_plugin.get("name") != product["name"]
+        or archived_plugin.get("version") != product["version"]
+    ):
+        raise ReleaseError(
+            "release product identity disagrees with archived plugin manifest"
+        )
+    inventory = json.loads(
+        archived_dependency_files["control-plane/manifests/dependency-inventory.json"]
+    )
+    manifest_records = (
+        inventory.get("manifests", []) if isinstance(inventory, dict) else []
+    )
     if len(manifest_records) != 5:
         raise ReleaseError("archived dependency manifest coverage is incomplete")
     for record in manifest_records:
         content = archived_dependency_files.get(record.get("path"))
         if content is None or record.get("sha256") != _sha256(content):
-            raise ReleaseError(f"archived dependency manifest hash mismatch: {record.get('path')}")
+            raise ReleaseError(
+                f"archived dependency manifest hash mismatch: {record.get('path')}"
+            )
     with tempfile.TemporaryDirectory(prefix="claude-ads-release-verify-") as temporary:
         dependency_root = Path(temporary)
         for relative, content in archived_dependency_files.items():
@@ -1259,10 +2010,20 @@ def verify_release(output_dir: Path, expected_commit: str, repository_root: Path
         verified_inventory = _load_dependency_inventory(dependency_root)
         _load_external_runtime_dependencies(dependency_root)
     if verified_inventory != inventory:
-        raise ReleaseError("archived dependency inventory semantic verification mismatch")
-    properties = sbom.get("metadata", {}).get("properties", []) if isinstance(sbom, dict) else []
-    property_map = {item.get("name"): item.get("value") for item in properties if isinstance(item, dict)}
-    if property_map.get("claude-ads:dependency-inventory-sha256") != _sha256(archived_dependency_files["control-plane/manifests/dependency-inventory.json"]):
+        raise ReleaseError(
+            "archived dependency inventory semantic verification mismatch"
+        )
+    properties = (
+        sbom.get("metadata", {}).get("properties", []) if isinstance(sbom, dict) else []
+    )
+    property_map = {
+        item.get("name"): item.get("value")
+        for item in properties
+        if isinstance(item, dict)
+    }
+    if property_map.get("claude-ads:dependency-inventory-sha256") != _sha256(
+        archived_dependency_files["control-plane/manifests/dependency-inventory.json"]
+    ):
         raise ReleaseError("SBOM dependency inventory binding mismatch")
     _verify_sbom_document(sbom, inventory, expected_commit)
     expected_sbom = _build_sbom_from_inventory(
@@ -1270,10 +2031,16 @@ def verify_release(output_dir: Path, expected_commit: str, repository_root: Path
         manifest["product"]["name"],
         manifest["product"]["version"],
         expected_commit,
-        _sha256(archived_dependency_files["control-plane/manifests/dependency-inventory.json"]),
+        _sha256(
+            archived_dependency_files[
+                "control-plane/manifests/dependency-inventory.json"
+            ]
+        ),
     )
     if sbom != expected_sbom:
-        raise ReleaseError("SBOM does not equal the canonical archived-inventory projection")
+        raise ReleaseError(
+            "SBOM does not equal the canonical archived-inventory projection"
+        )
 
 
 def _json_object(path: Path, label: str) -> dict[str, object]:
@@ -1323,7 +2090,9 @@ def _check_grounding_and_capabilities(root: Path, as_of: date) -> dict[str, obje
         for source_id in source_ids:
             source = sources.get(source_id)
             if source is None or claim_id not in source.get("claim_ids", []):
-                raise ReleaseError(f"claim/source reciprocity failed: {claim_id} -> {source_id}")
+                raise ReleaseError(
+                    f"claim/source reciprocity failed: {claim_id} -> {source_id}"
+                )
         if claim.get("load_bearing") is True:
             load_bearing += 1
             if claim.get("verdict") != "verified":
@@ -1331,15 +2100,21 @@ def _check_grounding_and_capabilities(root: Path, as_of: date) -> dict[str, obje
             try:
                 due = date.fromisoformat(str(claim["refresh_due"]))
             except (KeyError, ValueError) as exc:
-                raise ReleaseError(f"load-bearing claim has invalid refresh date: {claim_id}") from exc
+                raise ReleaseError(
+                    f"load-bearing claim has invalid refresh date: {claim_id}"
+                ) from exc
             if due < as_of:
                 raise ReleaseError(f"load-bearing claim is stale: {claim_id}")
     if load_bearing == 0:
         raise ReleaseError("no load-bearing claims are registered")
     for source_id, source in sources.items():
         for claim_id in source.get("claim_ids", []):
-            if claim_id not in claims or source_id not in claims[claim_id].get("source_ids", []):
-                raise ReleaseError(f"source/claim reciprocity failed: {source_id} -> {claim_id}")
+            if claim_id not in claims or source_id not in claims[claim_id].get(
+                "source_ids", []
+            ):
+                raise ReleaseError(
+                    f"source/claim reciprocity failed: {source_id} -> {claim_id}"
+                )
         if not source.get("license") or source.get("redistribution") == "prohibited":
             raise ReleaseError(f"source lacks releasable license metadata: {source_id}")
 
@@ -1358,11 +2133,15 @@ def _check_grounding_and_capabilities(root: Path, as_of: date) -> dict[str, obje
             raise ReleaseError(f"platform has no capabilities: {platform_id}")
         capability_ids: set[str] = set()
         for capability in capabilities:
-            if not isinstance(capability, dict) or not isinstance(capability.get("id"), str):
+            if not isinstance(capability, dict) or not isinstance(
+                capability.get("id"), str
+            ):
                 raise ReleaseError(f"invalid capability for {platform_id}")
             capability_id = capability["id"]
             if capability_id in capability_ids:
-                raise ReleaseError(f"duplicate {platform_id} capability: {capability_id}")
+                raise ReleaseError(
+                    f"duplicate {platform_id} capability: {capability_id}"
+                )
             capability_ids.add(capability_id)
             status = capability.get("status")
             implementation = capability.get("implementation_paths", [])
@@ -1392,16 +2171,23 @@ def _check_grounding_and_capabilities(root: Path, as_of: date) -> dict[str, obje
                     )
                 disabled_capabilities += 1
     if len(platform_ids) != 12:
-        raise ReleaseError(f"capability manifest covers {len(platform_ids)} platforms, expected 12")
+        raise ReleaseError(
+            f"capability manifest covers {len(platform_ids)} platforms, expected 12"
+        )
     root_on_path = str(root)
     inserted_path = root_on_path not in sys.path
     if inserted_path:
         sys.path.insert(0, root_on_path)
     try:
         try:
-            from claude_ads_core.control_registry import RegistryError, load_control_registry
+            from claude_ads_core.control_registry import (
+                RegistryError,
+                load_control_registry,
+            )
         except ImportError as exc:
-            raise ReleaseError(f"control registry loader is unavailable: {exc}") from exc
+            raise ReleaseError(
+                f"control registry loader is unavailable: {exc}"
+            ) from exc
         try:
             registry = load_control_registry(root)
         except RegistryError as exc:
@@ -1410,7 +2196,9 @@ def _check_grounding_and_capabilities(root: Path, as_of: date) -> dict[str, obje
         if inserted_path:
             sys.path.remove(root_on_path)
     enabled_profiles = sum(profile.status == "enabled" for profile in registry.profiles)
-    disabled_profiles = sum(profile.status == "disabled" for profile in registry.profiles)
+    disabled_profiles = sum(
+        profile.status == "disabled" for profile in registry.profiles
+    )
     grounded_controls = sum(bool(entry.source_claim_ids) for entry in registry.entries)
     return {
         "source_count": len(sources),
@@ -1430,20 +2218,26 @@ def _schema_contract(
     schema: dict[str, object], definition: str, value: object, label: str
 ) -> dict[str, object]:
     definitions = schema.get("$defs")
-    if not isinstance(definitions, dict) or not isinstance(definitions.get(definition), dict):
+    if not isinstance(definitions, dict) or not isinstance(
+        definitions.get(definition), dict
+    ):
         raise ReleaseError(f"repository review schema lacks {definition!r}")
     contract = definitions[definition]
     required = contract.get("required")
     properties = contract.get("properties")
     if not isinstance(required, list) or not isinstance(properties, dict):
-        raise ReleaseError(f"repository review schema definition is invalid: {definition}")
+        raise ReleaseError(
+            f"repository review schema definition is invalid: {definition}"
+        )
     if not isinstance(value, dict):
         raise ReleaseError(f"{label} must be an object")
     fields = set(value)
     missing = sorted(set(required) - fields)
     extra = sorted(fields - set(properties))
     if missing or extra:
-        raise ReleaseError(f"{label} violates schema fields; missing={missing}, extra={extra}")
+        raise ReleaseError(
+            f"{label} violates schema fields; missing={missing}, extra={extra}"
+        )
     return value
 
 
@@ -1457,7 +2251,9 @@ def _check_repository_review_ledger(root: Path) -> dict[str, object]:
         "repository review ledger",
     )
     if schema.get("$schema") != "https://json-schema.org/draft/2020-12/schema":
-        raise ReleaseError("repository review schema must use JSON Schema Draft 2020-12")
+        raise ReleaseError(
+            "repository review schema must use JSON Schema Draft 2020-12"
+        )
     if not str(schema.get("$id", "")).endswith("repository-review-ledger.v1.json"):
         raise ReleaseError("repository review schema ID is not the v1 contract")
     required = schema.get("required")
@@ -1465,11 +2261,15 @@ def _check_repository_review_ledger(root: Path) -> dict[str, object]:
     if not isinstance(required, list) or not isinstance(properties, dict):
         raise ReleaseError("repository review schema has no top-level field contract")
     if set(document) != set(required) or set(document) != set(properties):
-        raise ReleaseError("repository review ledger does not match its top-level schema")
+        raise ReleaseError(
+            "repository review ledger does not match its top-level schema"
+        )
     if document.get("schema_version") != "1.0.0":
         raise ReleaseError("repository review ledger schema version is unsupported")
     if document.get("reviewed_at") != "2026-07-11":
-        raise ReleaseError("repository review ledger is not the required 2026-07-11 audit")
+        raise ReleaseError(
+            "repository review ledger is not the required 2026-07-11 audit"
+        )
     if document.get("clean_room_policy") != "concepts-only-no-code-or-prose":
         raise ReleaseError("repository review ledger violates the clean-room policy")
 
@@ -1490,7 +2290,9 @@ def _check_repository_review_ledger(root: Path) -> dict[str, object]:
 
     repositories_raw = document.get("repositories")
     if not isinstance(repositories_raw, list) or len(repositories_raw) != 33:
-        raise ReleaseError("repository review ledger must contain all 33 pinned repositories")
+        raise ReleaseError(
+            "repository review ledger must contain all 33 pinned repositories"
+        )
     repository_ids: set[str] = set()
     repository_names: set[str] = set()
     concept_ids: set[str] = set()
@@ -1504,9 +2306,13 @@ def _check_repository_review_ledger(root: Path) -> dict[str, object]:
         review_id = review.get("id")
         repository = review.get("repository")
         if not isinstance(review_id, str) or review_id in repository_ids:
-            raise ReleaseError(f"invalid or duplicate repository review ID: {review_id!r}")
+            raise ReleaseError(
+                f"invalid or duplicate repository review ID: {review_id!r}"
+            )
         if not isinstance(repository, str) or repository in repository_names:
-            raise ReleaseError(f"invalid or duplicate reviewed repository: {repository!r}")
+            raise ReleaseError(
+                f"invalid or duplicate reviewed repository: {repository!r}"
+            )
         repository_ids.add(review_id)
         repository_names.add(repository)
         if review.get("source_url") != f"https://github.com/{repository}":
@@ -1527,7 +2333,9 @@ def _check_repository_review_ledger(root: Path) -> dict[str, object]:
         if license_spdx == "NOASSERTION":
             unlicensed_repositories += 1
             if license_use != "unverified-metadata-only" or disposition == "adopt":
-                raise ReleaseError(f"unlicensed repository is not fail-closed: {review_id}")
+                raise ReleaseError(
+                    f"unlicensed repository is not fail-closed: {review_id}"
+                )
         elif license_spdx in {"MIT", "Apache-2.0"}:
             expected_use = (
                 "same-project-metadata-only"
@@ -1535,14 +2343,19 @@ def _check_repository_review_ledger(root: Path) -> dict[str, object]:
                 else "compatible-metadata-only"
             )
             if license_use != expected_use:
-                raise ReleaseError(f"repository license use is inconsistent: {review_id}")
+                raise ReleaseError(
+                    f"repository license use is inconsistent: {review_id}"
+                )
         else:
             raise ReleaseError(f"repository license is unsupported: {review_id}")
 
         head_review = _schema_contract(
             schema, "head_review", review.get("head_review"), f"head review {review_id}"
         )
-        if not isinstance(head_review.get("surfaces"), list) or not head_review["surfaces"]:
+        if (
+            not isinstance(head_review.get("surfaces"), list)
+            or not head_review["surfaces"]
+        ):
             raise ReleaseError(f"repository head review has no surfaces: {review_id}")
         if relationship == "fork":
             fork_ids.add(review_id)
@@ -1551,7 +2364,9 @@ def _check_repository_review_ledger(root: Path) -> dict[str, object]:
                 raise ReleaseError(f"fork lacks compare evidence: {review_id}")
             if status == "no-common-ancestor":
                 if head_review.get("method") != "github-rest-compare-plus-tree":
-                    raise ReleaseError(f"unrelated fork lacks tree evidence: {review_id}")
+                    raise ReleaseError(
+                        f"unrelated fork lacks tree evidence: {review_id}"
+                    )
             else:
                 required_compare = {
                     "upstream_base_sha",
@@ -1564,7 +2379,9 @@ def _check_repository_review_ledger(root: Path) -> dict[str, object]:
                     "deletions",
                 }
                 if not required_compare <= set(head_review):
-                    raise ReleaseError(f"fork compare evidence is incomplete: {review_id}")
+                    raise ReleaseError(
+                        f"fork compare evidence is incomplete: {review_id}"
+                    )
         elif relationship != "external":
             raise ReleaseError(f"repository relationship is invalid: {review_id}")
 
@@ -1577,18 +2394,24 @@ def _check_repository_review_ledger(root: Path) -> dict[str, object]:
             )
             concept_id = concept.get("id")
             if not isinstance(concept_id, str) or concept_id in concept_ids:
-                raise ReleaseError(f"invalid or duplicate repository concept: {concept_id!r}")
+                raise ReleaseError(
+                    f"invalid or duplicate repository concept: {concept_id!r}"
+                )
             concept_ids.add(concept_id)
             concept_disposition = concept.get("disposition")
             if concept_disposition not in dispositions:
                 raise ReleaseError(f"concept disposition is missing: {concept_id}")
             requirement_ids = concept.get("requirement_ids")
             if not isinstance(requirement_ids, list) or not requirement_ids:
-                raise ReleaseError(f"concept lacks requirement traceability: {concept_id}")
+                raise ReleaseError(
+                    f"concept lacks requirement traceability: {concept_id}"
+                )
             if concept_disposition == "adopt":
                 adopted_concepts += 1
                 if license_spdx == "NOASSERTION":
-                    raise ReleaseError(f"unlicensed concept cannot be adopted: {concept_id}")
+                    raise ReleaseError(
+                        f"unlicensed concept cannot be adopted: {concept_id}"
+                    )
 
     survey = _schema_contract(
         schema, "fork_survey", document.get("fork_survey"), "fork survey"
@@ -1602,25 +2425,38 @@ def _check_repository_review_ledger(root: Path) -> dict[str, object]:
         or survey.get("completeness") != "complete"
     ):
         raise ReleaseError("fork survey does not prove the required complete census")
-    if survey["ancestor_or_equal_count"] + survey["non_ancestor_count"] != survey["paginated_fork_count"]:
+    if (
+        survey["ancestor_or_equal_count"] + survey["non_ancestor_count"]
+        != survey["paginated_fork_count"]
+    ):
         raise ReleaseError("fork survey arithmetic is inconsistent")
     non_ancestor_ids = survey.get("non_ancestor_repository_ids")
-    if not isinstance(non_ancestor_ids, list) or len(non_ancestor_ids) != len(set(non_ancestor_ids)):
+    if not isinstance(non_ancestor_ids, list) or len(non_ancestor_ids) != len(
+        set(non_ancestor_ids)
+    ):
         raise ReleaseError("fork survey divergent IDs are invalid or duplicated")
     if set(non_ancestor_ids) != fork_ids or len(fork_ids) != 17:
         raise ReleaseError("fork survey does not reconcile to all divergent reviews")
 
     tracker_items_raw = document.get("tracker_items")
     tracker_scopes_raw = document.get("tracker_scopes")
-    if not isinstance(tracker_items_raw, list) or not isinstance(tracker_scopes_raw, list):
+    if not isinstance(tracker_items_raw, list) or not isinstance(
+        tracker_scopes_raw, list
+    ):
         raise ReleaseError("repository tracker evidence is missing")
     tracker_items: dict[str, dict[str, object]] = {}
     tracker_keys: set[tuple[object, object, object]] = set()
     for index, raw_item in enumerate(tracker_items_raw):
-        item = _schema_contract(schema, "tracker_item", raw_item, f"tracker item {index}")
+        item = _schema_contract(
+            schema, "tracker_item", raw_item, f"tracker item {index}"
+        )
         item_id = item.get("id")
         key = (item.get("repository"), item.get("kind"), item.get("number"))
-        if not isinstance(item_id, str) or item_id in tracker_items or key in tracker_keys:
+        if (
+            not isinstance(item_id, str)
+            or item_id in tracker_items
+            or key in tracker_keys
+        ):
             raise ReleaseError(f"invalid or duplicate tracker item: {item_id!r}")
         tracker_items[item_id] = item
         tracker_keys.add(key)
@@ -1639,12 +2475,17 @@ def _check_repository_review_ledger(root: Path) -> dict[str, object]:
     covered_tracker_ids: set[str] = set()
     scoped_repositories: set[str] = set()
     for index, raw_scope in enumerate(tracker_scopes_raw):
-        scope = _schema_contract(schema, "tracker_scope", raw_scope, f"tracker scope {index}")
+        scope = _schema_contract(
+            schema, "tracker_scope", raw_scope, f"tracker scope {index}"
+        )
         repository = scope.get("repository")
         if not isinstance(repository, str) or repository in scoped_repositories:
             raise ReleaseError(f"invalid or duplicate tracker scope: {repository!r}")
         scoped_repositories.add(repository)
-        if scope.get("state_filter") != "all" or scope.get("completeness") != "complete":
+        if (
+            scope.get("state_filter") != "all"
+            or scope.get("completeness") != "complete"
+        ):
             raise ReleaseError(f"tracker scope is not exhaustive: {repository}")
         item_ids = scope.get("item_ids")
         if not isinstance(item_ids, list) or len(item_ids) != len(set(item_ids)):
@@ -1652,12 +2493,22 @@ def _check_repository_review_ledger(root: Path) -> dict[str, object]:
         if covered_tracker_ids & set(item_ids):
             raise ReleaseError(f"tracker item appears in multiple scopes: {repository}")
         scoped_items = [tracker_items.get(item_id) for item_id in item_ids]
-        if any(item is None or item.get("repository") != repository for item in scoped_items):
+        if any(
+            item is None or item.get("repository") != repository
+            for item in scoped_items
+        ):
             raise ReleaseError(f"tracker scope does not resolve: {repository}")
         issue_count = sum(item.get("kind") == "issue" for item in scoped_items if item)
-        pull_count = sum(item.get("kind") == "pull-request" for item in scoped_items if item)
-        if scope.get("issue_count") != issue_count or scope.get("pull_request_count") != pull_count:
-            raise ReleaseError(f"tracker scope arithmetic is inconsistent: {repository}")
+        pull_count = sum(
+            item.get("kind") == "pull-request" for item in scoped_items if item
+        )
+        if (
+            scope.get("issue_count") != issue_count
+            or scope.get("pull_request_count") != pull_count
+        ):
+            raise ReleaseError(
+                f"tracker scope arithmetic is inconsistent: {repository}"
+            )
         covered_tracker_ids.update(item_ids)
     if covered_tracker_ids != set(tracker_items) or len(tracker_items) != 14:
         raise ReleaseError("tracker scopes do not cover the complete 14-item review")
@@ -1673,7 +2524,9 @@ def _check_repository_review_ledger(root: Path) -> dict[str, object]:
         )
         blocker_id = blocker.get("id")
         if not isinstance(blocker_id, str) or blocker_id in blocker_ids:
-            raise ReleaseError(f"invalid or duplicate repository blocker: {blocker_id!r}")
+            raise ReleaseError(
+                f"invalid or duplicate repository blocker: {blocker_id!r}"
+            )
         blocker_ids.add(blocker_id)
         if blocker.get("severity") != "critical":
             raise ReleaseError(f"repository blocker severity is invalid: {blocker_id}")
@@ -1682,7 +2535,9 @@ def _check_repository_review_ledger(root: Path) -> dict[str, object]:
         elif blocker.get("status") == "resolved":
             evidence_paths = blocker.get("evidence_paths")
             if not isinstance(evidence_paths, list) or not evidence_paths:
-                raise ReleaseError(f"resolved repository blocker lacks evidence: {blocker_id}")
+                raise ReleaseError(
+                    f"resolved repository blocker lacks evidence: {blocker_id}"
+                )
             for relative in evidence_paths:
                 if (
                     not isinstance(relative, str)
@@ -1695,7 +2550,9 @@ def _check_repository_review_ledger(root: Path) -> dict[str, object]:
         else:
             raise ReleaseError(f"repository blocker status is invalid: {blocker_id}")
     if open_blockers:
-        raise ReleaseError(f"critical repository review blockers remain open: {open_blockers}")
+        raise ReleaseError(
+            f"critical repository review blockers remain open: {open_blockers}"
+        )
 
     return {
         "repository_count": len(repositories_raw),
@@ -1725,7 +2582,10 @@ def _check_ecosystem(root: Path) -> dict[str, object]:
         if entry["id"] in ids:
             raise ReleaseError(f"duplicate ecosystem disposition: {entry['id']}")
         ids.add(entry["id"])
-        if entry.get("license_review") == "pending" or entry.get("decision") in {None, "pending"}:
+        if entry.get("license_review") == "pending" or entry.get("decision") in {
+            None,
+            "pending",
+        }:
             raise ReleaseError(f"ecosystem entry remains pending: {entry['id']}")
     repository_evidence = _check_repository_review_ledger(root)
     return {
@@ -1769,8 +2629,12 @@ def verify_github_run(root: Path, run_id: str, commit_sha: str) -> dict[str, obj
         or run.get("path") != ".github/workflows/ci.yml"
         or run.get("head_branch") != "v2"
     ):
-        raise ReleaseError("GitHub Actions run does not prove the exact private v2 subject")
-    jobs_doc = _gh_json(root, f"repos/{repository}/actions/runs/{run_id}/jobs?per_page=100")
+        raise ReleaseError(
+            "GitHub Actions run does not prove the exact private v2 subject"
+        )
+    jobs_doc = _gh_json(
+        root, f"repos/{repository}/actions/runs/{run_id}/jobs?per_page=100"
+    )
     jobs = jobs_doc.get("jobs")
     if not isinstance(jobs, list):
         raise ReleaseError("GitHub Actions jobs evidence is missing")
@@ -1839,7 +2703,9 @@ def evaluate_release_gate(
             {"tracked_file_count": len(tracked_files(root))}
             if not audit_repository(root)
             else (_ for _ in ()).throw(
-                ReleaseError("repository audit failed: " + "; ".join(audit_repository(root)))
+                ReleaseError(
+                    "repository audit failed: " + "; ".join(audit_repository(root))
+                )
             )
         ),
     )
@@ -1848,19 +2714,25 @@ def evaluate_release_gate(
         lambda: (
             {"commit_sha": commit_sha, "tree_sha": tree_sha}
             if not _git(root, "status", "--porcelain").strip()
-            else (_ for _ in ()).throw(ReleaseError("release subject worktree is not clean"))
+            else (_ for _ in ()).throw(
+                ReleaseError("release subject worktree is not clean")
+            )
         ),
     )
     check(
         "source-capability-integrity",
-        lambda: _check_grounding_and_capabilities(root, datetime.now(timezone.utc).date()),
+        lambda: _check_grounding_and_capabilities(
+            root, datetime.now(timezone.utc).date()
+        ),
     )
     check("ecosystem-dispositions", lambda: _check_ecosystem(root))
 
     def model_evidence() -> dict[str, object]:
         if model_report is None or not model_report.is_file():
             raise ReleaseError("canonical Claude model-gate report is required")
-        module = _load_local_module(root, "evals/model_eval_gate.py", "claude_ads_model_gate")
+        module = _load_local_module(
+            root, "evals/model_eval_gate.py", "claude_ads_model_gate"
+        )
         return module.verify_release_report(
             model_report,
             root / "evals/model-eval-contract.json",
@@ -1899,9 +2771,9 @@ def evaluate_release_gate(
     return {
         "schema_version": "1.0.0",
         "evidence_class": "release-gate-assessment",
-        "evaluated_at": datetime.now(timezone.utc).isoformat(timespec="seconds").replace(
-            "+00:00", "Z"
-        ),
+        "evaluated_at": datetime.now(timezone.utc)
+        .isoformat(timespec="seconds")
+        .replace("+00:00", "Z"),
         "subject": {"commit_sha": commit_sha, "tree_sha": tree_sha},
         "checks": checks,
         "release_gate_satisfied": satisfied,
@@ -1919,11 +2791,17 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--root", help="repository root (defaults to script parent)")
     subparsers = parser.add_subparsers(dest="command", required=True)
     subparsers.add_parser("audit", help="audit tracked repository files")
-    package_parser = subparsers.add_parser("package", help="build deterministic artifacts")
+    package_parser = subparsers.add_parser(
+        "package", help="build deterministic artifacts"
+    )
     package_parser.add_argument("--output-dir", default="dist")
     verify_parser = subparsers.add_parser("verify", help="verify built artifacts")
     verify_parser.add_argument("--output-dir", default="dist")
-    verify_parser.add_argument("--expected-commit", required=True, help="trusted full Git commit expected in the release")
+    verify_parser.add_argument(
+        "--expected-commit",
+        required=True,
+        help="trusted full Git commit expected in the release",
+    )
     gate_parser = subparsers.add_parser(
         "gate", help="evaluate the exact candidate against every release gate"
     )
@@ -1950,16 +2828,24 @@ def main(argv: list[str] | None = None) -> int:
             print(f"release audit passed ({len(tracked_files(root))} tracked files)")
         elif args.command == "package":
             artifacts = build_release(root, (root / args.output_dir).resolve())
-            verify_release((root / args.output_dir).resolve(), _git(root, "rev-parse", "HEAD").decode("ascii").strip(), root)
+            verify_release(
+                (root / args.output_dir).resolve(),
+                _git(root, "rev-parse", "HEAD").decode("ascii").strip(),
+                root,
+            )
             for kind, path in artifacts.items():
                 print(f"{kind}: {path}")
         elif args.command == "verify":
-            verify_release((root / args.output_dir).resolve(), args.expected_commit, root)
+            verify_release(
+                (root / args.output_dir).resolve(), args.expected_commit, root
+            )
             print("release artifacts verified")
         else:
             report = evaluate_release_gate(
                 root,
-                model_report=(root / args.model_report).resolve() if args.model_report else None,
+                model_report=(root / args.model_report).resolve()
+                if args.model_report
+                else None,
                 review_evidence_dir=(
                     Path(args.review_evidence_dir).expanduser().resolve()
                     if args.review_evidence_dir
@@ -1995,7 +2881,14 @@ def main(argv: list[str] | None = None) -> int:
             print(rendered, end="")
             if not report["release_gate_satisfied"]:
                 return 1
-    except (OSError, KeyError, TypeError, ValueError, ReleaseError, zipfile.BadZipFile) as exc:
+    except (
+        OSError,
+        KeyError,
+        TypeError,
+        ValueError,
+        ReleaseError,
+        zipfile.BadZipFile,
+    ) as exc:
         print(f"release error: {exc}", file=sys.stderr)
         return 1
     return 0
