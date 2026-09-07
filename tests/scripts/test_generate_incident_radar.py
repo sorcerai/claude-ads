@@ -22,7 +22,9 @@ class _Response:
 
 
 def test_health_check_aggregates_nested_business_use_case_metrics(monkeypatch):
-    monkeypatch.setattr(generate_incident_radar.requests, "get", lambda *args, **kwargs: _Response())
+    monkeypatch.setattr(
+        generate_incident_radar.requests, "get", lambda *args, **kwargs: _Response()
+    )
 
     health = generate_incident_radar.check_meta_api_health("synthetic-token")
 
