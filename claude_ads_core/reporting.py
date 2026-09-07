@@ -26,7 +26,8 @@ from .control_registry import ControlRegistry, RegistryError
 _OS_NAME = os.name
 
 _POSIX_CAPABILITY_FUNCS = {
-    name: getattr(os, name, None) for name in ("open", "mkdir", "stat", "rename", "unlink")
+    name: getattr(os, name, None)
+    for name in ("open", "mkdir", "stat", "rename", "unlink")
 }
 
 
@@ -58,14 +59,20 @@ _STATUS_LABELS = {
     "provisional": "Provisional",
     "insufficient_evidence": "Insufficient evidence",
 }
-_COMPLETENESS_LABELS = {"complete": "Complete", "partial": "Partial", "failed": "Failed"}
+_COMPLETENESS_LABELS = {
+    "complete": "Complete",
+    "partial": "Partial",
+    "failed": "Failed",
+}
 
 
 def _redact_text(value: str) -> str:
     value = _CONTROL_CHARS_RE.sub("", value).replace("\r\n", "\n").replace("\r", "\n")
     value = _HEADER_SECRET_RE.sub(lambda match: f"{match.group(1)}[REDACTED]", value)
     value = _BEARER_RE.sub("Bearer [REDACTED]", value)
-    value = _SECRET_ASSIGNMENT_RE.sub(lambda match: f"{match.group(1)}{match.group(2)}[REDACTED]", value)
+    value = _SECRET_ASSIGNMENT_RE.sub(
+        lambda match: f"{match.group(1)}{match.group(2)}[REDACTED]", value
+    )
     return _EMAIL_RE.sub("[REDACTED EMAIL]", value)
 
 
@@ -73,7 +80,10 @@ def _redact_value(value: Any, *, key: str | None = None) -> Any:
     if key is not None and _SENSITIVE_KEY_RE.search(key):
         return "[REDACTED]"
     if isinstance(value, Mapping):
-        return {str(item_key): _redact_value(item, key=str(item_key)) for item_key, item in value.items()}
+        return {
+            str(item_key): _redact_value(item, key=str(item_key))
+            for item_key, item in value.items()
+        }
     if isinstance(value, list):
         return [_redact_value(item) for item in value]
     if isinstance(value, tuple):
@@ -101,10 +111,14 @@ def _html(value: Any) -> str:
 
 
 def _canonical_json(value: Any) -> str:
-    return json.dumps(_redact_value(value), ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return json.dumps(
+        _redact_value(value), ensure_ascii=False, sort_keys=True, separators=(",", ":")
+    )
 
 
-def _validated_bundle(bundle: Mapping[str, Any], registry: ControlRegistry) -> Mapping[str, Any]:
+def _validated_bundle(
+    bundle: Mapping[str, Any], registry: ControlRegistry
+) -> Mapping[str, Any]:
     try:
         validate_contract("report-bundle", bundle)
         registry.validate_report_scoring(bundle)
@@ -127,7 +141,9 @@ def _coverage_text(coverage: Any) -> str:
 
 
 def _controls(bundle: Mapping[str, Any]) -> dict[str, Mapping[str, Any]]:
-    return {str(control["control_id"]): control for control in bundle["control_definitions"]}
+    return {
+        str(control["control_id"]): control for control in bundle["control_definitions"]
+    }
 
 
 def _findings(bundle: Mapping[str, Any]) -> list[Mapping[str, Any]]:
@@ -135,14 +151,24 @@ def _findings(bundle: Mapping[str, Any]) -> list[Mapping[str, Any]]:
 
 
 def _categories(bundle: Mapping[str, Any]) -> list[Mapping[str, Any]]:
-    return sorted(bundle["scoring"]["categories"], key=lambda category: str(category.get("category", "")))
+    return sorted(
+        bundle["scoring"]["categories"],
+        key=lambda category: str(category.get("category", "")),
+    )
 
 
 def _extension_item_text(item: Any) -> str:
     if isinstance(item, str):
         return _text(item)
     if isinstance(item, Mapping):
-        preferred = ("summary", "title", "action", "claim", "description", "recommendation")
+        preferred = (
+            "summary",
+            "title",
+            "action",
+            "claim",
+            "description",
+            "recommendation",
+        )
         headline = next((_text(item[key]) for key in preferred if item.get(key)), "")
         details = [
             f"{str(key).replace('_', ' ').title()}: {_text(value)}"
@@ -166,8 +192,11 @@ def _actions(bundle: Mapping[str, Any]) -> list[Any]:
             "control_id": finding["control_id"],
         }
         for finding in _findings(bundle)
-        if finding["status"] in {"fail", "unknown"} and _text(finding.get("recommendation"))
+        if finding["status"] in {"fail", "unknown"}
+        and _text(finding.get("recommendation"))
     ]
+
+
 def _measurement_context_items(snapshot: Mapping[str, Any]) -> list[tuple[str, str]]:
     context = snapshot["measurement_context"]
 
@@ -180,7 +209,6 @@ def _measurement_context_items(snapshot: Mapping[str, Any]) -> list[tuple[str, s
 
     def display_list(values: Any) -> str:
         return ", ".join(_text(value) for value in values) or "None supplied"
-
 
     def display_window(window: Any) -> str:
         if window is None:
@@ -197,7 +225,10 @@ def _measurement_context_items(snapshot: Mapping[str, Any]) -> list[tuple[str, s
         ("Conversion definition", display(context["conversion_definition"])),
         ("Conversion actions", display_list(context["conversion_actions"])),
         ("Attribution model", display(context["attribution_model"])),
-        ("Click attribution window", display_window(context["click_attribution_window"])),
+        (
+            "Click attribution window",
+            display_window(context["click_attribution_window"]),
+        ),
         ("View attribution window", display_window(context["view_attribution_window"])),
         ("Counting behavior", display(context["counting_behavior"])),
         ("As of", display(context["as_of"])),
@@ -235,7 +266,10 @@ def render_markdown(bundle: Mapping[str, Any], *, registry: ControlRegistry) -> 
         f"- Privacy class: {_md(str(manifest['privacy_class']).title())}",
     ]
     lines.extend(("", "## Measurement context", ""))
-    lines.extend(f"- {label}: {_md(value)}" for label, value in _measurement_context_items(snapshot))
+    lines.extend(
+        f"- {label}: {_md(value)}"
+        for label, value in _measurement_context_items(snapshot)
+    )
     lines.extend(
         (
             "",
@@ -248,11 +282,23 @@ def render_markdown(bundle: Mapping[str, Any], *, registry: ControlRegistry) -> 
         )
     )
     if completeness != "complete":
-        lines.extend(("", "> WARNING: Required work did not complete; this report must not be presented as a complete audit."))
+        lines.extend(
+            (
+                "",
+                "> WARNING: Required work did not complete; this report must not be presented as a complete audit.",
+            )
+        )
     if score_status == "provisional":
-        lines.extend(("", "> WARNING: The health score is provisional because evidence coverage is below the normal threshold."))
+        lines.extend(
+            (
+                "",
+                "> WARNING: The health score is provisional because evidence coverage is below the normal threshold.",
+            )
+        )
     elif score_status == "insufficient_evidence":
-        lines.extend(("", "> WARNING: Evidence is insufficient for a defensible health score."))
+        lines.extend(
+            ("", "> WARNING: Evidence is insufficient for a defensible health score.")
+        )
 
     lines.extend(("", "## Category health", ""))
     categories = _categories(bundle)
@@ -295,7 +341,9 @@ def render_markdown(bundle: Mapping[str, Any], *, registry: ControlRegistry) -> 
         )
         if finding["evidence"]:
             for index, evidence in enumerate(finding["evidence"], start=1):
-                lines.extend((f"{index}.", "", f"        {_canonical_json(evidence)}", ""))
+                lines.extend(
+                    (f"{index}.", "", f"        {_canonical_json(evidence)}", "")
+                )
         else:
             lines.extend(("No evidence was supplied.", ""))
 
@@ -309,11 +357,22 @@ def render_markdown(bundle: Mapping[str, Any], *, registry: ControlRegistry) -> 
     lines.extend(("", "## Prioritized actions", ""))
     actions = _actions(bundle)
     if actions:
-        lines.extend(f"{index}. {_md(_extension_item_text(item))}" for index, item in enumerate(actions, start=1))
+        lines.extend(
+            f"{index}. {_md(_extension_item_text(item))}"
+            for index, item in enumerate(actions, start=1)
+        )
     else:
         lines.append("No follow-up actions were reported.")
 
-    lines.extend(("", "---", "", "Generated deterministically from ReportBundle JSON. Scores were recomputed from the supplied control registry and verified against this ReportBundle before rendering.", ""))
+    lines.extend(
+        (
+            "",
+            "---",
+            "",
+            "Generated deterministically from ReportBundle JSON. Scores were recomputed from the supplied control registry and verified against this ReportBundle before rendering.",
+            "",
+        )
+    )
     return "\n".join(lines)
 
 
@@ -337,25 +396,35 @@ def render_html(bundle: Mapping[str, Any], *, registry: ControlRegistry) -> str:
     account = snapshot["account"]
     warnings: list[str] = []
     if completeness != "complete":
-        warnings.append("Required work did not complete; this report must not be presented as a complete audit.")
+        warnings.append(
+            "Required work did not complete; this report must not be presented as a complete audit."
+        )
     if score_status == "provisional":
-        warnings.append("The health score is provisional because evidence coverage is below the normal threshold.")
+        warnings.append(
+            "The health score is provisional because evidence coverage is below the normal threshold."
+        )
     elif score_status == "insufficient_evidence":
         warnings.append("Evidence is insufficient for a defensible health score.")
 
-    category_html = "".join(
-        "<li><strong>{}</strong>: {}; evidence {}</li>".format(
-            _html(str(category.get("category", "Uncategorized")).title()),
-            _html(_score_text(category.get("health_score"))),
-            _html(_coverage_text(category.get("evidence_coverage", 0))),
+    category_html = (
+        "".join(
+            "<li><strong>{}</strong>: {}; evidence {}</li>".format(
+                _html(str(category.get("category", "Uncategorized")).title()),
+                _html(_score_text(category.get("health_score"))),
+                _html(_coverage_text(category.get("evidence_coverage", 0))),
+            )
+            for category in _categories(bundle)
         )
-        for category in _categories(bundle)
-    ) or "<li>No category scores were supplied.</li>"
+        or "<li>No category scores were supplied.</li>"
+    )
 
     finding_parts: list[str] = []
     for finding in _findings(bundle):
         control = controls.get(str(finding["control_id"]), {})
-        evidence = "".join(f"<pre>{html.escape(_canonical_json(item))}</pre>" for item in finding["evidence"])
+        evidence = "".join(
+            f"<pre>{html.escape(_canonical_json(item))}</pre>"
+            for item in finding["evidence"]
+        )
         if not evidence:
             evidence = "<p>No evidence was supplied.</p>"
         status = str(finding["status"])
@@ -376,37 +445,48 @@ def render_html(bundle: Mapping[str, Any], *, registry: ControlRegistry) -> str:
 
     contradictions = list(bundle.get("contradictions", []))
     contradictions_html = (
-        "<ul>" + "".join(f"<li>{_html(_extension_item_text(item))}</li>" for item in contradictions) + "</ul>"
+        "<ul>"
+        + "".join(
+            f"<li>{_html(_extension_item_text(item))}</li>" for item in contradictions
+        )
+        + "</ul>"
         if contradictions
         else "<p>No contradictions were reported.</p>"
     )
     actions = _actions(bundle)
     actions_html = (
-        "<ol>" + "".join(f"<li>{_html(_extension_item_text(item))}</li>" for item in actions) + "</ol>"
+        "<ol>"
+        + "".join(f"<li>{_html(_extension_item_text(item))}</li>" for item in actions)
+        + "</ol>"
         if actions
         else "<p>No follow-up actions were reported.</p>"
     )
-    warnings_html = "".join(f'<p class="warning"><strong>Warning:</strong> {_html(item)}</p>' for item in warnings)
+    warnings_html = "".join(
+        f'<p class="warning"><strong>Warning:</strong> {_html(item)}</p>'
+        for item in warnings
+    )
     context_html = "".join(
         f"<dt>{_html(label)}</dt><dd>{_html(value)}</dd>"
         for label, value in _measurement_context_items(snapshot)
     )
 
     return (
-        "<!doctype html>\n<html lang=\"en\"><head><meta charset=\"utf-8\">"
-        "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
-        "<title>Claude Ads Audit Report</title><style>" + _HTML_STYLE + "</style></head><body><main>"
+        '<!doctype html>\n<html lang="en"><head><meta charset="utf-8">'
+        '<meta name="viewport" content="width=device-width,initial-scale=1">'
+        "<title>Claude Ads Audit Report</title><style>"
+        + _HTML_STYLE
+        + "</style></head><body><main>"
         "<h1>Claude Ads Audit Report</h1>"
         f'<p class="banner {html.escape(completeness)} {html.escape(score_status)}">Run completeness: '
         f"{_html(_COMPLETENESS_LABELS[completeness])} · Evidence status: {_html(_STATUS_LABELS[score_status])}</p>"
-        "<h2>Run summary</h2><dl class=\"meta\">"
+        '<h2>Run summary</h2><dl class="meta">'
         f"<dt>Run ID</dt><dd>{_html(manifest['run_id'])}</dd><dt>Started</dt><dd>{_html(manifest['started_at'])}</dd>"
         f"<dt>Platform</dt><dd>{_html(str(account['platform']).title())}</dd>"
         f"<dt>Account</dt><dd>{_html(account.get('name') or account['account_id'])}</dd>"
         f"<dt>Window</dt><dd>{_html(snapshot['window']['start'])} to {_html(snapshot['window']['end'])}</dd>"
         f"<dt>Privacy class</dt><dd>{_html(str(manifest['privacy_class']).title())}</dd></dl>"
-        f"<h2>Measurement context</h2><dl class=\"meta\">{context_html}</dl>"
-        "<h2>Decision status</h2><div class=\"metrics\">"
+        f'<h2>Measurement context</h2><dl class="meta">{context_html}</dl>'
+        '<h2>Decision status</h2><div class="metrics">'
         f'<div class="metric">Run completeness<strong>{_html(_COMPLETENESS_LABELS[completeness])}</strong></div>'
         f'<div class="metric">Evidence status<strong>{_html(_STATUS_LABELS[score_status])}</strong></div>'
         f'<div class="metric">Health score<strong>{_html(_score_text(scoring["health_score"]))}</strong></div>'
@@ -464,9 +544,11 @@ def _validate_report_destination(destination: str | Path) -> Path:
 
     raw = destination.as_posix() if isinstance(destination, Path) else str(destination)
     device_digits = str.maketrans({"¹": "1", "²": "2", "³": "3"})
-    reserved = {"con", "prn", "aux", "nul"} | {f"com{index}" for index in range(1, 10)} | {
-        f"lpt{index}" for index in range(1, 10)
-    }
+    reserved = (
+        {"con", "prn", "aux", "nul"}
+        | {f"com{index}" for index in range(1, 10)}
+        | {f"lpt{index}" for index in range(1, 10)}
+    )
     parts = raw.split("/")
     if (
         not raw
@@ -475,7 +557,7 @@ def _validate_report_destination(destination: str | Path) -> Path:
         or re.match(r"^[A-Za-z]:", raw)
         or "\\" in raw
         or ":" in raw
-        or re.search(r'[\x00-\x1f<>\"|?*]', raw)
+        or re.search(r"[\x00-\x1f<>\"|?*]", raw)
         or any(
             not part
             or part in {".", ".."}
@@ -484,7 +566,9 @@ def _validate_report_destination(destination: str | Path) -> Path:
             for part in parts
         )
     ):
-        raise ReportRenderError("report output must be a non-empty relative path without traversal")
+        raise ReportRenderError(
+            "report output must be a non-empty relative path without traversal"
+        )
     return Path(*parts)
 
 
@@ -519,8 +603,13 @@ def _require_posix_capabilities() -> None:
     ):
         raise ReportRenderError("report output requires POSIX directory capabilities")
     supports_follow_symlinks = getattr(os, "supports_follow_symlinks", ())
-    if os.stat not in supports_follow_symlinks and _POSIX_CAPABILITY_FUNCS["stat"] not in supports_follow_symlinks:
-        raise ReportRenderError("report output requires POSIX no-follow stat capability")
+    if (
+        os.stat not in supports_follow_symlinks
+        and _POSIX_CAPABILITY_FUNCS["stat"] not in supports_follow_symlinks
+    ):
+        raise ReportRenderError(
+            "report output requires POSIX no-follow stat capability"
+        )
 
 
 def _directory_flags() -> int:
@@ -534,7 +623,9 @@ def _check_private_directory(file_descriptor: int, label: str) -> os.stat_result
     if info.st_uid != os.getuid():
         raise ReportRenderError(f"report {label} must be owned by the current user")
     if info.st_mode & 0o077:
-        raise ReportRenderError(f"report {label} must be private (mode must not grant group or other access)")
+        raise ReportRenderError(
+            f"report {label} must be private (mode must not grant group or other access)"
+        )
     return info
 
 
@@ -568,7 +659,9 @@ def _open_posix_parent(root_fd: int, parts: tuple[str, ...]) -> tuple[int, list[
             details = "; ".join(str(error) for error in close_errors)
             close_context = f"parent descriptor cleanup failed: {details}"
             if isinstance(primary_error, Exception):
-                raise ReportRenderError(f"{primary_error}; {close_context}") from primary_error
+                raise ReportRenderError(
+                    f"{primary_error}; {close_context}"
+                ) from primary_error
             primary_error.add_note(close_context)
         raise
     return parent_fd, opened
@@ -598,7 +691,10 @@ def _verify_posix_namespace(
         fresh_root_fd = os.open(root_path, _directory_flags())
         fresh_fds.append(fresh_root_fd)
         fresh_root = _check_private_directory(fresh_root_fd, "root")
-        if (fresh_root.st_dev, fresh_root.st_ino) != (held_root.st_dev, held_root.st_ino):
+        if (fresh_root.st_dev, fresh_root.st_ino) != (
+            held_root.st_dev,
+            held_root.st_ino,
+        ):
             raise ReportRenderError("report root namespace identity changed")
         fresh_parent_fd = fresh_root_fd
         for part in relative.parts[:-1]:
@@ -611,21 +707,31 @@ def _verify_posix_namespace(
             fresh_fds.append(fresh_parent_fd)
             _check_private_directory(fresh_parent_fd, "output parent")
         fresh_parent = os.fstat(fresh_parent_fd)
-        if (fresh_parent.st_dev, fresh_parent.st_ino) != (held_parent.st_dev, held_parent.st_ino):
+        if (fresh_parent.st_dev, fresh_parent.st_ino) != (
+            held_parent.st_dev,
+            held_parent.st_ino,
+        ):
             raise ReportRenderError("report output parent namespace identity changed")
         leaf_fd = os.open(
             relative.name,
-            os.O_RDONLY | getattr(os, "O_BINARY", 0) | os.O_NOFOLLOW | getattr(os, "O_CLOEXEC", 0),
+            os.O_RDONLY
+            | getattr(os, "O_BINARY", 0)
+            | os.O_NOFOLLOW
+            | getattr(os, "O_CLOEXEC", 0),
             dir_fd=fresh_parent_fd,
         )
         fresh_fds.append(leaf_fd)
         leaf = os.fstat(leaf_fd)
         if not stat.S_ISREG(leaf.st_mode):
-            raise ReportRenderError("report output verification found a non-regular file")
+            raise ReportRenderError(
+                "report output verification found a non-regular file"
+            )
         if (leaf.st_dev, leaf.st_ino) != (held_leaf.st_dev, held_leaf.st_ino):
             raise ReportRenderError("report output namespace identity changed")
         if _read_exact(leaf_fd) != expected:
-            raise ReportRenderError("report output verification found unexpected content")
+            raise ReportRenderError(
+                "report output verification found unexpected content"
+            )
         os.fsync(fresh_parent_fd)
     except BaseException as exc:
         verification_error = exc
@@ -637,22 +743,34 @@ def _verify_posix_namespace(
                 close_errors.append(exc)
     if close_errors:
         details = "; ".join(str(error) for error in close_errors)
-        base_close_error = next((error for error in close_errors if not isinstance(error, Exception)), None)
+        base_close_error = next(
+            (error for error in close_errors if not isinstance(error, Exception)), None
+        )
         if base_close_error is not None:
             if verification_error is not None:
                 base_close_error.add_note(str(verification_error))
-            base_close_error.add_note(f"report output verification descriptor close failed: {details}")
+            base_close_error.add_note(
+                f"report output verification descriptor close failed: {details}"
+            )
             raise base_close_error
-        close_error = ReportRenderError(f"report output verification close failed: {details}")
+        close_error = ReportRenderError(
+            f"report output verification close failed: {details}"
+        )
         if verification_error is not None:
             if isinstance(verification_error, Exception):
-                raise ReportRenderError(f"{verification_error}; {close_error}") from verification_error
+                raise ReportRenderError(
+                    f"{verification_error}; {close_error}"
+                ) from verification_error
             verification_error.add_note(str(close_error))
             raise verification_error
         raise close_error
     if verification_error is not None:
         raise verification_error
-def _atomic_write_posix(root: str | Path, destination: str | Path, expected: bytes) -> Path:
+
+
+def _atomic_write_posix(
+    root: str | Path, destination: str | Path, expected: bytes
+) -> Path:
     _require_posix_capabilities()
     relative = _validate_report_destination(destination)
     try:
@@ -685,7 +803,11 @@ def _atomic_write_posix(root: str | Path, destination: str | Path, expected: byt
             normalized = ReportRenderError(f"report output operation failed: {error}")
         else:
             normalized = error
-        if replacement_committed and isinstance(normalized, Exception) and "replacement occurred" not in str(normalized):
+        if (
+            replacement_committed
+            and isinstance(normalized, Exception)
+            and "replacement occurred" not in str(normalized)
+        ):
             normalized = ReportRenderError(
                 f"report output replacement occurred but verification/durability failed: {normalized}"
             )
@@ -694,10 +816,14 @@ def _atomic_write_posix(root: str | Path, destination: str | Path, expected: byt
     try:
         root_fd = os.open(root_path, _directory_flags())
         held_root = _check_private_directory(root_fd, "root")
-        parent_fd, opened_parent_fds = _open_posix_parent(root_fd, tuple(relative.parts[:-1]))
+        parent_fd, opened_parent_fds = _open_posix_parent(
+            root_fd, tuple(relative.parts[:-1])
+        )
         held_parent = os.fstat(parent_fd)
         try:
-            destination_info = os.stat(relative.name, dir_fd=parent_fd, follow_symlinks=False)
+            destination_info = os.stat(
+                relative.name, dir_fd=parent_fd, follow_symlinks=False
+            )
         except FileNotFoundError:
             destination_info = None
         if destination_info is not None:
@@ -716,9 +842,13 @@ def _atomic_write_posix(root: str | Path, destination: str | Path, expected: byt
             | getattr(os, "O_BINARY", 0)
         )
         try:
-            temporary_fd = os.open(temporary_name, temporary_flags, 0o600, dir_fd=parent_fd)
+            temporary_fd = os.open(
+                temporary_name, temporary_flags, 0o600, dir_fd=parent_fd
+            )
         except OSError as exc:
-            raise ReportRenderError(f"report output temporary file open failed: {exc}") from exc
+            raise ReportRenderError(
+                f"report output temporary file open failed: {exc}"
+            ) from exc
         temporary_owned = True
         stage_error: BaseException | None = None
         try:
@@ -740,9 +870,15 @@ def _atomic_write_posix(root: str | Path, destination: str | Path, expected: byt
                 os.close(temporary_fd)
             except BaseException as exc:
                 if stage_error is None:
-                    stage_error = ReportRenderError(f"report output close failed: {exc}") if isinstance(exc, Exception) else exc
+                    stage_error = (
+                        ReportRenderError(f"report output close failed: {exc}")
+                        if isinstance(exc, Exception)
+                        else exc
+                    )
                 elif isinstance(stage_error, Exception):
-                    stage_error = ReportRenderError(f"{stage_error}; report output close failed: {exc}")
+                    stage_error = ReportRenderError(
+                        f"{stage_error}; report output close failed: {exc}"
+                    )
                 else:
                     stage_error.add_note(f"report output close failed: {exc}")
         if stage_error is not None:
@@ -772,18 +908,24 @@ def _atomic_write_posix(root: str | Path, destination: str | Path, expected: byt
             temporary_owned = False
         except OSError as exc:
             outcome_unknown = True
-            raise ReportRenderError(f"report output replacement outcome is unknown: {exc}") from exc
+            raise ReportRenderError(
+                f"report output replacement outcome is unknown: {exc}"
+            ) from exc
         except BaseException as exc:
             outcome_unknown = True
             exc.add_note("report output replacement outcome is unknown")
             raise
         else:
-            no_op_error = ReportRenderError("report output replacement was a no-op: temporary file remains")
+            no_op_error = ReportRenderError(
+                "report output replacement was a no-op: temporary file remains"
+            )
             try:
                 os.unlink(temporary_name, dir_fd=parent_fd)
             except BaseException as exc:
                 if isinstance(exc, Exception):
-                    raise ReportRenderError(f"{no_op_error}; temporary cleanup failed: {exc}") from no_op_error
+                    raise ReportRenderError(
+                        f"{no_op_error}; temporary cleanup failed: {exc}"
+                    ) from no_op_error
                 exc.add_note(str(no_op_error))
                 raise
             temporary_owned = False
@@ -792,18 +934,30 @@ def _atomic_write_posix(root: str | Path, destination: str | Path, expected: byt
         try:
             leaf_fd = os.open(
                 relative.name,
-                os.O_RDONLY | os.O_NOFOLLOW | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_BINARY", 0),
+                os.O_RDONLY
+                | os.O_NOFOLLOW
+                | getattr(os, "O_CLOEXEC", 0)
+                | getattr(os, "O_BINARY", 0),
                 dir_fd=parent_fd,
             )
             verification_error: BaseException | None = None
             try:
                 held_leaf = os.fstat(leaf_fd)
                 if not stat.S_ISREG(held_leaf.st_mode):
-                    raise ReportRenderError("report output verification found a non-regular file")
-                if (held_leaf.st_dev, held_leaf.st_ino) != (temporary_info.st_dev, temporary_info.st_ino):
-                    raise ReportRenderError("report output verification found unexpected file identity")
+                    raise ReportRenderError(
+                        "report output verification found a non-regular file"
+                    )
+                if (held_leaf.st_dev, held_leaf.st_ino) != (
+                    temporary_info.st_dev,
+                    temporary_info.st_ino,
+                ):
+                    raise ReportRenderError(
+                        "report output verification found unexpected file identity"
+                    )
                 if _read_exact(leaf_fd) != expected:
-                    raise ReportRenderError("report output verification found unexpected content")
+                    raise ReportRenderError(
+                        "report output verification found unexpected content"
+                    )
             except BaseException as exc:
                 verification_error = exc
             finally:
@@ -812,35 +966,50 @@ def _atomic_write_posix(root: str | Path, destination: str | Path, expected: byt
                 except BaseException as exc:
                     if verification_error is None:
                         verification_error = (
-                            ReportRenderError(f"report output verification close failed: {exc}")
+                            ReportRenderError(
+                                f"report output verification close failed: {exc}"
+                            )
                             if isinstance(exc, Exception)
                             else exc
                         )
                     elif isinstance(verification_error, Exception):
-                        verification_error = ReportRenderError(f"{verification_error}; verification close failed: {exc}")
+                        verification_error = ReportRenderError(
+                            f"{verification_error}; verification close failed: {exc}"
+                        )
                     else:
                         verification_error.add_note(f"verification close failed: {exc}")
             if verification_error is not None:
                 raise verification_error
             os.fsync(parent_fd)
-            _verify_posix_namespace(root_path, relative, held_root, held_parent, held_leaf, expected)
+            _verify_posix_namespace(
+                root_path, relative, held_root, held_parent, held_leaf, expected
+            )
         except BaseException as exc:
             if isinstance(exc, Exception):
                 raise ReportRenderError(
                     f"report output replacement occurred but verification/durability failed: {exc}"
                 ) from exc
-            exc.add_note("report output replacement occurred before verification/durability interruption")
+            exc.add_note(
+                "report output replacement occurred before verification/durability interruption"
+            )
             raise
     except BaseException as exc:
-        if temporary_owned and temporary_name is not None and parent_fd is not None and not outcome_unknown and not replacement_committed and (
-            not replace_called or not replace_returned
+        if (
+            temporary_owned
+            and temporary_name is not None
+            and parent_fd is not None
+            and not outcome_unknown
+            and not replacement_committed
+            and (not replace_called or not replace_returned)
         ):
             try:
                 os.unlink(temporary_name, dir_fd=parent_fd)
                 temporary_owned = False
             except BaseException as cleanup_error:
                 if isinstance(exc, Exception):
-                    exc = ReportRenderError(f"{exc}; temporary cleanup failed: {cleanup_error}")
+                    exc = ReportRenderError(
+                        f"{exc}; temporary cleanup failed: {cleanup_error}"
+                    )
                 else:
                     exc.add_note(f"temporary cleanup failed: {cleanup_error}")
         primary_error = normalize_error(exc)
@@ -858,12 +1027,16 @@ def _atomic_write_posix(root: str | Path, destination: str | Path, expected: byt
 
     if close_errors:
         details = "; ".join(str(error) for error in close_errors)
-        base_close_error = next((error for error in close_errors if not isinstance(error, Exception)), None)
+        base_close_error = next(
+            (error for error in close_errors if not isinstance(error, Exception)), None
+        )
         if base_close_error is not None:
             if primary_error is not None:
                 base_close_error.add_note(str(primary_error))
             if replacement_committed:
-                base_close_error.add_note("report output replacement occurred before descriptor close failure")
+                base_close_error.add_note(
+                    "report output replacement occurred before descriptor close failure"
+                )
             base_close_error.add_note(f"descriptor close failed: {details}")
             primary_error = base_close_error
         else:
@@ -872,7 +1045,9 @@ def _atomic_write_posix(root: str | Path, destination: str | Path, expected: byt
                     f"report output replacement occurred but descriptor close failed: {details}"
                 )
                 if replacement_committed
-                else ReportRenderError(f"report output descriptor close failed: {details}")
+                else ReportRenderError(
+                    f"report output descriptor close failed: {details}"
+                )
             )
             if primary_error is None:
                 primary_error = close_error
@@ -956,7 +1131,14 @@ Set-Acl -LiteralPath $args[0] -AclObject $acl
 def _windows_acl_snapshot(path: Path) -> Mapping[str, Any]:
     try:
         result = subprocess.run(
-            ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", _WINDOWS_ACL_QUERY, str(path)],
+            [
+                "powershell.exe",
+                "-NoProfile",
+                "-NonInteractive",
+                "-Command",
+                _WINDOWS_ACL_QUERY,
+                str(path),
+            ],
             capture_output=True,
             text=True,
             encoding="utf-8",
@@ -972,7 +1154,9 @@ def _windows_acl_snapshot(path: Path) -> Mapping[str, Any]:
     try:
         snapshot = json.loads(result.stdout)
     except (TypeError, ValueError, UnicodeError) as exc:
-        raise ReportRenderError("report Windows ACL query returned invalid data") from exc
+        raise ReportRenderError(
+            "report Windows ACL query returned invalid data"
+        ) from exc
     if not isinstance(snapshot, Mapping):
         raise ReportRenderError("report Windows ACL query returned invalid data")
     access = snapshot.get("access")
@@ -996,8 +1180,13 @@ def _validate_windows_acl(path: Path, label: str) -> None:
         raise ReportRenderError(f"report {label} current user is unverifiable")
     owner_folded = owner_sid.casefold()
     current_folded = current_sid.casefold()
-    if owner_folded != current_folded and owner_sid.upper() not in _WINDOWS_TRUSTED_SIDS:
-        raise ReportRenderError(f"report {label} must be owned by current user or a trusted Windows identity")
+    if (
+        owner_folded != current_folded
+        and owner_sid.upper() not in _WINDOWS_TRUSTED_SIDS
+    ):
+        raise ReportRenderError(
+            f"report {label} must be owned by current user or a trusted Windows identity"
+        )
     if not isinstance(access, list) or not access:
         raise ReportRenderError(f"report {label} DACL is unprotected or unverifiable")
 
@@ -1007,13 +1196,22 @@ def _validate_windows_acl(path: Path, label: str) -> None:
         sid = entry.get("sid")
         access_type = entry.get("type")
         rights = entry.get("rights")
-        if not isinstance(sid, str) or not sid or not isinstance(access_type, str) or not isinstance(rights, str):
+        if (
+            not isinstance(sid, str)
+            or not sid
+            or not isinstance(access_type, str)
+            or not isinstance(rights, str)
+        ):
             raise ReportRenderError(f"report {label} DACL is unverifiable")
         sid_folded = sid.casefold()
         rights_folded = rights.casefold()
         if access_type.casefold() == "deny":
-            if sid_folded == current_folded and any(token in rights_folded for token in _WINDOWS_MUTATING_RIGHTS):
-                raise ReportRenderError(f"report {label} DACL denies current-user access")
+            if sid_folded == current_folded and any(
+                token in rights_folded for token in _WINDOWS_MUTATING_RIGHTS
+            ):
+                raise ReportRenderError(
+                    f"report {label} DACL denies current-user access"
+                )
             continue
         if access_type.casefold() != "allow":
             raise ReportRenderError(f"report {label} DACL is unverifiable")
@@ -1028,7 +1226,14 @@ def _validate_windows_acl(path: Path, label: str) -> None:
 def _protect_windows_path(path: Path) -> None:
     try:
         result = subprocess.run(
-            ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", _WINDOWS_ACL_APPLY, str(path)],
+            [
+                "powershell.exe",
+                "-NoProfile",
+                "-NonInteractive",
+                "-Command",
+                _WINDOWS_ACL_APPLY,
+                str(path),
+            ],
             capture_output=True,
             text=True,
             encoding="utf-8",
@@ -1044,7 +1249,6 @@ def _protect_windows_path(path: Path) -> None:
     _validate_windows_acl(path, "output")
 
 
-
 def _validate_windows_tree(root_path: Path, destination: Path) -> Path:
     try:
         home = Path.home().resolve()
@@ -1055,7 +1259,9 @@ def _validate_windows_tree(root_path: Path, destination: Path) -> Path:
         root_path.resolve(strict=False).relative_to(home)
         root_path.relative_to(home)
     except (OSError, ValueError) as exc:
-        raise ReportRenderError("report root must be beneath the current user's home") from exc
+        raise ReportRenderError(
+            "report root must be beneath the current user's home"
+        ) from exc
 
     current = home
     relative_root = root_path.relative_to(home)
@@ -1064,7 +1270,9 @@ def _validate_windows_tree(root_path: Path, destination: Path) -> Path:
         if current.exists() or current.is_symlink():
             info = current.lstat()
             if stat.S_ISLNK(info.st_mode) or _windows_reparse(info):
-                raise ReportRenderError("report root must not contain links or reparse points")
+                raise ReportRenderError(
+                    "report root must not contain links or reparse points"
+                )
             if not stat.S_ISDIR(info.st_mode):
                 raise ReportRenderError("report root must be a directory")
             _validate_windows_acl(current, "root")
@@ -1078,7 +1286,9 @@ def _validate_windows_tree(root_path: Path, destination: Path) -> Path:
         if parent.exists() or parent.is_symlink():
             info = parent.lstat()
             if stat.S_ISLNK(info.st_mode) or _windows_reparse(info):
-                raise ReportRenderError("report output parent must not contain links or reparse points")
+                raise ReportRenderError(
+                    "report output parent must not contain links or reparse points"
+                )
             if not stat.S_ISDIR(info.st_mode):
                 raise ReportRenderError("report output parent must be a directory")
             _validate_windows_acl(parent, "output parent")
@@ -1097,7 +1307,9 @@ def _validate_windows_tree(root_path: Path, destination: Path) -> Path:
     return leaf
 
 
-def _atomic_write_windows(root: str | Path, destination: str | Path, expected: bytes) -> Path:
+def _atomic_write_windows(
+    root: str | Path, destination: str | Path, expected: bytes
+) -> Path:
     relative = _validate_report_destination(destination)
     try:
         root_path = Path(root).expanduser().absolute()
@@ -1110,7 +1322,9 @@ def _atomic_write_windows(root: str | Path, destination: str | Path, expected: b
     except OSError as exc:
         raise ReportRenderError(f"report output path validation failed: {exc}") from exc
     try:
-        file_descriptor, temporary_name = tempfile.mkstemp(prefix=f".{output_path.name}.", dir=output_path.parent)
+        file_descriptor, temporary_name = tempfile.mkstemp(
+            prefix=f".{output_path.name}.", dir=output_path.parent
+        )
     except OSError as exc:
         raise ReportRenderError(f"report output temporary file failed: {exc}") from exc
 
@@ -1140,9 +1354,15 @@ def _atomic_write_windows(root: str | Path, destination: str | Path, expected: b
                 os.close(file_descriptor)
             except BaseException as exc:
                 if stage_error is None:
-                    stage_error = ReportRenderError(f"report output close failed: {exc}") if isinstance(exc, Exception) else exc
+                    stage_error = (
+                        ReportRenderError(f"report output close failed: {exc}")
+                        if isinstance(exc, Exception)
+                        else exc
+                    )
                 elif isinstance(stage_error, Exception):
-                    stage_error = ReportRenderError(f"{stage_error}; report output close failed: {exc}")
+                    stage_error = ReportRenderError(
+                        f"{stage_error}; report output close failed: {exc}"
+                    )
                 else:
                     stage_error.add_note(f"report output close failed: {exc}")
         if stage_error is not None:
@@ -1171,16 +1391,22 @@ def _atomic_write_windows(root: str | Path, destination: str | Path, expected: b
         except BaseException as exc:
             outcome_unknown = True
             if isinstance(exc, Exception):
-                raise ReportRenderError(f"report output replacement outcome is unknown: {exc}") from exc
+                raise ReportRenderError(
+                    f"report output replacement outcome is unknown: {exc}"
+                ) from exc
             exc.add_note("report output replacement outcome is unknown")
             raise
         else:
-            no_op_error = ReportRenderError("report output replacement was a no-op: temporary file remains")
+            no_op_error = ReportRenderError(
+                "report output replacement was a no-op: temporary file remains"
+            )
             try:
                 temporary_path.unlink()
             except BaseException as exc:
                 if isinstance(exc, Exception):
-                    raise ReportRenderError(f"{no_op_error}; temporary cleanup failed: {exc}") from no_op_error
+                    raise ReportRenderError(
+                        f"{no_op_error}; temporary cleanup failed: {exc}"
+                    ) from no_op_error
                 exc.add_note(str(no_op_error))
                 raise
             temporary_owned = False
@@ -1191,8 +1417,12 @@ def _atomic_write_windows(root: str | Path, destination: str | Path, expected: b
                 actual = stream.read()
         except BaseException as exc:
             if isinstance(exc, Exception):
-                raise ReportRenderError(f"report output replacement occurred but verification failed: {exc}") from exc
-            exc.add_note("report output replacement occurred before verification interruption")
+                raise ReportRenderError(
+                    f"report output replacement occurred but verification failed: {exc}"
+                ) from exc
+            exc.add_note(
+                "report output replacement occurred before verification interruption"
+            )
             raise
         if actual != expected:
             raise ReportRenderError(
@@ -1200,13 +1430,20 @@ def _atomic_write_windows(root: str | Path, destination: str | Path, expected: b
             )
         return output_path
     except BaseException as exc:
-        if temporary_owned and not outcome_unknown and not replacement_committed and (not replace_called or not replace_returned):
+        if (
+            temporary_owned
+            and not outcome_unknown
+            and not replacement_committed
+            and (not replace_called or not replace_returned)
+        ):
             try:
                 temporary_path.unlink(missing_ok=True)
                 temporary_owned = False
             except BaseException as cleanup_error:
                 if isinstance(exc, Exception):
-                    exc = ReportRenderError(f"{exc}; temporary cleanup failed: {cleanup_error}")
+                    exc = ReportRenderError(
+                        f"{exc}; temporary cleanup failed: {cleanup_error}"
+                    )
                 else:
                     exc.add_note(f"temporary cleanup failed: {cleanup_error}")
         if isinstance(exc, ReportRenderError):
@@ -1220,7 +1457,9 @@ def _atomic_write_windows(root: str | Path, destination: str | Path, expected: b
     return output_path
 
 
-def atomic_write_report(root: str | Path, destination: str | Path, content: str | bytes) -> Path:
+def atomic_write_report(
+    root: str | Path, destination: str | Path, content: str | bytes
+) -> Path:
     """Atomically write report content beneath a safe root."""
 
     _validate_report_destination(destination)
@@ -1230,6 +1469,7 @@ def atomic_write_report(root: str | Path, destination: str | Path, content: str 
     if _OS_NAME == "nt":
         return _atomic_write_windows(root, destination, expected_bytes)
     raise ReportRenderError("report output writing unsupported on this platform")
+
 
 def write_report_bundle(
     bundle: Mapping[str, Any],
@@ -1242,4 +1482,6 @@ def write_report_bundle(
     """Validate, render, and atomically write a report bundle."""
 
     _validate_report_destination(destination)
-    return atomic_write_report(root, destination, render_report(bundle, output_format, registry=registry))
+    return atomic_write_report(
+        root, destination, render_report(bundle, output_format, registry=registry)
+    )
