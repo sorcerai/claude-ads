@@ -465,7 +465,7 @@ def test_bash_upgrade_rejects_extended_acl_metadata_before_cleanup(tmp_path):
 
 
 @BASH_INSTALLER_ONLY
-@pytest.mark.skipif(os.uname().sysname != "Darwin", reason="Darwin ACL guard only")
+@pytest.mark.skipif(platform.system() != "Darwin", reason="Darwin ACL guard only")
 def test_bash_upgrade_allows_protective_deny_acl_before_cleanup(tmp_path):
     skills, agents = _install(tmp_path)
     stale = skills / "ads" / "scripts" / "claude_ads_core" / "retired.json"
