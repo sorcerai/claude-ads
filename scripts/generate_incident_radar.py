@@ -79,18 +79,20 @@ def check_meta_api_health(token: str | None) -> dict:
         usage_values: list[float] = []
         try:
             parsed_usage = json.loads(usage_header)
-            if isinstance(parsed_usage, dict):
-                for value in parsed_usage.values():
-                    if isinstance(value, (int, float)):
-                        usage_values.append(float(value))
-                    elif isinstance(value, list):
-                        for item in value:
-                            if isinstance(item, dict):
-                                usage_values.extend(
-                                    float(metric)
-                                    for metric in item.values()
-                                    if isinstance(metric, (int, float))
-                                )
+
+            def collect_numeric_values(value: object) -> None:
+                if isinstance(value, bool):
+                    return
+                if isinstance(value, (int, float)):
+                    usage_values.append(float(value))
+                elif isinstance(value, dict):
+                    for nested_value in value.values():
+                        collect_numeric_values(nested_value)
+                elif isinstance(value, list):
+                    for nested_value in value:
+                        collect_numeric_values(nested_value)
+
+            collect_numeric_values(parsed_usage)
         except Exception:
             pass
         usage_val = max(usage_values, default=0.0)
