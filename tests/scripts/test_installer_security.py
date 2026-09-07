@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import platform
 import shutil
 import subprocess
 from pathlib import Path
@@ -431,7 +432,7 @@ def test_bash_upgrade_rejects_group_writable_root_before_retired_cleanup(tmp_pat
 
 
 @BASH_INSTALLER_ONLY
-@pytest.mark.skipif(os.uname().sysname != "Darwin", reason="Darwin ACL guard only")
+@pytest.mark.skipif(platform.system() != "Darwin", reason="Darwin ACL guard only")
 def test_bash_upgrade_rejects_extended_acl_metadata_before_cleanup(tmp_path):
     skills, agents = _install(tmp_path)
     stale = skills / "ads" / "scripts" / "claude_ads_core" / "retired.json"
@@ -1138,4 +1139,3 @@ def test_powershell_repeat_removes_dropped_owned_file_before_uninstall(tmp_path)
     )
     assert str(installed_legacy.resolve()) not in manifest["files"]
     assert not installed_legacy.exists()
-
