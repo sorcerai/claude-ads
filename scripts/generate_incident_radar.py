@@ -6,7 +6,7 @@ Performs:
 2. Curated & verified platform incident dispatches from r/FacebookAds, r/PPC, and adops media buyer networks.
 3. Official platform status vs. reality telemetry comparison.
 4. Aggregated crowdsourced ban/outage baseline metrics for client-side interactive triage.
-5. Emits data/incident-radar.json into each configured microsite repository.
+5. Emits data/incident-radar.json into each fleet microsite repository.
 """
 
 from __future__ import annotations
@@ -24,19 +24,30 @@ except ImportError:
     print("Error: requests library required. Install or use virtualenv.")
     sys.exit(1)
 
+REPOSITORY_NAMES = (
+    "legal-ad-infra",
+    "telehealth-ad-infra",
+    "ecom-ad-scale",
+    "adops-resilience",
+    "ad-spend-index",
+)
+
+
 def load_repos() -> list[str]:
-    """Resolve target repositories from ADSINFRA_REPOS (os.pathsep-separated)."""
-    raw = os.environ.get("ADSINFRA_REPOS", "")
-    repos = [path for path in (part.strip() for part in raw.split(os.pathsep)) if path]
-    if not repos:
+    """Resolve the fleet repositories beneath ADSINFRA_FLEET_ROOT."""
+    fleet_root = os.environ.get("ADSINFRA_FLEET_ROOT")
+    if not fleet_root:
         sys.exit(
-            "Error: set ADSINFRA_REPOS to an os.pathsep-separated list of "
-            "microsite repository paths before generating the radar."
+            "Error: set ADSINFRA_FLEET_ROOT to the parent directory of the "
+            "target repositories before generating the radar."
         )
-    return repos
+    return [os.path.join(fleet_root, name) for name in REPOSITORY_NAMES]
 
 def get_meta_token() -> str | None:
-    """Safely obtain Meta token from macOS Keychain without exposing it."""
+    """Safely obtain Meta token from the environment or macOS Keychain."""
+    token = os.environ.get("META_AD_LIBRARY_TOKEN")
+    if token:
+        return token
     try:
         res = subprocess.run(
             ["security", "find-generic-password", "-s", "META_AD_LIBRARY_TOKEN", "-w"],
