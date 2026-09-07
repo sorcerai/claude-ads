@@ -1092,7 +1092,24 @@ _WINDOWS_MUTATING_RIGHTS = (
 _WINDOWS_ACL_QUERY = r"""
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
-$acl = Get-Acl -LiteralPath $args[0]
+$item = Get-Item -LiteralPath $args[0] -Force
+$sections = [System.Security.AccessControl.AccessControlSections]::Owner -bor
+    [System.Security.AccessControl.AccessControlSections]::Access
+if ($PSVersionTable.PSEdition -eq 'Core') {
+    if ($item.PSIsContainer) {
+        $acl = [System.IO.FileSystemAclExtensions]::GetAccessControl(
+            [System.IO.DirectoryInfo]::new($args[0]), $sections
+        )
+    } else {
+        $acl = [System.IO.FileSystemAclExtensions]::GetAccessControl(
+            [System.IO.FileInfo]::new($args[0]), $sections
+        )
+    }
+} elseif ($item.PSIsContainer) {
+    $acl = [System.IO.Directory]::GetAccessControl($args[0], $sections)
+} else {
+    $acl = [System.IO.File]::GetAccessControl($args[0], $sections)
+}
 $current = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
 $owner = $acl.GetOwner([Security.Principal.SecurityIdentifier]).Value
 $access = @($acl.Access | ForEach-Object {
@@ -1110,7 +1127,24 @@ $access = @($acl.Access | ForEach-Object {
 
 _WINDOWS_ACL_APPLY = r"""
 $ErrorActionPreference = 'Stop'
-$acl = Get-Acl -LiteralPath $args[0]
+$item = Get-Item -LiteralPath $args[0] -Force
+$sections = [System.Security.AccessControl.AccessControlSections]::Owner -bor
+    [System.Security.AccessControl.AccessControlSections]::Access
+if ($PSVersionTable.PSEdition -eq 'Core') {
+    if ($item.PSIsContainer) {
+        $acl = [System.IO.FileSystemAclExtensions]::GetAccessControl(
+            [System.IO.DirectoryInfo]::new($args[0]), $sections
+        )
+    } else {
+        $acl = [System.IO.FileSystemAclExtensions]::GetAccessControl(
+            [System.IO.FileInfo]::new($args[0]), $sections
+        )
+    }
+} elseif ($item.PSIsContainer) {
+    $acl = [System.IO.Directory]::GetAccessControl($args[0], $sections)
+} else {
+    $acl = [System.IO.File]::GetAccessControl($args[0], $sections)
+}
 $sid = New-Object System.Security.Principal.SecurityIdentifier(
     [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
 )
@@ -1124,7 +1158,21 @@ $rule = New-Object System.Security.AccessControl.FileSystemAccessRule(
     [System.Security.AccessControl.AccessControlType]::Allow
 )
 $acl.AddAccessRule($rule)
-Set-Acl -LiteralPath $args[0] -AclObject $acl
+if ($PSVersionTable.PSEdition -eq 'Core') {
+    if ($item.PSIsContainer) {
+        [System.IO.FileSystemAclExtensions]::SetAccessControl(
+            [System.IO.DirectoryInfo]::new($args[0]), $acl
+        )
+    } else {
+        [System.IO.FileSystemAclExtensions]::SetAccessControl(
+            [System.IO.FileInfo]::new($args[0]), $acl
+        )
+    }
+} elseif ($item.PSIsContainer) {
+    [System.IO.Directory]::SetAccessControl($args[0], $acl)
+} else {
+    [System.IO.File]::SetAccessControl($args[0], $acl)
+}
 """.strip()
 
 
