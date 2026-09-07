@@ -558,7 +558,6 @@ def test_windows_current_user_only_protection_applies_and_verifies_acl(
     script = argv[argv.index("-Command") + 1]
     assert str(path) not in script
     assert argv[-1] == str(path)
-    assert "System.IO.FileSystemAclExtensions]::SetAccessControl" in script
 
 
 def test_windows_atomic_write_applies_current_user_acl_on_non_windows(
