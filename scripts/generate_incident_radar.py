@@ -76,15 +76,24 @@ def check_meta_api_health(token: str | None) -> dict:
         latency_ms = int((time.time() - t0) * 1000)
         
         usage_header = resp.headers.get("x-business-use-case-usage") or resp.headers.get("x-app-usage") or "{}"
-        usage_val = 1.0
+        usage_values: list[float] = []
         try:
             parsed_usage = json.loads(usage_header)
             if isinstance(parsed_usage, dict):
-                for k, v in parsed_usage.items():
-                    if isinstance(v, list) and len(v) > 0 and isinstance(v[0], dict):
-                        usage_val = float(v[0].get("call_count", 1.0))
+                for value in parsed_usage.values():
+                    if isinstance(value, (int, float)):
+                        usage_values.append(float(value))
+                    elif isinstance(value, list):
+                        for item in value:
+                            if isinstance(item, dict):
+                                usage_values.extend(
+                                    float(metric)
+                                    for metric in item.values()
+                                    if isinstance(metric, (int, float))
+                                )
         except Exception:
             pass
+        usage_val = max(usage_values, default=0.0)
 
         return {
             "status": "OPERATIONAL" if resp.status_code == 200 else f"HTTP_{resp.status_code}",
@@ -105,6 +114,26 @@ def check_meta_api_health(token: str | None) -> dict:
 
 def build_incident_radar_dataset(meta_health: dict) -> dict:
     now_utc = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    health_status = meta_health.get("status")
+    latency_ms = meta_health.get("latency_ms")
+    if health_status == "OPERATIONAL":
+        health_headline = (
+            f"Meta Graph API latency verified at {latency_ms}ms. "
+            "Token endpoint operational, usage rate within observed limits"
+        )
+        health_impact = (
+            "Graph endpoints stable, confirming that front-end ad manager "
+            "rejections are policy/algorithm driven, not network outages."
+        )
+    else:
+        health_headline = (
+            f"Meta Graph API health check returned {health_status}; "
+            f"latency was {latency_ms if latency_ms is not None else 'unavailable'}ms"
+        )
+        health_impact = (
+            "Graph endpoint stability was not confirmed; investigate the API "
+            "health result before attributing front-end rejections to policy."
+        )
     
     return {
         "meta": {
@@ -233,8 +262,8 @@ def build_incident_radar_dataset(meta_health: dict) -> dict:
                 "timestamp": "2h ago",
                 "source": "Meta Graph API Sentinel",
                 "vertical": "General Media Buying",
-                "headline": f"Meta Graph API latency verified at {meta_health.get('latency_ms', 521)}ms. Token endpoint operational, usage rate < 1.5%",
-                "impact": "Graph endpoints stable, confirming that front-end ad manager rejections are policy/algorithm driven, not network outages."
+                "headline": health_headline,
+                "impact": health_impact
             }
         ]
     }
