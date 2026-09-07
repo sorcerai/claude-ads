@@ -43,6 +43,7 @@ def load_repos() -> list[str]:
         )
     return [os.path.join(fleet_root, name) for name in REPOSITORY_NAMES]
 
+
 def get_meta_token() -> str | None:
     """Safely obtain Meta token from the environment or macOS Keychain."""
     token = os.environ.get("META_AD_LIBRARY_TOKEN")
@@ -53,12 +54,13 @@ def get_meta_token() -> str | None:
             ["security", "find-generic-password", "-s", "META_AD_LIBRARY_TOKEN", "-w"],
             capture_output=True,
             text=True,
-            check=True
+            check=True,
         )
         return res.stdout.strip()
     except Exception as e:
         print(f"[Warn] Could not read META_AD_LIBRARY_TOKEN from keychain: {e}")
         return None
+
 
 def check_meta_api_health(token: str | None) -> dict:
     """Execute exactly 1 minimal query to measure latency, status, and app usage rate."""
@@ -68,7 +70,7 @@ def check_meta_api_health(token: str | None) -> dict:
             "latency_ms": None,
             "usage_pct": None,
             "version": "v26.0",
-            "notes": "Token not present in environment; baseline synthetic benchmark active."
+            "notes": "Token not present in environment; baseline synthetic benchmark active.",
         }
 
     url = "https://graph.facebook.com/v26.0/ads_archive"
@@ -78,15 +80,19 @@ def check_meta_api_health(token: str | None) -> dict:
         "ad_reached_countries": '["US"]',
         "ad_type": "ALL",
         "limit": 1,
-        "fields": "id,page_name"
+        "fields": "id,page_name",
     }
 
     t0 = time.time()
     try:
         resp = requests.get(url, headers=headers, params=params, timeout=12)
         latency_ms = int((time.time() - t0) * 1000)
-        
-        usage_header = resp.headers.get("x-business-use-case-usage") or resp.headers.get("x-app-usage") or "{}"
+
+        usage_header = (
+            resp.headers.get("x-business-use-case-usage")
+            or resp.headers.get("x-app-usage")
+            or "{}"
+        )
         usage_values: list[float] = []
         try:
             parsed_usage = json.loads(usage_header)
@@ -109,12 +115,14 @@ def check_meta_api_health(token: str | None) -> dict:
         usage_val = max(usage_values, default=0.0)
 
         return {
-            "status": "OPERATIONAL" if resp.status_code == 200 else f"HTTP_{resp.status_code}",
+            "status": "OPERATIONAL"
+            if resp.status_code == 200
+            else f"HTTP_{resp.status_code}",
             "latency_ms": latency_ms,
             "usage_pct": min(usage_val, 100.0),
             "version": "v26.0",
             "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
-            "http_status": resp.status_code
+            "http_status": resp.status_code,
         }
     except Exception as e:
         return {
@@ -122,8 +130,9 @@ def check_meta_api_health(token: str | None) -> dict:
             "latency_ms": None,
             "usage_pct": None,
             "version": "v26.0",
-            "error": str(e)
+            "error": str(e),
         }
+
 
 def build_incident_radar_dataset(meta_health: dict) -> dict:
     now_utc = datetime.datetime.now(datetime.timezone.utc).isoformat()
@@ -147,7 +156,7 @@ def build_incident_radar_dataset(meta_health: dict) -> dict:
             "Graph endpoint stability was not confirmed; investigate the API "
             "health result before attributing front-end rejections to policy."
         )
-    
+
     return {
         "meta": {
             "title": "Ad Platform Outage & Ban-Wave Incident Radar",
@@ -156,7 +165,7 @@ def build_incident_radar_dataset(meta_health: dict) -> dict:
             "threat_level": "ELEVATED",
             "threat_label": "Active Algorithmic Sweep & Spend Freeze",
             "panic_score": 78,
-            "benchmark_basis": "Real-time Meta Graph API latency + crowdsourced media buyer pings + adops triage sentiment"
+            "benchmark_basis": "Real-time Meta Graph API latency + crowdsourced media buyer pings + adops triage sentiment",
         },
         "meta_graph_api": meta_health,
         "platforms": [
@@ -169,9 +178,9 @@ def build_incident_radar_dataset(meta_health: dict) -> dict:
                 "common_errors": [
                     "We noticed unusual activity on your account and have disabled it.",
                     "Your account has reached its daily spending limit ($50 / $250 cap).",
-                    "We were unable to place a temporary hold on your payment method."
+                    "We were unable to place a temporary hold on your payment method.",
                 ],
-                "active_remedy": "Deploy Tier-1 Agency Business Portfolio with pre-whitelisted billing profile and unlimited spend headroom."
+                "active_remedy": "Deploy Tier-1 Agency Business Portfolio with pre-whitelisted billing profile and unlimited spend headroom.",
             },
             {
                 "platform": "Google Ads",
@@ -181,9 +190,9 @@ def build_incident_radar_dataset(meta_health: dict) -> dict:
                 "field_reality": "Algorithmic spike in 'Suspicious Payment Activity' and 'Circumventing Systems' automated suspensions on newly warmed accounts spending over $1,500/day.",
                 "common_errors": [
                     "Your account is suspended: We've identified suspicious behavior in the payment activity.",
-                    "Account suspended for Circumventing Systems policy violation."
+                    "Account suspended for Circumventing Systems policy violation.",
                 ],
-                "active_remedy": "Deploy Google Invoiced Credit Line accounts (30-day net terms, zero credit card triggers)."
+                "active_remedy": "Deploy Google Invoiced Credit Line accounts (30-day net terms, zero credit card triggers).",
             },
             {
                 "platform": "TikTok Ads",
@@ -193,10 +202,10 @@ def build_incident_radar_dataset(meta_health: dict) -> dict:
                 "field_reality": "Payment gateway pre-authorization failure rate elevated for US/EU advertisers scaling aggressive creatives; balance auto-freeze on sudden budget increases.",
                 "common_errors": [
                     "Payment method rejected: Pre-authorization failed.",
-                    "Ad account balance frozen pending business verification review."
+                    "Ad account balance frozen pending business verification review.",
                 ],
-                "active_remedy": "Enterprise agency TikTok accounts with direct rep spend threshold increases."
-            }
+                "active_remedy": "Enterprise agency TikTok accounts with direct rep spend threshold increases.",
+            },
         ],
         "crowdsourced_triage": {
             "window_hours": 24,
@@ -209,7 +218,7 @@ def build_incident_radar_dataset(meta_health: dict) -> dict:
                     "severity": "CRITICAL",
                     "risk_badge": "High Risk (4h SLA)",
                     "symptom": "Account or BM locked with no manual review available in Business Support Home.",
-                    "whatsapp_text": "URGENT:%20Our%20Meta%20Business%20Manager%20was%20disabled%20today.%20Need%20emergency%20Tier-1%20agency%20account%20deployment%20to%20restore%20campaigns."
+                    "whatsapp_text": "URGENT:%20Our%20Meta%20Business%20Manager%20was%20disabled%20today.%20Need%20emergency%20Tier-1%20agency%20account%20deployment%20to%20restore%20campaigns.",
                 },
                 {
                     "id": "spend_cap_throttled",
@@ -218,7 +227,7 @@ def build_incident_radar_dataset(meta_health: dict) -> dict:
                     "severity": "HIGH",
                     "risk_badge": "Revenue Limiting",
                     "symptom": "Account is active but Meta caps total account spend, killing scaling and ROAS.",
-                    "whatsapp_text": "URGENT:%20Our%20Meta%20ad%20account%20is%20capped%20at%20$250/day%20spend%20limit.%20Need%20unlimited%20agency%20spend%20cap%20account."
+                    "whatsapp_text": "URGENT:%20Our%20Meta%20ad%20account%20is%20capped%20at%20$250/day%20spend%20limit.%20Need%20unlimited%20agency%20spend%20cap%20account.",
                 },
                 {
                     "id": "google_suspicious_payment",
@@ -227,7 +236,7 @@ def build_incident_radar_dataset(meta_health: dict) -> dict:
                     "severity": "CRITICAL",
                     "risk_badge": "Instant Ban",
                     "symptom": "Google suspended ad account citing suspicious payment activity or billing discrepancy.",
-                    "whatsapp_text": "URGENT:%20Google%20Ads%20suspended%20our%20account%20for%20Suspicious%20Payment.%20Need%20Google%20Invoiced%20Credit%20Line%20account%20setup."
+                    "whatsapp_text": "URGENT:%20Google%20Ads%20suspended%20our%20account%20for%20Suspicious%20Payment.%20Need%20Google%20Invoiced%20Credit%20Line%20account%20setup.",
                 },
                 {
                     "id": "card_preauth_failed",
@@ -236,7 +245,7 @@ def build_incident_radar_dataset(meta_health: dict) -> dict:
                     "severity": "MEDIUM",
                     "risk_badge": "Billing Bug",
                     "symptom": "Temporary hold failed; ads paused automatically despite valid bank card with funds.",
-                    "whatsapp_text": "URGENT:%20Ad%20platform%20card%20pre-authorization%20failed%20and%20halted%20ad%20delivery.%20Need%20enterprise%20credit%20line%20infrastructure."
+                    "whatsapp_text": "URGENT:%20Ad%20platform%20card%20pre-authorization%20failed%20and%20halted%20ad%20delivery.%20Need%20enterprise%20credit%20line%20infrastructure.",
                 },
                 {
                     "id": "review_in_limbo",
@@ -245,9 +254,9 @@ def build_incident_radar_dataset(meta_health: dict) -> dict:
                     "severity": "MEDIUM",
                     "risk_badge": "Review Limbo",
                     "symptom": "Creatives never leave 'In Review' status or are rejected by automated text classifiers.",
-                    "whatsapp_text": "URGENT:%20Our%20ads%20are%20stuck%20in%20review%20or%20getting%20flagged%20by%20automated%20policy%20sweeps.%20Need%20whitelisted%20agency%20ad%20infrastructure."
-                }
-            ]
+                    "whatsapp_text": "URGENT:%20Our%20ads%20are%20stuck%20in%20review%20or%20getting%20flagged%20by%20automated%20policy%20sweeps.%20Need%20whitelisted%20agency%20ad%20infrastructure.",
+                },
+            ],
         },
         "recent_dispatches": [
             {
@@ -255,31 +264,32 @@ def build_incident_radar_dataset(meta_health: dict) -> dict:
                 "source": "AdOps Incident Feed",
                 "vertical": "E-Commerce / D2C",
                 "headline": "Meta Q3 bot sweep targeting shared Stripe/Wise card BINs across multiple ad accounts",
-                "impact": "Sudden disabling of secondary BMs without policy violation history. Manual chat queues backlogged > 48 hours."
+                "impact": "Sudden disabling of secondary BMs without policy violation history. Manual chat queues backlogged > 48 hours.",
             },
             {
                 "timestamp": "34m ago",
                 "source": "Search Engine Triage",
                 "vertical": "Mass Tort / Legal",
                 "headline": "Google automated crawler flagging $400+ CPC legal landing pages for landing page experience mismatches",
-                "impact": "Account quality score downgraded, triggering automated billing review."
+                "impact": "Account quality score downgraded, triggering automated billing review.",
             },
             {
                 "timestamp": "1h ago",
                 "source": "r/FacebookAds Sentiment Pulse",
                 "vertical": "Telehealth / GLP-1",
                 "headline": "Compliant LegitScript telehealth accounts throttled by blanket pharmaceutical keyword regex updates",
-                "impact": "Creatives rejected en masse despite active LegitScript certificate uploaded."
+                "impact": "Creatives rejected en masse despite active LegitScript certificate uploaded.",
             },
             {
                 "timestamp": "2h ago",
                 "source": "Meta Graph API Sentinel",
                 "vertical": "General Media Buying",
                 "headline": health_headline,
-                "impact": health_impact
-            }
-        ]
+                "impact": health_impact,
+            },
+        ],
     }
+
 
 def main():
     repos = load_repos()
@@ -301,6 +311,7 @@ def main():
         print(f"      Written: {out_path} ({os.path.getsize(out_path)} bytes)")
 
     print("\nAd Platform Incident Radar generation complete.")
+
 
 if __name__ == "__main__":
     main()
