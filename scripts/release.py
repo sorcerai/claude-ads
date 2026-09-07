@@ -53,7 +53,11 @@ PACKAGE_FILES = {
 PACKAGE_EXCLUDED_PREFIXES = ("ads/research-sources/",)
 SENSITIVE_FILENAMES = {
     ".env",
+    "claude_fable_full_report.md",
     "credentials.json",
+    "fable_audit_output.md",
+    "fable_audit_prompt.txt",
+    "fable_full_report.md",
     "service-account.json",
     "service_account.json",
 }
@@ -95,6 +99,22 @@ PRIVATE_PATH_PATTERNS = {
     "private Fable corpus path": re.compile(r"(?i)(?:/|\\)Desktop[/\\]Fable 5 Brain(?:/|\\)"),
     "private Brainstein vault path": re.compile(
         r"(?i)(?:/|\\)Desktop[/\\]Vaults[/\\]Brainstein(?:/|\\)"
+    ),
+}
+
+# Personal contact surfaces: any click-to-chat deep link exposes a personal
+# phone number and is never public-safe (incident beads claude-ads-bph).
+PRIVATE_CONTENT_PATTERNS = {
+    "WhatsApp deep link": re.compile(r"(?i)\bwa\.me/\d{7,15}\b"),
+    "WhatsApp phone parameter": re.compile(
+        r"(?i)api\.whatsapp\.com/send\?(?:[^>\s]*&)?phone=\d+"
+    ),
+    # Standalone NANP E.164 digits (1 + area + exchange + line) catch bare
+    # constants like a hardcoded personal number used as a validation value.
+    # Alphanumeric boundaries exclude sha256-digest substring false
+    # positives while keeping prose/slash-delimited constants detectable.
+    "bare E.164 phone number": re.compile(
+        r"(?<![A-Za-z0-9])1[2-9]\d{2}[2-9]\d{6}(?![A-Za-z0-9])"
     ),
 }
 WINDOWS_RESERVED_NAMES = {
@@ -359,6 +379,9 @@ def audit_repository(root: Path) -> list[str]:
             if pattern.search(text):
                 errors.append(f"{relative}: possible {label}")
         for label, pattern in PRIVATE_PATH_PATTERNS.items():
+            if pattern.search(text):
+                errors.append(f"{relative}: contains {label}")
+        for label, pattern in PRIVATE_CONTENT_PATTERNS.items():
             if pattern.search(text):
                 errors.append(f"{relative}: contains {label}")
 
