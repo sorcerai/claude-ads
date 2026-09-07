@@ -17,7 +17,6 @@ import requests
 
 API_VERSION = "v26.0"
 ENDPOINT = f"https://graph.facebook.com/{API_VERSION}/ads_archive"
-FLEET_ROOT = os.environ.get("ADSINFRA_FLEET_ROOT")
 
 def get_meta_token():
     # 1. Environment variable
@@ -188,12 +187,13 @@ CAMPAIGN_ENRICHMENTS = [
 ]
 
 def main():
-    token = get_meta_token()
-    if not FLEET_ROOT:
+    fleet_root = os.environ.get("ADSINFRA_FLEET_ROOT")
+    if not fleet_root:
         sys.exit(
             "Error: set ADSINFRA_FLEET_ROOT to the parent directory of the "
             "target repositories before running enrichment."
         )
+    token = get_meta_token()
     session = requests.Session()
     session.trust_env = False
     
@@ -204,7 +204,7 @@ def main():
         print(f"Processing Vertical: {campaign['id']}")
         print("==========================================")
         
-        output_file = os.path.join(FLEET_ROOT, campaign["id"], "data", "meta-ad-intel.json")
+        output_file = os.path.join(fleet_root, campaign["id"], "data", "meta-ad-intel.json")
         os.makedirs(os.path.dirname(output_file), exist_ok=True)
         campaign_results = {
             "vertical": campaign["id"],
