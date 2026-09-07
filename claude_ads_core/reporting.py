@@ -23,6 +23,8 @@ from typing import Any, Mapping
 from .contracts import ContractError, validate_contract
 from .control_registry import ControlRegistry, RegistryError
 
+_OS_NAME = os.name
+
 _POSIX_CAPABILITY_FUNCS = {
     name: getattr(os, name, None) for name in ("open", "mkdir", "stat", "rename", "unlink")
 }
@@ -1223,9 +1225,9 @@ def atomic_write_report(root: str | Path, destination: str | Path, content: str 
 
     _validate_report_destination(destination)
     expected_bytes = content if isinstance(content, bytes) else content.encode("utf-8")
-    if os.name == "posix":
+    if _OS_NAME == "posix":
         return _atomic_write_posix(root, destination, expected_bytes)
-    if os.name == "nt":
+    if _OS_NAME == "nt":
         return _atomic_write_windows(root, destination, expected_bytes)
     raise ReportRenderError("report output writing unsupported on this platform")
 
