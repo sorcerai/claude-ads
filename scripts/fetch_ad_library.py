@@ -525,8 +525,20 @@ def _load_checkpoint(path: Path) -> dict[str, Any]:
                 or not observation["observation_id"]
                 for observation in artifact.get("observations", [])
             )
+            or not isinstance(artifact.get("pages"), list)
+            or any(
+                not isinstance(page, dict)
+                or not isinstance(page.get("source_digest"), str)
+                or not page["source_digest"]
+                or not isinstance(page.get("observation_ids"), list)
+                or any(
+                    not isinstance(observation_id, str) or not observation_id
+                    for observation_id in page["observation_ids"]
+                )
+                for page in artifact.get("pages", [])
+            )
         ):
-            raise ValueError("corrupt checkpoint: raw artifact or invalid observations")
+            raise ValueError("corrupt checkpoint: raw artifact or invalid artifact")
     return value
 
 

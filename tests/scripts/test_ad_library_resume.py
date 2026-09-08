@@ -286,6 +286,30 @@ def test_checkpoint_with_malformed_observation_fails_closed_before_network(
     assert calls == []
 
 
+def test_checkpoint_with_missing_page_receipts_fails_closed_before_network(
+    tmp_path, monkeypatch
+):
+    checkpoint = tmp_path / "checkpoint.json"
+    _call_queue(monkeypatch, checkpoint, [Response(_page(_ad("ad-1")))])
+    state = json.loads(checkpoint.read_text())
+    del state["advertisers"][0]["artifact"]["pages"]
+    checkpoint.write_text(json.dumps(state), encoding="utf-8")
+    calls = []
+    monkeypatch.setattr(
+        fetch_ad_library, "guarded_request", lambda *a, **k: calls.append(k)
+    )
+    with pytest.raises(ValueError, match="corrupt checkpoint"):
+        fetch_ad_library.collect_advertiser_queue(
+            token="secret-token",
+            countries=["DE"],
+            search_page_ids="page-1",
+            checkpoint_path=checkpoint,
+            resume=True,
+            quota_budget=RecordingBudget(),
+        )
+    assert calls == []
+
+
 @pytest.mark.parametrize(
     "cursor",
     [
