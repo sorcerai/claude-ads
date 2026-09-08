@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+* **Quota-aware, resumable Ad Library collection**: shared rolling-hour request
+  accounting, including retries, with conservative local ceilings and persistent
+  provider-usage backoff. Adds exact-phrase discovery, explicit activity filters,
+  sequential advertiser collection, normalized per-page checkpoints, opaque
+  cursor resume, deduplication, and explicit incomplete/exhausted states.
+  Authentication failures are no longer retried when marked transient. These
+  controls do not establish Meta's undisclosed user quota or complete market
+  coverage; other callers must be coordinated separately.
+
 * **Meta Ad Library search** (`scripts/fetch_ad_library.py`): queries the
   official `ads_archive` endpoint (Graph API v26.0) for public ad creative,
   closing the gap between the existing export-ingestion path and competitor
