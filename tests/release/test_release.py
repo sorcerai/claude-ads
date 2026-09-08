@@ -143,6 +143,27 @@ def test_audit_checks_frontmatter_and_sensitive_content(tmp_path: Path) -> None:
     errors = audit_repository(root)
     assert any("personal tilde path" in error for error in errors)
 
+    skill.write_text(
+        "---\nname: ads-google\ndescription: Google Ads.\n---\n"
+        "Intake: wa.me/150" + "83103096\n",
+        encoding="utf-8",
+    )
+    errors = audit_repository(root)
+    assert any("WhatsApp deep link" in error for error in errors)
+
+    _write(root, "notes/fable_audit_prompt.txt", "captured prompt must not be tracked.\n")
+    _git(root, "add", ".")
+    errors = audit_repository(root)
+    assert any("sensitive filename" in error for error in errors)
+
+    skill.write_text(
+        "---\nname: ads-google\ndescription: Google Ads.\n---\n"
+        "Legacy constant: 150" + "83103096\n",
+        encoding="utf-8",
+    )
+    errors = audit_repository(root)
+    assert any("bare E.164" in error for error in errors)
+
 
 def test_package_is_deterministic_public_safe_and_verifiable(tmp_path: Path) -> None:
     root = _repository(tmp_path)
