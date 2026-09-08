@@ -1073,6 +1073,7 @@ _WINDOWS_TRUSTED_SIDS = frozenset(
         "S-1-5-32-544",  # Built-in Administrators
     }
 )
+_WINDOWS_OWNER_RIGHTS_SID = "s-1-3-4"
 _WINDOWS_MUTATING_RIGHTS = (
     "fullcontrol",
     "modify",
@@ -1286,9 +1287,12 @@ def _validate_windows_acl(path: Path, label: str) -> None:
         ):
             raise ReportRenderError(f"report {label} DACL is unverifiable")
         sid_folded = sid.casefold()
+        effective_sid_folded = (
+            owner_folded if sid_folded == _WINDOWS_OWNER_RIGHTS_SID else sid_folded
+        )
         rights_folded = rights.casefold()
         if access_type.casefold() == "deny":
-            if sid_folded == current_folded and any(
+            if effective_sid_folded == current_folded and any(
                 token in rights_folded for token in _WINDOWS_MUTATING_RIGHTS
             ):
                 raise ReportRenderError(
@@ -1298,8 +1302,8 @@ def _validate_windows_acl(path: Path, label: str) -> None:
         if access_type.casefold() != "allow":
             raise ReportRenderError(f"report {label} DACL is unverifiable")
         if (
-            sid_folded != current_folded
-            and sid.upper() not in _WINDOWS_TRUSTED_SIDS
+            effective_sid_folded != current_folded
+            and effective_sid_folded.upper() not in _WINDOWS_TRUSTED_SIDS
             and any(token in rights_folded for token in _WINDOWS_MUTATING_RIGHTS)
         ):
             raise ReportRenderError(f"report {label} DACL is permissive")
@@ -1342,12 +1346,7 @@ def _validate_windows_tree(root_path: Path, destination: Path) -> Path:
                 )
             if not stat.S_ISDIR(info.st_mode):
                 raise ReportRenderError("report root must be a directory")
-            # Existing ancestors may be shared profile infrastructure (for
-            # example the runner's Temp directory).  They are checked for
-            # traversal safety above; only the requested report root is a
-            # private ACL boundary.
-            if current == root_path:
-                _validate_windows_acl(current, "root")
+            _validate_windows_acl(current, "root")
         else:
             current.mkdir(mode=0o700)
             _protect_windows_path(current)
