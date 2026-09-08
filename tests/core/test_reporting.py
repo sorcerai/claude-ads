@@ -683,7 +683,7 @@ def test_windows_keyboard_interrupt_rethrows_and_cleans_owned_temp(
 def test_atomic_report_write_rejects_unsupported_platform_before_mutation(
     tmp_path, monkeypatch
 ):
-    monkeypatch.setattr(os, "name", "plan9")
+    monkeypatch.setattr(reporting, "_reporting_platform_name", lambda: "plan9")
     root = tmp_path / "reports"
     with pytest.raises(ReportRenderError, match="unsupported"):
         atomic_write_report(root, "report.md", b"report\n")

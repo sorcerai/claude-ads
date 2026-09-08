@@ -1524,6 +1524,12 @@ def _atomic_write_windows(
     return output_path
 
 
+def _reporting_platform_name() -> str:
+    """Return the host platform used by the report writer dispatch."""
+
+    return os.name
+
+
 def atomic_write_report(
     root: str | Path, destination: str | Path, content: str | bytes
 ) -> Path:
@@ -1531,9 +1537,10 @@ def atomic_write_report(
 
     _validate_report_destination(destination)
     expected_bytes = content if isinstance(content, bytes) else content.encode("utf-8")
-    if os.name == "posix":
+    platform_name = _reporting_platform_name()
+    if platform_name == "posix":
         return _atomic_write_posix(root, destination, expected_bytes)
-    if os.name == "nt":
+    if platform_name == "nt":
         return _atomic_write_windows(root, destination, expected_bytes)
     raise ReportRenderError("report output writing unsupported on this platform")
 
