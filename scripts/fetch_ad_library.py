@@ -363,8 +363,25 @@ def search_ad_library(
             ):
                 raise ValueError("Ad Library response must contain a data list.")
             page_ads = payload["data"]
-            if any(not isinstance(ad, dict) or not ad.get("id") for ad in page_ads):
-                raise ValueError("Ad Library response contains an invalid ad row.")
+            for ad in page_ads:
+                if not isinstance(ad, dict) or not ad.get("id"):
+                    raise ValueError("Ad Library response contains an invalid ad row.")
+                for field in (
+                    "ad_creative_bodies",
+                    "ad_creative_link_captions",
+                    "ad_creative_link_descriptions",
+                    "ad_creative_link_titles",
+                    "languages",
+                    "publisher_platforms",
+                ):
+                    value = ad.get(field)
+                    if value is not None and (
+                        not isinstance(value, list)
+                        or any(not isinstance(item, str) for item in value)
+                    ):
+                        raise ValueError(
+                            f"Ad Library response contains invalid {field} metadata."
+                        )
             paging = payload["paging"] if "paging" in payload else {}
             if not isinstance(paging, dict):
                 raise ValueError(
@@ -375,15 +392,12 @@ def search_ad_library(
             next_cursor = _opaque_cursor(next_url) if has_next else None
             if next_cursor is not None and next_cursor in seen_cursors:
                 raise ValueError("Paging cursor repeated; refusing to loop.")
-            seen_ids = {
-                str(ad.get("id")) for ad in result["ads"] if ad.get("id") is not None
-            }
+            seen_ids = {str(ad["id"]) for ad in result["ads"]}
             for ad in page_ads:
-                ad_id = ad.get("id")
-                if ad_id is None or str(ad_id) not in seen_ids:
+                ad_id = str(ad["id"])
+                if ad_id not in seen_ids:
                     result["ads"].append(ad)
-                    if ad_id is not None:
-                        seen_ids.add(str(ad_id))
+                    seen_ids.add(ad_id)
             result["pages_fetched"] += 1
             if next_cursor is not None:
                 seen_cursors.add(next_cursor)

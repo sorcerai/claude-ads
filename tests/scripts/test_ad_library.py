@@ -661,6 +661,24 @@ def test_malformed_response_is_failure_not_empty_archive(monkeypatch, payload):
     assert result["status"] == "failed"
     assert result["pages_fetched"] == 0
 
+def test_malformed_creative_text_does_not_advance_collection(monkeypatch):
+    monkeypatch.setattr(
+        fetch_ad_library,
+        "guarded_request",
+        lambda *a, **kw: _ResponseWithHeaders(
+            {"data": [{"id": "ad-1", "ad_creative_bodies": "not-a-string-list"}]}
+        ),
+    )
+    result = fetch_ad_library.search_ad_library(
+        token="fixture",
+        countries=["DE"],
+        search_terms="fixture",
+    )
+    assert result["status"] == "failed"
+    assert result["pages_fetched"] == 0
+    assert result["ads"] == []
+
+
 
 def test_empty_page_follows_paging_link(monkeypatch):
     calls = []

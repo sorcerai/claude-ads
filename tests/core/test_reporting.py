@@ -476,55 +476,26 @@ def test_windows_atomic_write_rejects_permissive_home_before_root_creation(monke
     assert not root.exists()
 
 
+@pytest.mark.skipif(os.name != "nt", reason="native Windows coverage")
+def test_windows_atomic_report_write_round_trips_acl_with_spaces_quotes_and_unicode(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setenv(
+        "PSModulePath", str(tmp_path / "incompatible PowerShell modules")
+    )
+    root = tmp_path / "reports with spaces 'and quotes' \u00e9"
+    destination = Path("nested folder 'quotes' \u03b4") / "report 'quoted'.md"
 
+    output = atomic_write_report(root, destination, b"report\n")
 
-def test_windows_acl_query_passes_path_as_uninterpolated_argument(monkeypatch, tmp_path):
-    path = tmp_path / "report & $HOME.md"
-    calls = []
-
-    class Result:
-        returncode = 0
-        stdout = json.dumps(_secure_windows_acl())
-        stderr = ""
-
-    def fake_run(*args, **kwargs):
-        calls.append((args, kwargs))
-        return Result()
-
-    monkeypatch.setattr(reporting.subprocess, "run", fake_run)
-    assert reporting._windows_acl_snapshot(path) == _secure_windows_acl()
-    argv = calls[0][0][0]
-    command = argv[0]
-    script = argv[argv.index("-Command") + 1]
-    assert calls[0][1]["shell"] is False
-    assert command == "powershell.exe"
-    assert str(path) not in script
-    assert argv[-1] == str(path)
-
-
-def test_windows_current_user_only_protection_applies_and_verifies_acl(monkeypatch, tmp_path):
-    path = tmp_path / "report.md"
-    calls = []
-
-    class Result:
-        returncode = 0
-        stdout = ""
-        stderr = ""
-
-    def fake_run(*args, **kwargs):
-        calls.append((args, kwargs))
-        return Result()
-
-    monkeypatch.setattr(reporting.subprocess, "run", fake_run)
-    monkeypatch.setattr(reporting, "_windows_acl_snapshot", lambda _path: _secure_windows_acl())
-    reporting._protect_windows_path(path)
-    assert calls
-    argv = calls[0][0][0]
-    script = argv[argv.index("-Command") + 1]
-    assert str(path) not in script
-    assert argv[-1] == str(path)
-    assert "Set-Acl" in script
-
+    assert output.read_bytes() == b"report\n"
+    for protected_path in (root, output.parent, output):
+        snapshot = reporting._windows_acl_snapshot(protected_path)
+        current_sid = snapshot["current_sid"]
+        assert snapshot["owner_sid"] in {current_sid, "S-1-5-18", "S-1-5-32-544"}
+        assert snapshot["access"]
+        assert all(entry["sid"] == current_sid for entry in snapshot["access"])
 
 
 def test_windows_atomic_write_applies_current_user_acl_on_non_windows(monkeypatch, tmp_path):

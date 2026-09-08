@@ -54,7 +54,7 @@ def _fake_python(tmp_path: Path, target: str, fail_venv: bool = False) -> Path:
     script = directory / "python3"
     if target.count("|") == 3:
         target += (
-            "|glibc|2.17|supported" if "|linux|" in target else "|none|11.0|supported"
+            "|glibc|2.27|supported" if "|linux|" in target else "|none|11.0|supported"
         )
     script.write_text(
         "#!/bin/sh\n"

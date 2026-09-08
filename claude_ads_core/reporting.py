@@ -7,6 +7,7 @@ registry, without loading remote assets or embedding the source bundle in the ou
 
 from __future__ import annotations
 
+import base64
 import html
 import importlib
 import json
@@ -912,13 +913,46 @@ _WINDOWS_MUTATING_RIGHTS = (
     "writeextendedattributes",
 )
 
+_WINDOWS_ACL_PATH_ENV = "CLAUDE_ADS_ACL_PATH"
+
 _WINDOWS_ACL_QUERY = r"""
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
-$acl = Get-Acl -LiteralPath $args[0]
-$current = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
-$owner = $acl.GetOwner([Security.Principal.SecurityIdentifier]).Value
-$access = @($acl.Access | ForEach-Object {
+$path = $env:CLAUDE_ADS_ACL_PATH
+if ([string]::IsNullOrEmpty($path)) {
+    throw "ACL path transport is empty"
+}
+$isDirectory = [System.IO.Directory]::Exists($path)
+$isFile = [System.IO.File]::Exists($path)
+if (-not $isDirectory -and -not $isFile) {
+    throw "ACL path does not identify an existing file or directory"
+}
+$sections = [System.Security.AccessControl.AccessControlSections]::Owner `
+    -bor [System.Security.AccessControl.AccessControlSections]::Access
+if ($PSVersionTable.PSEdition -eq 'Core') {
+    if ($isDirectory) {
+        $acl = [System.IO.FileSystemAclExtensions]::GetAccessControl(
+            [System.IO.DirectoryInfo]::new($path), $sections
+        )
+    } else {
+        $acl = [System.IO.FileSystemAclExtensions]::GetAccessControl(
+            [System.IO.FileInfo]::new($path), $sections
+        )
+    }
+} elseif ($isDirectory) {
+    $acl = [System.IO.Directory]::GetAccessControl($path, $sections)
+} else {
+    $acl = [System.IO.File]::GetAccessControl($path, $sections)
+}
+$identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+if ($null -eq $identity.User) {
+    throw "Current Windows user SID is unavailable"
+}
+$ownerSid = $acl.GetOwner([Security.Principal.SecurityIdentifier])
+if ($null -eq $ownerSid) {
+    throw "ACL owner SID is unavailable"
+}
+$access = @($acl.GetAccessRules($true, $true, [Security.Principal.SecurityIdentifier]) | ForEach-Object {
     $sid = $_.IdentityReference.Translate([Security.Principal.SecurityIdentifier]).Value
     [pscustomobject]@{
         sid = $sid
@@ -927,41 +961,96 @@ $access = @($acl.Access | ForEach-Object {
         inherited = [bool]$_.IsInherited
     }
 })
-[pscustomobject]@{ owner_sid = $owner; current_sid = $current; access = $access } |
-    ConvertTo-Json -Compress -Depth 8
+[pscustomobject]@{
+    owner_sid = $ownerSid.Value
+    current_sid = $identity.User.Value
+    access = $access
+} | ConvertTo-Json -Compress -Depth 8
 """.strip()
 
 _WINDOWS_ACL_APPLY = r"""
 $ErrorActionPreference = 'Stop'
-$acl = Get-Acl -LiteralPath $args[0]
-$sid = New-Object System.Security.Principal.SecurityIdentifier(
-    [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
-)
+$path = $env:CLAUDE_ADS_ACL_PATH
+if ([string]::IsNullOrEmpty($path)) {
+    throw "ACL path transport is empty"
+}
+$isDirectory = [System.IO.Directory]::Exists($path)
+$isFile = [System.IO.File]::Exists($path)
+if (-not $isDirectory -and -not $isFile) {
+    throw "ACL path does not identify an existing file or directory"
+}
+$sections = [System.Security.AccessControl.AccessControlSections]::Owner `
+    -bor [System.Security.AccessControl.AccessControlSections]::Access
+if ($PSVersionTable.PSEdition -eq 'Core') {
+    if ($isDirectory) {
+        $acl = [System.IO.FileSystemAclExtensions]::GetAccessControl(
+            [System.IO.DirectoryInfo]::new($path), $sections
+        )
+    } else {
+        $acl = [System.IO.FileSystemAclExtensions]::GetAccessControl(
+            [System.IO.FileInfo]::new($path), $sections
+        )
+    }
+} elseif ($isDirectory) {
+    $acl = [System.IO.Directory]::GetAccessControl($path, $sections)
+} else {
+    $acl = [System.IO.File]::GetAccessControl($path, $sections)
+}
+$identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+if ($null -eq $identity.User) {
+    throw "Current Windows user SID is unavailable"
+}
+$sid = $identity.User
 $acl.SetAccessRuleProtection($true, $false)
-foreach ($rule in @($acl.Access)) {
+foreach ($rule in @($acl.GetAccessRules($true, $true, [Security.Principal.SecurityIdentifier]))) {
     [void]$acl.RemoveAccessRuleSpecific($rule)
 }
-$rule = New-Object System.Security.AccessControl.FileSystemAccessRule(
+$rule = [System.Security.AccessControl.FileSystemAccessRule]::new(
     $sid,
     [System.Security.AccessControl.FileSystemRights]::FullControl,
     [System.Security.AccessControl.AccessControlType]::Allow
 )
-$acl.AddAccessRule($rule)
-Set-Acl -LiteralPath $args[0] -AclObject $acl
+[void]$acl.AddAccessRule($rule)
+if ($PSVersionTable.PSEdition -eq 'Core') {
+    if ($isDirectory) {
+        [System.IO.FileSystemAclExtensions]::SetAccessControl(
+            [System.IO.DirectoryInfo]::new($path), $acl
+        )
+    } else {
+        [System.IO.FileSystemAclExtensions]::SetAccessControl(
+            [System.IO.FileInfo]::new($path), $acl
+        )
+    }
+} elseif ($isDirectory) {
+    [System.IO.Directory]::SetAccessControl($path, $acl)
+} else {
+    [System.IO.File]::SetAccessControl($path, $acl)
+}
 """.strip()
+
+
+def _run_windows_acl_script(script: str, path: Path) -> subprocess.CompletedProcess[str]:
+    encoded = base64.b64encode(script.encode("utf-16-le")).decode("ascii")
+    # A pwsh -> Python -> powershell.exe chain otherwise inherits incompatible modules.
+    environment = {
+        key: value for key, value in os.environ.items() if key.upper() != "PSMODULEPATH"
+    }
+    environment[_WINDOWS_ACL_PATH_ENV] = os.fspath(path)
+    return subprocess.run(
+        ["powershell.exe", "-NoProfile", "-NonInteractive", "-EncodedCommand", encoded],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="strict",
+        check=False,
+        shell=False,
+        env=environment,
+    )
 
 
 def _windows_acl_snapshot(path: Path) -> Mapping[str, Any]:
     try:
-        result = subprocess.run(
-            ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", _WINDOWS_ACL_QUERY, str(path)],
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="strict",
-            check=False,
-            shell=False,
-        )
+        result = _run_windows_acl_script(_WINDOWS_ACL_QUERY, path)
     except (OSError, UnicodeError, subprocess.SubprocessError) as exc:
         raise ReportRenderError(f"report Windows ACL query failed: {exc}") from exc
     if result.returncode != 0:
@@ -1025,15 +1114,7 @@ def _validate_windows_acl(path: Path, label: str) -> None:
 
 def _protect_windows_path(path: Path) -> None:
     try:
-        result = subprocess.run(
-            ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", _WINDOWS_ACL_APPLY, str(path)],
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="strict",
-            check=False,
-            shell=False,
-        )
+        result = _run_windows_acl_script(_WINDOWS_ACL_APPLY, path)
     except (OSError, UnicodeError, subprocess.SubprocessError) as exc:
         raise ReportRenderError(f"report Windows ACL protection failed: {exc}") from exc
     if result.returncode != 0:

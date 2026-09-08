@@ -121,9 +121,11 @@ Set-Location claude-ads
 .\install.ps1 -Source local
 ```
 
-Managed dependencies support CPython 3.11 and 3.12 on the declared Linux,
-macOS, and Windows wheel matrix. Unsupported interpreters fail before the
-destination changes. Use `--no-deps` or `-NoDeps` for a skill-only install.
+Managed dependencies support CPython 3.11 and 3.12 on Linux x86_64 with
+glibc 2.27+, macOS 11+ on Apple Silicon (arm64), and Windows amd64.
+Intel macOS, musl Linux, older glibc versions, and unlisted interpreters are
+unsupported managed targets and fail before destination changes.
+Use `--no-deps` or `-NoDeps` for a skill-only install without a managed runtime.
 
 Browser capture requires an operator-installed Playwright browser payload. PDF
 rendering requires the host's WeasyPrint and Pango system libraries. These are

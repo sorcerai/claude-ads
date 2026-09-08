@@ -84,6 +84,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+* **Managed runtime compatibility and security update**: retires Intel macOS and
+  raises the Linux x86_64 minimum to glibc 2.27. CPython 3.11/3.12 on macOS 11+
+  arm64 and Windows amd64 remain supported. Refreshes the exact binary-only
+  locks and twelve target evidence records for `cryptography` 50.0.1 and Pillow
+  12.3.0 without advisory exceptions or source-build fallback.
+
 * **Scoped breaking v2 schema migration**: `AccountSnapshot`, `Finding`, and `ReportBundle`
   now use v2.0.0 contracts. `AccountSnapshot` requires `MeasurementContext`, and
   `Finding` evidence uses required typed `EvidenceRecord` fields. A `complete` run
@@ -123,6 +129,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   owns run and artifact registration, including manifest updates.
 
 ### Fixed
+
+* **Malformed Ad Library creative metadata**: rejects non-list text fields and
+  non-string list entries before adding ads or advancing page/cursor state.
+* **Windows report ACL access**: uses native .NET ACL calls and literal path
+  transport instead of `Get-Acl`/`Set-Acl` module autoload. Installer write-ACE
+  rejection diagnostics expose rule flags without private paths or user SIDs.
 
 * **Meta token exchange hardening**: removed `debug_token` URL inspection. Token
   exchange is POST-only, uses a separate `META_APP_ID` Keychain value, and writes

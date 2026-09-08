@@ -23,9 +23,16 @@ def _target_id() -> str:
     machine = platform.machine().lower()
     machine = {"amd64": "x86_64", "aarch64": "arm64"}.get(machine, machine)
     if system == "linux" and machine == "x86_64":
+        libc_name, libc_version = platform.libc_ver()
+        try:
+            libc_ok = libc_name == "glibc" and tuple(map(int, libc_version.split(".")[:2])) >= (2, 27)
+        except ValueError:
+            libc_ok = False
+        if not libc_ok:
+            raise ValueError("managed install verification requires glibc >=2.27 on Linux; musl is unsupported")
         platform_id = "linux"
-    elif system == "darwin" and machine in {"x86_64", "arm64"}:
-        platform_id = "macos-x86" if machine == "x86_64" else "macos-arm"
+    elif system == "darwin" and machine == "arm64":
+        platform_id = "macos-arm"
     elif system == "windows" and machine == "x86_64":
         platform_id = "windows"
     else:

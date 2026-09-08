@@ -112,17 +112,16 @@ ZIP_TIMESTAMP = (1980, 1, 1, 0, 0, 0)
 # notice review. The inventory digest is filled from the reviewed canonical
 # document; keeping it in executable verifier code makes self-consistent
 # archive/manifest/SBOM/checksum forgery fail closed.
-EXPECTED_DEPENDENCY_INVENTORY_SHA256 = "96068e41790113e03b4ed2f5fbf142af63dec2ea27e998264b9ffa1b455d48bb"
+EXPECTED_DEPENDENCY_INVENTORY_SHA256 = "026d45be2ec1973f5639dd0c7422fdad81c5e293007cf7b2e8fc2d09f0f88673"
 EXPECTED_THIRD_PARTY_NOTICES_SHA256 = "b90c38b4cce60c06c0090be31ee721d3482640923d9ff6f3c711c047317746d0"
 EXPECTED_EXTERNAL_RUNTIME_DEPENDENCIES_SHA256 = "c5962746f3a49570c810525c5a8557a3884e64e3b764476ff18cb65741853bc2"
-INVENTORY_RESOLVED_AT = "2026-07-11T00:00:00Z"
-INVENTORY_SOURCE_DATE_EPOCH = 1783728000
+INVENTORY_RESOLVED_AT = "2026-09-08T20:55:03Z"
+INVENTORY_SOURCE_DATE_EPOCH = 1788900903
 INVENTORY_PYTHON_REQUIRES = ">=3.11,<3.13"
 INVENTORY_POLICY = (
     "One exact lowest-common version set with target-specific wheel hashes for "
-    "glibc 2.17+/manylinux-compatible x86_64, macOS 11 x86_64/arm64, and "
-    "Windows amd64. Unlisted interpreters, libc families, platforms, and "
-    "architectures fail closed."
+    "glibc 2.27+/manylinux-compatible x86_64, macOS 11 arm64, and Windows amd64. "
+    "Unlisted interpreters, libc families, platforms, and architectures fail closed."
 )
 INVENTORY_SUBJECT_BINDING = (
     "Generated release SBOM binds the exact Git commit; this inventory binds "
@@ -446,7 +445,7 @@ def _wheel_is_compatible(filename: str, target: dict[str, object], name: str, ve
                 match = re.fullmatch(r"manylinux_(\d+)_(\d+)_x86_64", platform_tag)
                 if not match:
                     raise ReleaseError(f"wheel platform is incompatible with {target['id']}/{name}")
-                if (int(match.group(1)), int(match.group(2))) <= (2, 17):
+                if (int(match.group(1)), int(match.group(2))) <= (2, 27):
                     compatible_baseline = True
         if not compatible_baseline:
             raise ReleaseError(f"wheel requires a newer glibc baseline: {target['id']}/{name}")
@@ -630,13 +629,13 @@ def _load_dependency_inventory(root: Path) -> dict[str, object]:
         raise ReleaseError("reviewed publisher metadata binding mismatch")
 
     targets = inventory["targets"]
-    if not isinstance(targets, list) or len(targets) != 16:
-        raise ReleaseError("dependency inventory must contain the 16 verified targets")
+    if not isinstance(targets, list) or len(targets) != 12:
+        raise ReleaseError("dependency inventory must contain the 12 verified targets")
     expected_targets = {
         f"runtime-{platform}-{abi}": ("runtime", python, os_name, arch, abi, 33)
         for platform, os_name, arch in (
             ("linux", "linux", "x86_64"), ("macos-arm", "macos", "arm64"),
-            ("macos-x86", "macos", "x86_64"), ("windows", "windows", "amd64"),
+            ("windows", "windows", "amd64"),
         )
         for abi, python in (("cp311", "3.11"), ("cp312", "3.12"))
     }
@@ -644,7 +643,7 @@ def _load_dependency_inventory(root: Path) -> dict[str, object]:
         f"development-{platform}-{abi}": ("development", python, os_name, arch, abi, 10 if os_name == "windows" else 9)
         for platform, os_name, arch in (
             ("linux", "linux", "x86_64"), ("macos-arm", "macos", "arm64"),
-            ("macos-x86", "macos", "x86_64"), ("windows", "windows", "amd64"),
+            ("windows", "windows", "amd64"),
         )
         for abi, python in (("cp311", "3.11"), ("cp312", "3.12"))
     })
@@ -1230,7 +1229,7 @@ def verify_release(output_dir: Path, expected_commit: str, repository_root: Path
         *{
             f"control-plane/dependency-evidence/{profile}-{platform}-{abi}.json"
             for profile in ("runtime", "development")
-            for platform in ("linux", "macos-arm", "macos-x86", "windows")
+            for platform in ("linux", "macos-arm", "windows")
             for abi in ("cp311", "cp312")
         },
     }
@@ -1783,8 +1782,6 @@ def verify_github_run(root: Path, run_id: str, commit_sha: str) -> dict[str, obj
         "Installer tests (ubuntu-latest, Python 3.12)",
         "Installer tests (macos-15, Python 3.11)",
         "Installer tests (macos-15, Python 3.12)",
-        "Installer tests (macos-15-intel, Python 3.11)",
-        "Installer tests (macos-15-intel, Python 3.12)",
         "Installer tests (windows-latest, Python 3.11)",
         "Installer tests (windows-latest, Python 3.12)",
         "Reproducible package smoke test",

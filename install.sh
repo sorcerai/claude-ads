@@ -298,16 +298,14 @@ system=platform.system().lower(); machine=platform.machine().lower(); libc_name,
 def pair(value):
     try: return tuple(int(part) for part in value.split(".")[:2])
     except ValueError: return (0,0)
-boundary_ok=(system=="linux" and libc_name=="glibc" and pair(libc_version)>=(2,17)) or (system=="darwin" and pair(mac_version)>=(11,0))
+boundary_ok=(system=="linux" and libc_name=="glibc" and pair(libc_version)>=(2,27)) or (system=="darwin" and pair(mac_version)>=(11,0))
 print("|".join((sys.implementation.name, f"{sys.version_info.major}.{sys.version_info.minor}", system, machine, libc_name or "none", libc_version or mac_version or "none", "supported" if boundary_ok else "unsupported")))')
         case "$PYTHON_TARGET" in
             cpython\|3.11\|linux\|x86_64\|glibc\|*\|supported) DEPENDENCY_TARGET_ID="runtime-linux-cp311" ;;
             cpython\|3.12\|linux\|x86_64\|glibc\|*\|supported) DEPENDENCY_TARGET_ID="runtime-linux-cp312" ;;
-            cpython\|3.11\|darwin\|x86_64\|*\|*\|supported) DEPENDENCY_TARGET_ID="runtime-macos-x86-cp311" ;;
-            cpython\|3.12\|darwin\|x86_64\|*\|*\|supported) DEPENDENCY_TARGET_ID="runtime-macos-x86-cp312" ;;
             cpython\|3.11\|darwin\|arm64\|*\|*\|supported) DEPENDENCY_TARGET_ID="runtime-macos-arm-cp311" ;;
             cpython\|3.12\|darwin\|arm64\|*\|*\|supported) DEPENDENCY_TARGET_ID="runtime-macos-arm-cp312" ;;
-            *\|linux\|*\|musl\|*\|unsupported) echo "✗ Managed dependencies require glibc >=2.17; musl Linux is unsupported. Re-run with --no-deps." >&2; return 1 ;;
+            *\|linux\|*\|musl\|*\|unsupported) echo "Managed dependencies require glibc >=2.27; musl Linux is unsupported. Re-run with --no-deps." >&2; return 1 ;;
             *) echo "✗ No verified dependency lock target for ${PYTHON_TARGET}. Re-run with --no-deps; moving-range fallback is disabled." >&2; return 1 ;;
         esac
     fi
