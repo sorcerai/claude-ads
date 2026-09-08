@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 import os
+import platform
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -431,7 +433,7 @@ def test_bash_upgrade_rejects_group_writable_root_before_retired_cleanup(tmp_pat
 
 
 @BASH_INSTALLER_ONLY
-@pytest.mark.skipif(os.uname().sysname != "Darwin", reason="Darwin ACL guard only")
+@pytest.mark.skipif(platform.system() != "Darwin", reason="Darwin ACL guard only")
 def test_bash_upgrade_rejects_extended_acl_metadata_before_cleanup(tmp_path):
     skills, agents = _install(tmp_path)
     stale = skills / "ads" / "scripts" / "claude_ads_core" / "retired.json"
@@ -464,7 +466,7 @@ def test_bash_upgrade_rejects_extended_acl_metadata_before_cleanup(tmp_path):
 
 
 @BASH_INSTALLER_ONLY
-@pytest.mark.skipif(os.uname().sysname != "Darwin", reason="Darwin ACL guard only")
+@pytest.mark.skipif(platform.system() != "Darwin", reason="Darwin ACL guard only")
 def test_bash_upgrade_allows_protective_deny_acl_before_cleanup(tmp_path):
     skills, agents = _install(tmp_path)
     stale = skills / "ads" / "scripts" / "claude_ads_core" / "retired.json"
@@ -1129,7 +1131,10 @@ def test_powershell_repeat_removes_dropped_owned_file_before_uninstall(tmp_path)
     repeat = _powershell_install(skills, agents, repo_dir=source)
     if os.name != "nt":
         assert repeat.returncode != 0
-        assert "use install.sh" in repeat.stdout + repeat.stderr
+        diagnostic = " ".join(
+            re.sub(r"\x1b\[[0-9;]*m", "", repeat.stdout + repeat.stderr).split()
+        )
+        assert "use install.sh" in diagnostic
         assert installed_legacy.is_file()
         return
     assert repeat.returncode == 0, repeat.stdout + repeat.stderr
@@ -1138,4 +1143,3 @@ def test_powershell_repeat_removes_dropped_owned_file_before_uninstall(tmp_path)
     )
     assert str(installed_legacy.resolve()) not in manifest["files"]
     assert not installed_legacy.exists()
-
