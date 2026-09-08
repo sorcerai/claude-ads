@@ -24,14 +24,14 @@
     },
     {
       "artifact": {
-        "filename": "cryptography-48.0.1-cp311-abi3-win_amd64.whl",
-        "sha256": "39489bfca54c7a1f6b297efcd8bc608ab92d16c4ca631b0cad4da46724588b24",
-        "url": "https://files.pythonhosted.org/packages/c5/69/0572c77dbace6fef72f33755bd52ea399c71367250d366237f8691826b9e/cryptography-48.0.1-cp311-abi3-win_amd64.whl"
+        "filename": "cryptography-50.0.1-cp311-abi3-win_amd64.whl",
+        "sha256": "aed8db4f6d71c51efb89530e12d9464e7bf2923d46c3205dc794a2a93f8c0648",
+        "url": "https://files.pythonhosted.org/packages/42/8b/cb12b1b60c91b074ca6bf0fdd59aa8f10d8bc5f73af8faece86ef0421b37/cryptography-50.0.1-cp311-abi3-win_amd64.whl"
       },
       "direct": true,
       "name": "cryptography",
-      "purl": "pkg:pypi/cryptography@48.0.1",
-      "version": "48.0.1"
+      "purl": "pkg:pypi/cryptography@50.0.1",
+      "version": "50.0.1"
     },
     {
       "artifact": {
@@ -122,26 +122,26 @@
   "evidence_class": "cross-target-pip-resolution-requiring-native-ci-confirmation",
   "evidence_id": "development-windows-cp311",
   "normalization_notes": [
-    "The foreign-platform source report did not evaluate the win32 colorama marker; the exact lock marker supplies that occurrence and native CI must confirm it."
+    "pip evaluates sys_platform markers from the macOS host; pytest colorama was therefore resolved in a separate explicit pip supplemental report for the win_amd64 target (development-windows-cp311-colorama-supplemental)."
   ],
   "platform_policy": "Exact lowest-common lock with target-selected PyPI wheels",
-  "resolved_at": "2026-07-11T00:00:00Z",
+  "resolved_at": "2026-09-08T20:55:03Z",
   "resolver": "pip / PyPI",
   "schema_version": "1.0.0",
-  "source_date_epoch": 1783728000,
+  "source_date_epoch": 1788900903,
   "source_environment": {
     "implementation_name": "cpython",
-    "implementation_version": "3.14.4",
+    "implementation_version": "3.14.6",
     "os_name": "posix",
-    "platform_machine": "x86_64",
+    "platform_machine": "arm64",
     "platform_python_implementation": "CPython",
-    "platform_release": "6.19.14-101.fc44.x86_64",
-    "platform_system": "Linux",
-    "platform_version": "#1 SMP PREEMPT_DYNAMIC Fri May  8 18:24:24 UTC 2026",
-    "python_full_version": "3.14.4",
+    "platform_release": "25.5.0",
+    "platform_system": "Darwin",
+    "platform_version": "Darwin Kernel Version 25.5.0: Mon Apr 27 20:41:12 PDT 2026; root:xnu-12377.121.6~2/RELEASE_ARM64_T6050",
+    "python_full_version": "3.14.6",
     "python_version": "3.14",
-    "sys_platform": "linux"
+    "sys_platform": "darwin"
   },
-  "source_pip_version": "26.0.1",
-  "source_report_sha256": "6ecb2325ac69fb8c4753b676c9dfaecf0c085badbba3296c41c492aed1abbd5a"
+  "source_pip_version": "26.1.2",
+  "source_report_sha256": "de005288651ff9f95984bc7e01207fc0ce3db300942c388b7b7b4f7e2e379bd1"
 }

@@ -13,7 +13,9 @@ from pathlib import Path
 import subprocess
 import sys
 
-_RELEASE_SPEC = importlib.util.spec_from_file_location("claude_ads_target_release", Path(__file__).with_name("release.py"))
+_RELEASE_SPEC = importlib.util.spec_from_file_location(
+    "claude_ads_target_release", Path(__file__).with_name("release.py")
+)
 if _RELEASE_SPEC is None or _RELEASE_SPEC.loader is None:  # pragma: no cover
     raise RuntimeError("cannot load the release verifier")
 release = importlib.util.module_from_spec(_RELEASE_SPEC)
@@ -26,7 +28,10 @@ def sha256(path: Path) -> str:
 
 
 def native_target_id(profile: str) -> str:
-    if sys.implementation.name != "cpython" or sys.version_info[:2] not in {(3, 11), (3, 12)}:
+    if sys.implementation.name != "cpython" or sys.version_info[:2] not in {
+        (3, 11),
+        (3, 12),
+    }:
         raise release.ReleaseError("native lock evidence requires CPython 3.11 or 3.12")
     system = platform.system().lower()
     machine = platform.machine().lower()
@@ -34,22 +39,30 @@ def native_target_id(profile: str) -> str:
     if system == "linux" and machine == "x86_64":
         libc_name, libc_version = platform.libc_ver()
         try:
-            libc_ok = libc_name == "glibc" and tuple(map(int, libc_version.split(".")[:2])) >= (2, 17)
+            libc_ok = libc_name == "glibc" and tuple(
+                map(int, libc_version.split(".")[:2])
+            ) >= (2, 27)
         except ValueError:
             libc_ok = False
         if not libc_ok:
-            raise release.ReleaseError("native Linux lock evidence requires glibc >=2.17; musl is unsupported")
+            raise release.ReleaseError(
+                "native Linux lock evidence requires glibc >=2.27; musl is unsupported"
+            )
         target = "linux"
-    elif system == "darwin" and machine in {"arm64", "x86_64"}:
-        target = "macos-arm" if machine == "arm64" else "macos-x86"
+    elif system == "darwin" and machine == "arm64":
+        target = "macos-arm"
     elif system == "windows" and machine == "x86_64":
         target = "windows"
     else:
-        raise release.ReleaseError(f"no reviewed native lock target for {system}/{machine}")
+        raise release.ReleaseError(
+            f"no reviewed native lock target for {system}/{machine}"
+        )
     return f"{profile}-{target}-cp{sys.version_info.major}{sys.version_info.minor}"
 
 
-def verify(root: Path, profile: str, pip_report: Path, wheel_dir: Path, output: Path) -> None:
+def verify(
+    root: Path, profile: str, pip_report: Path, wheel_dir: Path, output: Path
+) -> None:
     inventory = release._load_dependency_inventory(root)
     target_id = native_target_id(profile)
     target = next(item for item in inventory["targets"] if item["id"] == target_id)
@@ -60,9 +73,13 @@ def verify(root: Path, profile: str, pip_report: Path, wheel_dir: Path, output: 
     try:
         from pip import __version__ as executing_pip_version
     except ImportError as exc:
-        raise release.ReleaseError("pip is required for native target verification") from exc
+        raise release.ReleaseError(
+            "pip is required for native target verification"
+        ) from exc
     if report.get("pip_version") != executing_pip_version:
-        raise release.ReleaseError("pip report version does not equal the executing resolver")
+        raise release.ReleaseError(
+            "pip report version does not equal the executing resolver"
+        )
     observed = {}
     for item in report.get("install", []):
         metadata = item.get("metadata", {})
@@ -71,30 +88,54 @@ def verify(root: Path, profile: str, pip_report: Path, wheel_dir: Path, output: 
         hashes = download.get("archive_info", {}).get("hashes", {})
         record = expected.get(name)
         if record is None or name in observed:
-            raise release.ReleaseError(f"pip report contains duplicate or unexpected component: {name}")
+            raise release.ReleaseError(
+                f"pip report contains duplicate or unexpected component: {name}"
+            )
         artifact = record["artifact"]
         if (
             str(metadata.get("version")) != record["version"]
             or download.get("url") != artifact["url"]
             or hashes.get("sha256") != artifact["sha256"]
         ):
-            raise release.ReleaseError(f"pip report artifact mismatch: {target_id}/{name}")
+            raise release.ReleaseError(
+                f"pip report artifact mismatch: {target_id}/{name}"
+            )
         observed[name] = {
-            "name": name, "version": record["version"], "filename": artifact["filename"],
-            "url": artifact["url"], "sha256": artifact["sha256"],
+            "name": name,
+            "version": record["version"],
+            "filename": artifact["filename"],
+            "url": artifact["url"],
+            "sha256": artifact["sha256"],
         }
     if set(observed) != set(expected):
-        raise release.ReleaseError(f"pip report closure mismatch: missing={sorted(set(expected)-set(observed))}")
+        raise release.ReleaseError(
+            f"pip report closure mismatch: missing={sorted(set(expected) - set(observed))}"
+        )
 
-    wheels = {path.name: sha256(path) for path in wheel_dir.glob("*.whl") if path.is_file()}
-    expected_wheels = {item["artifact"]["filename"]: item["artifact"]["sha256"] for item in expected.values()}
+    wheels = {
+        path.name: sha256(path) for path in wheel_dir.glob("*.whl") if path.is_file()
+    }
+    expected_wheels = {
+        item["artifact"]["filename"]: item["artifact"]["sha256"]
+        for item in expected.values()
+    }
     if wheels != expected_wheels:
-        raise release.ReleaseError("downloaded wheel filenames/hashes do not equal the target inventory")
+        raise release.ReleaseError(
+            "downloaded wheel filenames/hashes do not equal the target inventory"
+        )
 
     evidence_path = root / "control-plane/dependency-evidence" / f"{target_id}.json"
     inventory_path = root / "control-plane/manifests/dependency-inventory.json"
-    lock_path = root / ("requirements.lock" if profile == "runtime" else "requirements-dev.lock")
-    commit_result = subprocess.run(["git", "rev-parse", "HEAD"], cwd=root, check=False, capture_output=True, text=True)
+    lock_path = root / (
+        "requirements.lock" if profile == "runtime" else "requirements-dev.lock"
+    )
+    commit_result = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=root,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
     if commit_result.returncode:
         raise release.ReleaseError("cannot bind native target evidence to a Git commit")
     attestation = {
@@ -107,7 +148,11 @@ def verify(root: Path, profile: str, pip_report: Path, wheel_dir: Path, output: 
             "platform": platform.platform(),
             "machine": platform.machine(),
             "libc": list(platform.libc_ver()),
-            "runner": {name: os.environ[name] for name in ("ImageOS", "ImageVersion", "RUNNER_OS", "RUNNER_ARCH") if name in os.environ},
+            "runner": {
+                name: os.environ[name]
+                for name in ("ImageOS", "ImageVersion", "RUNNER_OS", "RUNNER_ARCH")
+                if name in os.environ
+            },
         },
         "source_commit": commit_result.stdout.strip(),
         "dependency_inventory_sha256": sha256(inventory_path),
@@ -118,7 +163,11 @@ def verify(root: Path, profile: str, pip_report: Path, wheel_dir: Path, output: 
         "components": [observed[name] for name in sorted(observed)],
     }
     output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_text(json.dumps(attestation, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n")
+    output.write_text(
+        json.dumps(attestation, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+        newline="\n",
+    )
 
 
 def main() -> int:
@@ -129,7 +178,13 @@ def main() -> int:
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     try:
-        verify(Path(__file__).resolve().parents[1], args.profile, args.pip_report, args.wheel_dir, args.output)
+        verify(
+            Path(__file__).resolve().parents[1],
+            args.profile,
+            args.pip_report,
+            args.wheel_dir,
+            args.output,
+        )
     except (OSError, ValueError, json.JSONDecodeError, release.ReleaseError) as exc:
         print(f"target lock verification failed: {exc}", file=sys.stderr)
         return 1
