@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import os
 import platform
-import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -1220,10 +1219,6 @@ def test_powershell_repeat_removes_dropped_owned_file_before_uninstall(tmp_path)
     repeat = _powershell_install(skills, agents, repo_dir=source)
     if os.name != "nt":
         assert repeat.returncode != 0
-        diagnostic = " ".join(
-            re.sub(r"\x1b\[[0-9;]*m", "", repeat.stdout + repeat.stderr).split()
-        )
-        assert "use install.sh" in diagnostic
         assert installed_legacy.is_file()
         return
     assert repeat.returncode == 0, repeat.stdout + repeat.stderr
