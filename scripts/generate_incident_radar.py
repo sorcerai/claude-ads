@@ -1,12 +1,9 @@
 #!/usr/bin/env python3
-"""
-Generate the Ad Platform Incident Radar dataset.
-Performs:
-1. Minimal, safe single-query Meta Graph API health & latency check (0 hammering, exponential backoff, usage header inspection).
-2. Curated & verified platform incident dispatches from r/FacebookAds, r/PPC, and adops media buyer networks.
-3. Official platform status vs. reality telemetry comparison.
-4. Aggregated crowdsourced ban/outage baseline metrics for client-side interactive triage.
-5. Emits data/incident-radar.json into each configured microsite repository.
+"""Generate an incident-radar dataset for each configured microsite repository.
+
+Performs one minimal Meta Graph API health and latency check, records its
+usage-header telemetry, and emits the resulting API dispatch plus empty
+placeholders for future platform and crowdsourced incident data.
 """
 
 from __future__ import annotations
@@ -32,6 +29,7 @@ REPOSITORY_NAMES = (
     "ad-spend-index",
 )
 
+
 def load_repos() -> list[str]:
     """Resolve the fleet repositories beneath ADSINFRA_FLEET_ROOT."""
     fleet_root = os.environ.get("ADSINFRA_FLEET_ROOT", "").strip()
@@ -41,6 +39,7 @@ def load_repos() -> list[str]:
             "directory before generating the radar."
         )
     return [os.path.join(fleet_root, name) for name in REPOSITORY_NAMES]
+
 
 def get_meta_token() -> str | None:
     """Safely obtain Meta token from the environment or macOS Keychain."""
@@ -52,12 +51,13 @@ def get_meta_token() -> str | None:
             ["security", "find-generic-password", "-s", "META_AD_LIBRARY_TOKEN", "-w"],
             capture_output=True,
             text=True,
-            check=True
+            check=True,
         )
         return res.stdout.strip()
     except Exception as e:
         print(f"[Warn] Could not read META_AD_LIBRARY_TOKEN from keychain: {e}")
         return None
+
 
 def check_meta_api_health(token: str | None) -> dict:
     """Execute exactly 1 minimal query to measure latency, status, and app usage rate."""
@@ -67,7 +67,7 @@ def check_meta_api_health(token: str | None) -> dict:
             "latency_ms": None,
             "usage_pct": None,
             "version": "v26.0",
-            "notes": "Token not present in environment; baseline synthetic benchmark active."
+            "notes": "Token not present in environment; baseline synthetic benchmark active.",
         }
 
     url = "https://graph.facebook.com/v26.0/ads_archive"
@@ -77,22 +77,29 @@ def check_meta_api_health(token: str | None) -> dict:
         "ad_reached_countries": '["US"]',
         "ad_type": "ALL",
         "limit": 1,
-        "fields": "id,page_name"
+        "fields": "id,page_name",
     }
 
     t0 = time.time()
     try:
         resp = requests.get(url, headers=headers, params=params, timeout=12)
         latency_ms = int((time.time() - t0) * 1000)
-        
-        usage_header = resp.headers.get("x-business-use-case-usage") or resp.headers.get("x-app-usage") or "{}"
+
+        usage_header = (
+            resp.headers.get("x-business-use-case-usage")
+            or resp.headers.get("x-app-usage")
+            or "{}"
+        )
         usage_values = []
         try:
             parsed_usage = json.loads(usage_header)
+
             def collect_call_counts(value: object) -> None:
                 if isinstance(value, dict):
                     for key, nested_value in value.items():
-                        if key == "call_count" and isinstance(nested_value, (int, float)):
+                        if key == "call_count" and isinstance(
+                            nested_value, (int, float)
+                        ):
                             usage_values.append(float(nested_value))
                         else:
                             collect_call_counts(nested_value)
@@ -106,12 +113,14 @@ def check_meta_api_health(token: str | None) -> dict:
         usage_val = max(usage_values, default=None)
 
         return {
-            "status": "OPERATIONAL" if resp.status_code == 200 else f"HTTP_{resp.status_code}",
+            "status": "OPERATIONAL"
+            if resp.status_code == 200
+            else f"HTTP_{resp.status_code}",
             "latency_ms": latency_ms,
             "usage_pct": min(usage_val, 100.0) if usage_val is not None else None,
             "version": "v26.0",
             "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
-            "http_status": resp.status_code
+            "http_status": resp.status_code,
         }
     except Exception as e:
         return {
@@ -119,8 +128,9 @@ def check_meta_api_health(token: str | None) -> dict:
             "latency_ms": None,
             "usage_pct": None,
             "version": "v26.0",
-            "error": str(e)
+            "error": str(e),
         }
+
 
 def build_incident_radar_dataset(meta_health: dict) -> dict:
     now_utc = datetime.datetime.now(datetime.timezone.utc).isoformat()
@@ -148,24 +158,25 @@ def build_incident_radar_dataset(meta_health: dict) -> dict:
             "headline": f"Meta Graph API health unavailable ({meta_health.get('status', 'UNKNOWN')}); latency and token endpoint status not verified.",
             "impact": "No API health conclusion is available; investigate the credential or network configuration before attributing front-end rejections.",
         }
-    
+
     return {
         "meta": {
             "title": "Ad Platform Outage & Ban-Wave Incident Radar",
             "updated_at": now_utc,
             "version": "1.0.0",
             "threat_level": "UNKNOWN",
-            "benchmark_basis": "Meta Graph API health check only"
+            "benchmark_basis": "Meta Graph API health check only",
         },
         "meta_graph_api": meta_health,
         "platforms": [],
         "crowdsourced_triage": {
             "window_hours": 24,
             "total_reports_today": 0,
-            "categories": []
+            "categories": [],
         },
-        "recent_dispatches": [api_dispatch]
+        "recent_dispatches": [api_dispatch],
     }
+
 
 def main():
     repos = load_repos()
@@ -187,6 +198,7 @@ def main():
         print(f"      Written: {out_path} ({os.path.getsize(out_path)} bytes)")
 
     print("\nAd Platform Incident Radar generation complete.")
+
 
 if __name__ == "__main__":
     main()
