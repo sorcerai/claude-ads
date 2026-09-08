@@ -1342,7 +1342,12 @@ def _validate_windows_tree(root_path: Path, destination: Path) -> Path:
                 )
             if not stat.S_ISDIR(info.st_mode):
                 raise ReportRenderError("report root must be a directory")
-            _validate_windows_acl(current, "root")
+            # Existing ancestors may be shared profile infrastructure (for
+            # example the runner's Temp directory).  They are checked for
+            # traversal safety above; only the requested report root is a
+            # private ACL boundary.
+            if current == root_path:
+                _validate_windows_acl(current, "root")
         else:
             current.mkdir(mode=0o700)
             _protect_windows_path(current)

@@ -297,20 +297,12 @@ function Main {
                 if ($Rule.AccessControlType -eq [System.Security.AccessControl.AccessControlType]::Allow `
                     -and (($Rule.FileSystemRights -band $WriteRights) -ne 0) `
                     -and -not $TrustedSids.Contains($Sid)) {
-                    $Principal = switch ($Sid.ToUpperInvariant()) {
-                        "S-1-1-0" { "Everyone (S-1-1-0)" }
-                        "S-1-3-0" { "CREATOR_OWNER (S-1-3-0)" }
-                        "S-1-5-11" { "Authenticated Users (S-1-5-11)" }
-                        "S-1-5-32-545" { "Users (S-1-5-32-545)" }
-                        "S-1-5-32-546" { "Guests (S-1-5-32-546)" }
-                        default { "untrusted principal" }
-                    }
                     $RuleType = [string]$Rule.AccessControlType
                     $Rights = [string]$Rule.FileSystemRights
                     $Inheritance = [string]$Rule.InheritanceFlags
                     $Propagation = [string]$Rule.PropagationFlags
                     $Inherited = [bool]$Rule.IsInherited
-                    throw "Retired file parent grants untrusted write access (principal=$Principal; type=$RuleType; rights=$Rights; inheritance=$Inheritance; propagation=$Propagation; inherited=$Inherited)"
+                    throw "Retired file parent grants untrusted write access (principal=untrusted principal; type=$RuleType; rights=$Rights; inheritance=$Inheritance; propagation=$Propagation; inherited=$Inherited)"
                 }
             }
             if ($Current.Equals($ProfileRoot, $PathComparison)) { break }
