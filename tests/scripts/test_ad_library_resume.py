@@ -407,6 +407,46 @@ def test_cli_resume_reuses_default_run_identity_across_days(tmp_path, monkeypatc
     assert len(calls) == 1
 
 
+def test_cli_resume_recovers_omitted_provenance(tmp_path, monkeypatch):
+    checkpoint = tmp_path / "checkpoint.json"
+    calls = []
+
+    def transport(*args, **kwargs):
+        calls.append(kwargs)
+        return Response(_page(_ad("ad-1")))
+
+    monkeypatch.setattr(fetch_ad_library, "guarded_request", transport)
+    monkeypatch.setattr(
+        fetch_ad_library, "QuotaBudget", lambda **kwargs: RecordingBudget()
+    )
+    monkeypatch.setenv("META_AD_LIBRARY_TOKEN", "fixture")
+    monkeypatch.setenv("CLAUDE_ADS_OUTPUT_ROOT", str(tmp_path))
+    initial_argv = [
+        "fetch_ad_library.py",
+        "--countries",
+        "DE",
+        "--search-page-ids",
+        "page-1",
+        "--checkpoint",
+        str(checkpoint),
+        "--client-id",
+        "client-private",
+        "--purpose",
+        "approved-research",
+        "--privacy-class",
+        "confidential",
+    ]
+    monkeypatch.setattr(sys, "argv", initial_argv)
+    fetch_ad_library.main()
+    filters = json.loads(checkpoint.read_text())["filters"]
+
+    monkeypatch.setattr(sys, "argv", initial_argv[:7] + ["--resume"])
+    fetch_ad_library.main()
+
+    assert json.loads(checkpoint.read_text())["filters"] == filters
+    assert len(calls) == 1
+
+
 def test_resume_rejects_changed_effective_page_size(tmp_path, monkeypatch):
     checkpoint = tmp_path / "checkpoint.json"
     _call_queue(monkeypatch, checkpoint, [Response(_page(_ad("ad-1")))], limit=25)

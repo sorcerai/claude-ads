@@ -926,11 +926,11 @@ def _main():
         "--client-id", default=None, help="Client ID for artifact provenance"
     )
     parser.add_argument(
-        "--purpose", default="competitor_analysis", help="Purpose of data retrieval"
+        "--purpose", default=None, help="Purpose of data retrieval"
     )
     parser.add_argument(
         "--privacy-class",
-        default="public",
+        default=None,
         choices=("public", "internal", "confidential", "restricted"),
         help="Data lifecycle classification",
     )
@@ -991,9 +991,24 @@ def _main():
     run_id = args.run_id or (
         None if args.resume else f"run-{date.today().strftime('%Y%m%d')}-ad-lib"
     )
-    client_id = args.client_id or "default-client"
-    purpose = args.purpose
-    privacy_class = args.privacy_class
+    checkpoint_filters = {}
+    if args.resume and checkpoint_path:
+        checkpoint_filters = _load_checkpoint(checkpoint_path)["filters"]
+    client_id = (
+        args.client_id
+        if args.client_id is not None
+        else checkpoint_filters.get("client_id", "default-client")
+    )
+    purpose = (
+        args.purpose
+        if args.purpose is not None
+        else checkpoint_filters.get("purpose", "competitor_analysis")
+    )
+    privacy_class = (
+        args.privacy_class
+        if args.privacy_class is not None
+        else checkpoint_filters.get("privacy_class", "public")
+    )
     quota_budget = QuotaBudget(hourly_limit=args.hourly_limit)
     fields = build_fields(args.include_political_fields, args.include_eu_fields)
 
