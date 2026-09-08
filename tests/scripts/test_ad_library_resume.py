@@ -107,6 +107,23 @@ def test_interrupted_pagination_resumes_exact_opaque_cursor_without_duplicates(
     assert "cursor-1" not in json.dumps(calls2[0]["url"])
 
 
+def test_direct_api_resume_recovers_omitted_run_identity(tmp_path, monkeypatch):
+    checkpoint = tmp_path / "checkpoint.json"
+    first = _page(_ad("ad-1"), next_url=f"{fetch_ad_library.ENDPOINT}?after=cursor-1")
+    _call_queue(monkeypatch, checkpoint, [Response(first)], max_pages=1)
+
+    result, calls = _call_queue(
+        monkeypatch,
+        checkpoint,
+        [Response(_page(_ad("ad-2")))],
+        resume=True,
+        max_pages=1,
+    )
+
+    assert result["advertisers"][0]["status"] == "exhausted"
+    assert calls[0]["params"]["after"] == "cursor-1"
+
+
 def test_resume_fingerprint_mismatch_rejects_before_network(tmp_path, monkeypatch):
     checkpoint = tmp_path / "checkpoint.json"
     _call_queue(monkeypatch, checkpoint, [Response(_page(_ad("ad-1")))])
