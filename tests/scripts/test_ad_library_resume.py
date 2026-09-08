@@ -115,9 +115,7 @@ def test_invalid_filters_are_terminal_across_resume(
     tmp_path, monkeypatch, field, value
 ):
     checkpoint = tmp_path / "checkpoint.json"
-    result1, calls1 = _call_queue(
-        monkeypatch, checkpoint, [], **{field: value}
-    )
+    result1, calls1 = _call_queue(monkeypatch, checkpoint, [], **{field: value})
     assert result1["advertisers"][0]["status"] == "failed"
     assert result1["advertisers"][0]["retryable"] is False
     assert calls1 == []
