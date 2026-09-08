@@ -494,9 +494,7 @@ def test_windows_acl_rejects_permissive_entries_before_write(monkeypatch, tmp_pa
 
 def test_windows_acl_resolves_owner_rights_to_object_owner(monkeypatch, tmp_path):
     acl = _secure_windows_acl()
-    acl["access"] = [
-        {"sid": "S-1-3-4", "type": "Allow", "rights": "FullControl"}
-    ]
+    acl["access"] = [{"sid": "S-1-3-4", "type": "Allow", "rights": "FullControl"}]
     monkeypatch.setattr(reporting, "_windows_acl_snapshot", lambda _path: acl)
     reporting._validate_windows_acl(tmp_path / "reports", "root")
 
