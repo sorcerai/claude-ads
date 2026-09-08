@@ -25,7 +25,7 @@ set -euo pipefail
 # shell metacharacters, leading dashes, `..` segments, and UNC-style paths.
 
 REPO_URL="https://github.com/AgriciDaniel/claude-ads"
-SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+SCRIPT_DIR=$(CDPATH=; cd -- "$(dirname -- "$0")" && pwd)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Target whitelist + path mapping
@@ -276,7 +276,7 @@ main() {
             echo "✗ Invalid local repository path" >&2
             exit 1
         }
-        SOURCE_DIR=$(CDPATH= cd -- "$SOURCE_DIR" 2>/dev/null && pwd) || {
+        SOURCE_DIR=$(CDPATH=; cd -- "$SOURCE_DIR" 2>/dev/null && pwd) || {
             echo "✗ Local repository does not exist: ${REPO_DIR:-${SCRIPT_DIR}}" >&2
             exit 1
         }
@@ -331,8 +331,8 @@ print("|".join((sys.implementation.name, f"{sys.version_info.major}.{sys.version
     mkdir -p "${SKILL_BASE}" "${AGENT_DIR}"
     [ ! -L "${SKILL_BASE}" ] || { echo "✗ Refusing symlinked configured skill root: ${SKILL_BASE}" >&2; return 1; }
     [ ! -L "${AGENT_DIR}" ] || { echo "✗ Refusing symlinked configured agent root: ${AGENT_DIR}" >&2; return 1; }
-    SKILL_BASE_CANON=$(CDPATH= cd -- "$SKILL_BASE" && pwd -P)
-    AGENT_DIR_CANON=$(CDPATH= cd -- "$AGENT_DIR" && pwd -P)
+    SKILL_BASE_CANON=$(CDPATH=; cd -- "$SKILL_BASE" && pwd -P)
+    AGENT_DIR_CANON=$(CDPATH=; cd -- "$AGENT_DIR" && pwd -P)
     MANIFEST_TMP=$(mktemp "${SKILL_BASE}/.claude-ads-manifest.XXXXXX")
     printf 'V\t1\nT\t%s\n' "$TARGET" > "$MANIFEST_TMP"
 
@@ -342,7 +342,7 @@ print("|".join((sys.implementation.name, f"{sys.version_info.major}.{sys.version
         local destination="$1" parent base canonical_parent
         parent=$(dirname -- "$destination")
         base=$(basename -- "$destination")
-        canonical_parent=$(CDPATH= cd -- "$parent" 2>/dev/null && pwd -P) || return 1
+        canonical_parent=$(CDPATH=; cd -- "$parent" 2>/dev/null && pwd -P) || return 1
         printf '%s/%s\n' "$canonical_parent" "$base"
     }
     assert_owned_destination() {
@@ -359,7 +359,7 @@ print("|".join((sys.implementation.name, f"{sys.version_info.major}.{sys.version
         canonical=$(canonical_destination "$directory") || return 1
         assert_owned_destination "$canonical" || return 1
         mkdir -p "$canonical"
-        CDPATH= cd -- "$canonical" && pwd -P
+        CDPATH=; cd -- "$canonical" && pwd -P
     }
     previously_owned_file() {
         local destination="$1"
@@ -453,7 +453,7 @@ print("|".join((sys.implementation.name, f"{sys.version_info.major}.{sys.version
                             case "$acl_line" in
                                 *" allow "*|*" allow"*)
                                     case "$acl_line" in
-                                        *write*|*append*|*add_file*|*add_subdirectory*|*delete*|*delete_child*|*writeattr*|*writeextattr*|*writesecurity*|*chown*|*takeownership*)
+                                        *write*|*append*|*add_file*|*add_subdirectory*|*delete*|*chown*|*takeownership*)
                                             echo "✗ Prior manifest path has an ACL mutation grant: ${directory}" >&2
                                             return 1
                                             ;;
@@ -714,7 +714,7 @@ print("|".join((sys.implementation.name, f"{sys.version_info.major}.{sys.version
         install_file "${SOURCE_DIR}/requirements.lock" "${SKILL_DIR}/requirements.lock"
         CORE_DIR=$(ensure_owned_dir "${SCRIPTS_DIR}/claude_ads_core")
         while IFS= read -r source_file; do
-            relative="${source_file#${SOURCE_DIR}/claude_ads_core/}"
+            relative="${source_file#"${SOURCE_DIR}"/claude_ads_core/}"
             destination="${CORE_DIR}/${relative}"
             destination_dir=$(ensure_owned_dir "$(dirname -- "$destination")")
             install_file "$source_file" "$destination"
