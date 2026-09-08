@@ -643,6 +643,8 @@ def test_stopped_transient_response_returns_recovery_without_retry(monkeypatch):
         {"data": [], "paging": []},
         {"data": [], "paging": "bad"},
         {"data": [], "paging": 0},
+        {"data": [], "paging": {"next": 0}},
+        {"data": [], "paging": {"next": ""}},
     ],
 )
 def test_malformed_response_is_failure_not_empty_archive(monkeypatch, payload):

@@ -370,6 +370,11 @@ def search_ad_library(
                 raise ValueError(
                     "Ad Library response contains invalid paging metadata."
                 )
+            has_next = "next" in paging
+            next_url = paging.get("next")
+            next_cursor = _opaque_cursor(next_url) if has_next else None
+            if next_cursor is not None and next_cursor in seen_cursors:
+                raise ValueError("Paging cursor repeated; refusing to loop.")
             seen_ids = {
                 str(ad.get("id")) for ad in result["ads"] if ad.get("id") is not None
             }
@@ -380,10 +385,6 @@ def search_ad_library(
                     if ad_id is not None:
                         seen_ids.add(str(ad_id))
             result["pages_fetched"] += 1
-            next_url = paging.get("next")
-            next_cursor = _opaque_cursor(next_url) if next_url else None
-            if next_cursor is not None and next_cursor in seen_cursors:
-                raise ValueError("Paging cursor repeated; refusing to loop.")
             if next_cursor is not None:
                 seen_cursors.add(next_cursor)
             result["next_cursor"] = next_cursor
@@ -394,12 +395,12 @@ def search_ad_library(
                     (f"{result['warning']}; " if result.get("warning") else "")
                     + "Usage throttle threshold reached; quota budget requested a stop before further pagination."
                 )
-                if next_url:
+                if next_cursor is not None:
                     result["status"] = "quota-deferred"
                     return result
                 result["status"] = "exhausted"
                 url = None
-            elif not next_url:
+            elif next_cursor is None:
                 result["status"] = "exhausted"
                 url = None
             else:
