@@ -669,9 +669,7 @@ def test_empty_page_follows_paging_link(monkeypatch):
             return _ResponseWithHeaders(
                 {
                     "data": [],
-                    "paging": {
-                        "next": fetch_ad_library.ENDPOINT + "?after=next"
-                    },
+                    "paging": {"next": fetch_ad_library.ENDPOINT + "?after=next"},
                 }
             )
         return _ResponseWithHeaders({"data": [{"id": "ad-2"}], "paging": {}})
