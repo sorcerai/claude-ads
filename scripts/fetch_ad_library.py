@@ -362,7 +362,7 @@ def search_ad_library(
             page_ads = payload["data"]
             if any(not isinstance(ad, dict) or not ad.get("id") for ad in page_ads):
                 raise ValueError("Ad Library response contains an invalid ad row.")
-            paging = payload.get("paging") or {}
+            paging = payload["paging"] if "paging" in payload else {}
             if not isinstance(paging, dict):
                 raise ValueError(
                     "Ad Library response contains invalid paging metadata."
@@ -377,7 +377,7 @@ def search_ad_library(
                     if ad_id is not None:
                         seen_ids.add(str(ad_id))
             result["pages_fetched"] += 1
-            next_url = paging.get("next") if page_ads else None
+            next_url = paging.get("next")
             next_cursor = _opaque_cursor(next_url) if next_url else None
             if next_cursor is not None and next_cursor in seen_cursors:
                 raise ValueError("Paging cursor repeated; refusing to loop.")
@@ -519,6 +519,12 @@ def _load_checkpoint(path: Path) -> dict[str, Any]:
             not isinstance(artifact, dict)
             or "ads" in artifact
             or not isinstance(artifact.get("observations"), list)
+            or any(
+                not isinstance(observation, dict)
+                or not isinstance(observation.get("observation_id"), str)
+                or not observation["observation_id"]
+                for observation in artifact.get("observations", [])
+            )
         ):
             raise ValueError("corrupt checkpoint: raw artifact or invalid observations")
     return value

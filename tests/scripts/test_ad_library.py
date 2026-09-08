@@ -634,7 +634,17 @@ def test_stopped_transient_response_returns_recovery_without_retry(monkeypatch):
     assert result["retry_at"] == 7200
 
 
-@pytest.mark.parametrize("payload", [{}, [], {"data": ["invalid-row"]}])
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {},
+        [],
+        {"data": ["invalid-row"]},
+        {"data": [], "paging": []},
+        {"data": [], "paging": "bad"},
+        {"data": [], "paging": 0},
+    ],
+)
 def test_malformed_response_is_failure_not_empty_archive(monkeypatch, payload):
     monkeypatch.setattr(
         fetch_ad_library,
@@ -650,17 +660,21 @@ def test_malformed_response_is_failure_not_empty_archive(monkeypatch, payload):
     assert result["pages_fetched"] == 0
 
 
-def test_empty_page_ends_archive_even_with_stale_paging_link(monkeypatch):
+def test_empty_page_follows_paging_link(monkeypatch):
     calls = []
 
     def transport(*args, **kwargs):
         calls.append(kwargs)
-        return _ResponseWithHeaders(
-            {
-                "data": [],
-                "paging": {"next": fetch_ad_library.ENDPOINT + "?after=stale"},
-            }
-        )
+        if len(calls) == 1:
+            return _ResponseWithHeaders(
+                {
+                    "data": [],
+                    "paging": {
+                        "next": fetch_ad_library.ENDPOINT + "?after=next"
+                    },
+                }
+            )
+        return _ResponseWithHeaders({"data": [{"id": "ad-2"}], "paging": {}})
 
     monkeypatch.setattr(fetch_ad_library, "guarded_request", transport)
     result = fetch_ad_library.search_ad_library(
@@ -670,4 +684,5 @@ def test_empty_page_ends_archive_even_with_stale_paging_link(monkeypatch):
     )
     assert result["status"] == "exhausted"
     assert result["next_cursor"] is None
-    assert len(calls) == 1
+    assert len(calls) == 2
+    assert calls[1]["params"]["after"] == "next"
