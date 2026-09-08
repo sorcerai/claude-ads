@@ -14,7 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   provider-usage backoff. Adds exact-phrase discovery, explicit activity filters,
   sequential advertiser collection, normalized per-page checkpoints, opaque
   cursor resume, deduplication, and explicit incomplete/exhausted states.
-  Authentication failures are no longer retried when marked transient. These
+  Authentication failures are never retried, even when marked transient. These
   controls do not establish Meta's undisclosed user quota or complete market
   coverage; other callers must be coordinated separately.
 
