@@ -521,7 +521,7 @@ def test_final_page_quota_stop_defers_remaining_advertisers(tmp_path, monkeypatc
     )
     assert len(calls) == 1
     assert [entry["status"] for entry in result["advertisers"]] == [
-        "exhausted",
+        "quota-deferred",
         "queued",
     ]
     assert result["status"] == "quota-deferred"

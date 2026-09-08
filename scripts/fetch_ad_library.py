@@ -409,11 +409,8 @@ def search_ad_library(
                     (f"{result['warning']}; " if result.get("warning") else "")
                     + "Usage throttle threshold reached; quota budget requested a stop before further pagination."
                 )
-                if next_cursor is not None:
-                    result["status"] = "quota-deferred"
-                    return result
-                result["status"] = "exhausted"
-                url = None
+                result["status"] = "quota-deferred"
+                return result
             elif next_cursor is None:
                 result["status"] = "exhausted"
                 url = None
