@@ -922,9 +922,7 @@ def _main():
     parser.add_argument(
         "--client-id", default=None, help="Client ID for artifact provenance"
     )
-    parser.add_argument(
-        "--purpose", default=None, help="Purpose of data retrieval"
-    )
+    parser.add_argument("--purpose", default=None, help="Purpose of data retrieval")
     parser.add_argument(
         "--privacy-class",
         default=None,

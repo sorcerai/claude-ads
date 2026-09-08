@@ -13,7 +13,12 @@ import claude_ads_core.reporting as reporting
 
 from claude_ads_core.cli import main
 from claude_ads_core.contracts import validate_contract
-from claude_ads_core.control_registry import ControlRegistry, RegistryEntry, ScoringProfile, load_control_registry
+from claude_ads_core.control_registry import (
+    ControlRegistry,
+    RegistryEntry,
+    ScoringProfile,
+    load_control_registry,
+)
 from claude_ads_core.reporting import (
     PDFDependencyError,
     ReportRenderError,
@@ -80,8 +85,6 @@ def no_score_bundle() -> dict:
     return bundle
 
 
-
-
 def test_product_manifest_advertises_only_executable_report_formats():
     manifest = json.loads(
         (REPO_ROOT / "control-plane" / "manifests" / "product-manifest.json").read_text(
@@ -143,6 +146,8 @@ def test_sanitized_report_fixture_is_a_valid_v2_bundle_with_measurement_context(
         "redacted_value": "eligible",
         "observation_ref": None,
     }
+
+
 def test_sanitized_report_fixture_has_exact_category_scores_and_registry_validation():
     bundle = load_bundle()
     expected_categories = [
@@ -188,8 +193,11 @@ def test_sanitized_report_fixture_has_exact_category_scores_and_registry_validat
 
 
 def test_markdown_matches_golden_report():
-    expected = (FIXTURE_ROOT / "sanitized-report.md").read_text(encoding="utf-8").rstrip("\n") + "\n"
+    expected = (FIXTURE_ROOT / "sanitized-report.md").read_text(
+        encoding="utf-8"
+    ).rstrip("\n") + "\n"
     assert render_markdown(load_bundle(), registry=fixture_registry()) == expected
+
 
 def test_renderer_rejects_tampered_score_before_returning_content():
     bundle = load_bundle()
@@ -199,7 +207,9 @@ def test_renderer_rejects_tampered_score_before_returning_content():
 
 
 def test_html_matches_golden_report_and_is_self_contained():
-    expected = (FIXTURE_ROOT / "sanitized-report.html").read_text(encoding="utf-8").rstrip("\n") + "\n"
+    expected = (FIXTURE_ROOT / "sanitized-report.html").read_text(
+        encoding="utf-8"
+    ).rstrip("\n") + "\n"
     rendered = render_html(load_bundle(), registry=fixture_registry())
     assert rendered == expected
     lowered = rendered.lower()
@@ -207,6 +217,8 @@ def test_html_matches_golden_report_and_is_self_contained():
     assert "<link" not in lowered
     assert " src=" not in lowered
     assert " url(" not in lowered
+
+
 def test_report_surfaces_measurement_context_and_provenance():
     bundle = load_bundle()
     markdown = render_markdown(bundle, registry=fixture_registry())
@@ -227,6 +239,8 @@ def test_report_surfaces_measurement_context_and_provenance():
         assert "budget, creative_id, creative_name" in plain
         assert "input:sanitized-google-export.csv" in plain
         assert "evidence-google-policy-001" in plain
+
+
 def test_report_surfaces_partial_provisional_evidence_contradictions_and_actions():
     markdown = render_markdown(load_bundle(), registry=fixture_registry())
     assert "Run completeness: **Partial**" in markdown
@@ -235,6 +249,7 @@ def test_report_surfaces_partial_provisional_evidence_contradictions_and_actions
     assert "Campaign eligibility is present" in markdown
     assert "Verify and repair the primary conversion action" in markdown
     assert '"evidence_id":"evidence-google-tracking-001"' in markdown
+
 
 def test_report_footers_state_registry_recomputed_scores():
     expected = (
@@ -266,8 +281,12 @@ def test_rendering_is_reproducible_and_does_not_mutate_input():
     bundle = load_bundle()
     original = copy.deepcopy(bundle)
     registry = fixture_registry()
-    assert render_markdown(bundle, registry=registry) == render_markdown(bundle, registry=registry)
-    assert render_html(bundle, registry=registry) == render_html(bundle, registry=registry)
+    assert render_markdown(bundle, registry=registry) == render_markdown(
+        bundle, registry=registry
+    )
+    assert render_html(bundle, registry=registry) == render_html(
+        bundle, registry=registry
+    )
     assert bundle == original
 
 
@@ -306,6 +325,7 @@ def test_untrusted_content_is_escaped_and_obvious_credentials_and_pii_are_redact
     assert "&lt;script&gt;" in rendered_html
     assert "[REDACTED]" in combined
 
+
 def test_header_credentials_redact_full_values_without_crossing_lines():
     rendered = reporting._redact_text(
         "aUtHoRiZaTiOn: Basic basic-secret\r\n"
@@ -314,7 +334,7 @@ def test_header_credentials_redact_full_values_without_crossing_lines():
         "Next-Text: keep-this-text\n"
         "cOoKiE: session=one; preference=two\n"
         "Next-Header: keep-pairs\r\n"
-        "sEt-Cookie: \"quoted-secret\"; Path=/; HttpOnly\r\n"
+        'sEt-Cookie: "quoted-secret"; Path=/; HttpOnly\r\n'
         "Next-Header: keep-quoted\n"
         "Observed Authorization: Basic inline-secret\n"
         "Inline Cookie: sid=one; csrf=two\n"
@@ -348,10 +368,13 @@ def test_renderer_rejects_invalid_bundle_and_malformed_extensions():
         render_html(invalid, registry=fixture_registry())
 
 
-@pytest.mark.parametrize("destination", ["../outside.md", "/tmp/outside.md", "nested/../../outside.md"])
+@pytest.mark.parametrize(
+    "destination", ["../outside.md", "/tmp/outside.md", "nested/../../outside.md"]
+)
 def test_safe_report_path_rejects_absolute_and_traversal_paths(tmp_path, destination):
     with pytest.raises(ReportRenderError, match="relative path"):
         resolve_report_path(tmp_path / "reports", destination)
+
 
 @pytest.mark.parametrize(
     "destination",
@@ -397,9 +420,12 @@ def test_report_destination_grammar_rejects_unsafe_components(tmp_path, destinat
 
 
 def test_report_destination_grammar_preserves_path_as_posix(tmp_path):
-    assert resolve_report_path(tmp_path / "reports", Path("run/report.md")) == (
-        tmp_path / "reports"
-    ).absolute() / "run/report.md"
+    assert (
+        resolve_report_path(tmp_path / "reports", Path("run/report.md"))
+        == (tmp_path / "reports").absolute() / "run/report.md"
+    )
+
+
 def test_resolve_report_path_is_non_mutating_for_nominal_nested_destination(tmp_path):
     root = tmp_path / "reports"
     resolved = resolve_report_path(root, "run-1/report.md")
@@ -407,7 +433,9 @@ def test_resolve_report_path_is_non_mutating_for_nominal_nested_destination(tmp_
     assert not root.exists()
 
 
-def test_atomic_report_write_fails_before_root_creation_without_posix_capabilities(tmp_path, monkeypatch):
+def test_atomic_report_write_fails_before_root_creation_without_posix_capabilities(
+    tmp_path, monkeypatch
+):
     if os.name != "posix":
         pytest.skip("POSIX capability gate")
     root = tmp_path / "reports"
@@ -417,7 +445,9 @@ def test_atomic_report_write_fails_before_root_creation_without_posix_capabiliti
     assert not root.exists()
 
 
-def test_atomic_report_write_requires_getuid_before_root_creation(tmp_path, monkeypatch):
+def test_atomic_report_write_requires_getuid_before_root_creation(
+    tmp_path, monkeypatch
+):
     if os.name != "posix":
         pytest.skip("POSIX capability gate")
     root = tmp_path / "reports"
@@ -456,14 +486,15 @@ def _secure_windows_acl() -> dict:
 
 def test_windows_acl_rejects_permissive_entries_before_write(monkeypatch, tmp_path):
     acl = _secure_windows_acl()
-    acl["access"].append(
-        {"sid": "S-1-1-0", "type": "Allow", "rights": "FullControl"}
-    )
+    acl["access"].append({"sid": "S-1-1-0", "type": "Allow", "rights": "FullControl"})
     monkeypatch.setattr(reporting, "_windows_acl_snapshot", lambda _path: acl)
     with pytest.raises(ReportRenderError, match="permissive"):
         reporting._validate_windows_acl(tmp_path / "reports", "root")
 
-def test_windows_atomic_write_rejects_permissive_home_before_root_creation(monkeypatch, tmp_path):
+
+def test_windows_atomic_write_rejects_permissive_home_before_root_creation(
+    monkeypatch, tmp_path
+):
     home = tmp_path / "home"
     home.mkdir()
     root = home / "reports"
@@ -498,16 +529,24 @@ def test_windows_atomic_report_write_round_trips_acl_with_spaces_quotes_and_unic
         assert all(entry["sid"] == current_sid for entry in snapshot["access"])
 
 
-def test_windows_atomic_write_applies_current_user_acl_on_non_windows(monkeypatch, tmp_path):
+def test_windows_atomic_write_applies_current_user_acl_on_non_windows(
+    monkeypatch, tmp_path
+):
     home = tmp_path / "home"
     home.mkdir()
     root = home / "reports"
     protected = []
     monkeypatch.setattr(Path, "home", classmethod(lambda cls: home))
     monkeypatch.setattr(reporting, "_windows_reparse", lambda _info: False)
-    monkeypatch.setattr(reporting, "_windows_acl_snapshot", lambda _path: _secure_windows_acl())
+    monkeypatch.setattr(
+        reporting, "_windows_acl_snapshot", lambda _path: _secure_windows_acl()
+    )
     monkeypatch.setattr(reporting, "_protect_windows_path", protected.append)
-    monkeypatch.setattr(reporting.os, "chmod", lambda *_args: (_ for _ in ()).throw(AssertionError("chmod")))
+    monkeypatch.setattr(
+        reporting.os,
+        "chmod",
+        lambda *_args: (_ for _ in ()).throw(AssertionError("chmod")),
+    )
     output = reporting._atomic_write_windows(root, "report.md", b"report\n")
     assert output.read_bytes() == b"report\n"
     assert len(protected) == 3
@@ -517,11 +556,11 @@ def test_windows_atomic_write_applies_current_user_acl_on_non_windows(monkeypatc
     assert protected[2] == output
 
 
-
-
 @pytest.mark.skipif(os.name != "nt", reason="native Windows coverage")
 @pytest.mark.parametrize("target", ["root", "parent", "leaf"])
-def test_windows_reparse_proxy_rejects_root_parent_and_leaf(tmp_path, monkeypatch, target):
+def test_windows_reparse_proxy_rejects_root_parent_and_leaf(
+    tmp_path, monkeypatch, target
+):
     home = tmp_path / "home"
     home.mkdir()
     root = home / "reports"
@@ -547,20 +586,29 @@ def test_windows_reparse_proxy_rejects_root_parent_and_leaf(tmp_path, monkeypatc
     with pytest.raises(ReportRenderError, match="reparse"):
         atomic_write_report(root, "run/report.md", b"report\n")
 
+
 @pytest.mark.skipif(os.name != "nt", reason="native Windows coverage")
-def test_windows_write_error_normalizes_and_cleans_temporary_file(tmp_path, monkeypatch):
+def test_windows_write_error_normalizes_and_cleans_temporary_file(
+    tmp_path, monkeypatch
+):
     home = tmp_path / "home"
     home.mkdir()
     root = home / "reports"
     monkeypatch.setattr(Path, "home", classmethod(lambda cls: home))
-    monkeypatch.setattr(os, "write", lambda fd, data: (_ for _ in ()).throw(OSError("windows write failure")))
+    monkeypatch.setattr(
+        os,
+        "write",
+        lambda fd, data: (_ for _ in ()).throw(OSError("windows write failure")),
+    )
     with pytest.raises(ReportRenderError, match="windows write failure"):
         atomic_write_report(root, "report.md", b"report\n")
     assert not list(root.glob(".report.md.*"))
 
 
 @pytest.mark.skipif(os.name != "nt", reason="native Windows coverage")
-def test_windows_post_replace_corruption_fails_exact_byte_verification(tmp_path, monkeypatch):
+def test_windows_post_replace_corruption_fails_exact_byte_verification(
+    tmp_path, monkeypatch
+):
     home = tmp_path / "home"
     home.mkdir()
     root = home / "reports"
@@ -575,8 +623,11 @@ def test_windows_post_replace_corruption_fails_exact_byte_verification(tmp_path,
     with pytest.raises(ReportRenderError, match="unexpected content"):
         atomic_write_report(root, "report.md", b"report\n")
 
+
 @pytest.mark.skipif(os.name != "nt", reason="native Windows coverage")
-def test_windows_post_replace_temp_lstat_error_reports_unknown_without_cleanup(tmp_path, monkeypatch):
+def test_windows_post_replace_temp_lstat_error_reports_unknown_without_cleanup(
+    tmp_path, monkeypatch
+):
     home = tmp_path / "home"
     home.mkdir()
     root = home / "reports"
@@ -613,18 +664,25 @@ def test_windows_post_replace_temp_lstat_error_reports_unknown_without_cleanup(t
 
 
 @pytest.mark.skipif(os.name != "nt", reason="native Windows coverage")
-def test_windows_keyboard_interrupt_rethrows_and_cleans_owned_temp(tmp_path, monkeypatch):
+def test_windows_keyboard_interrupt_rethrows_and_cleans_owned_temp(
+    tmp_path, monkeypatch
+):
     home = tmp_path / "home"
     home.mkdir()
     root = home / "reports"
     monkeypatch.setattr(Path, "home", classmethod(lambda cls: home))
-    monkeypatch.setattr(os, "write", lambda fd, data: (_ for _ in ()).throw(KeyboardInterrupt()))
+    monkeypatch.setattr(
+        os, "write", lambda fd, data: (_ for _ in ()).throw(KeyboardInterrupt())
+    )
     with pytest.raises(KeyboardInterrupt):
         atomic_write_report(root, "report.md", b"report\n")
     assert not (root / "report.md").exists()
     assert not list(root.glob(".report.md.*"))
 
-def test_atomic_report_write_rejects_unsupported_platform_before_mutation(tmp_path, monkeypatch):
+
+def test_atomic_report_write_rejects_unsupported_platform_before_mutation(
+    tmp_path, monkeypatch
+):
     monkeypatch.setattr(os, "name", "plan9")
     root = tmp_path / "reports"
     with pytest.raises(ReportRenderError, match="unsupported"):
@@ -632,8 +690,9 @@ def test_atomic_report_write_rejects_unsupported_platform_before_mutation(tmp_pa
     assert not root.exists()
 
 
-
-def test_atomic_report_write_rejects_private_root_ownership_before_temp_creation(tmp_path, monkeypatch):
+def test_atomic_report_write_rejects_private_root_ownership_before_temp_creation(
+    tmp_path, monkeypatch
+):
     if os.name != "posix" or not hasattr(os, "getuid"):
         pytest.skip("POSIX ownership")
     root = tmp_path / "reports"
@@ -644,7 +703,9 @@ def test_atomic_report_write_rejects_private_root_ownership_before_temp_creation
     monkeypatch.setattr(
         os,
         "fstat",
-        lambda fd: type("Stat", (), {"st_uid": os.getuid() + 1, "st_mode": stat.S_IFDIR | 0o700})()
+        lambda fd: type(
+            "Stat", (), {"st_uid": os.getuid() + 1, "st_mode": stat.S_IFDIR | 0o700}
+        )()
         if fd != 0
         else original_fstat(fd),
     )
@@ -663,8 +724,11 @@ def test_atomic_report_write_rejects_group_writable_root_before_temp_creation(tm
         atomic_write_report(root, "report.md", b"report\n")
     assert list(root.glob(".report.md.*")) == []
 
+
 @pytest.mark.parametrize("destination", ["report.md", "run/report.md"])
-def test_atomic_report_write_rejects_mode_755_root_or_parent_before_temp(tmp_path, destination):
+def test_atomic_report_write_rejects_mode_755_root_or_parent_before_temp(
+    tmp_path, destination
+):
     if os.name != "posix":
         pytest.skip("POSIX permissions")
     root = tmp_path / "reports"
@@ -679,7 +743,10 @@ def test_atomic_report_write_rejects_mode_755_root_or_parent_before_temp(tmp_pat
         atomic_write_report(root, destination, b"report\n")
     assert not list(root.rglob(".report.md.*"))
 
-def test_atomic_report_write_closes_child_fd_on_parent_validation_failure(tmp_path, monkeypatch):
+
+def test_atomic_report_write_closes_child_fd_on_parent_validation_failure(
+    tmp_path, monkeypatch
+):
     if os.name != "posix":
         pytest.skip("POSIX descriptor anchoring")
     root = tmp_path / "reports"
@@ -710,13 +777,17 @@ def test_atomic_report_write_closes_child_fd_on_parent_validation_failure(tmp_pa
     monkeypatch.setattr(os, "open", recording_open)
     monkeypatch.setattr(os, "fstat", failing_fstat)
     monkeypatch.setattr(os, "close", recording_close)
-    with pytest.raises(ReportRenderError, match="parent validation failure.*child close failure"):
+    with pytest.raises(
+        ReportRenderError, match="parent validation failure.*child close failure"
+    ):
         atomic_write_report(root, "run/report.md", b"report\n")
     assert child_fds
     assert child_fds[0] in closed
 
 
-def test_atomic_report_write_fsyncs_new_parent_before_next_operation(tmp_path, monkeypatch):
+def test_atomic_report_write_fsyncs_new_parent_before_next_operation(
+    tmp_path, monkeypatch
+):
     if os.name != "posix":
         pytest.skip("POSIX descriptor anchoring")
     root = tmp_path / "reports"
@@ -735,11 +806,17 @@ def test_atomic_report_write_fsyncs_new_parent_before_next_operation(tmp_path, m
     monkeypatch.setattr(os, "mkdir", recording_mkdir)
     monkeypatch.setattr(os, "fsync", recording_fsync)
     atomic_write_report(root, "run/report.md", b"report\n")
-    nested_mkdir = next(index for index, event in enumerate(events) if event[0] == "mkdir" and event[1] == "run")
+    nested_mkdir = next(
+        index
+        for index, event in enumerate(events)
+        if event[0] == "mkdir" and event[1] == "run"
+    )
     assert events[nested_mkdir + 1][0] == "fsync"
 
 
-def test_atomic_report_write_parent_swap_at_replace_cannot_escape_held_parent(tmp_path, monkeypatch):
+def test_atomic_report_write_parent_swap_at_replace_cannot_escape_held_parent(
+    tmp_path, monkeypatch
+):
     if os.name != "posix":
         pytest.skip("POSIX descriptor anchoring")
     root = tmp_path / "reports"
@@ -767,7 +844,9 @@ def test_atomic_report_write_parent_swap_at_replace_cannot_escape_held_parent(tm
     assert not list((root / "run-parked").glob(".report.md.*"))
 
 
-def test_atomic_report_write_late_destination_symlink_replaces_leaf_not_target(tmp_path, monkeypatch):
+def test_atomic_report_write_late_destination_symlink_replaces_leaf_not_target(
+    tmp_path, monkeypatch
+):
     if os.name != "posix":
         pytest.skip("POSIX descriptor anchoring")
     root = tmp_path / "reports"
@@ -792,7 +871,9 @@ def test_atomic_report_write_late_destination_symlink_replaces_leaf_not_target(t
     assert output.is_file() and not output.is_symlink()
 
 
-def test_atomic_report_write_final_namespace_identity_mismatch_fails_after_replacement(tmp_path, monkeypatch):
+def test_atomic_report_write_final_namespace_identity_mismatch_fails_after_replacement(
+    tmp_path, monkeypatch
+):
     if os.name != "posix":
         pytest.skip("POSIX descriptor anchoring")
     root = tmp_path / "reports"
@@ -814,7 +895,10 @@ def test_atomic_report_write_final_namespace_identity_mismatch_fails_after_repla
     assert (tmp_path / "reports-parked" / "report.md").read_bytes() == b"report\n"
     assert not (root / "report.md").exists()
 
-def test_atomic_report_write_parent_swap_to_real_directory_fails_identity(tmp_path, monkeypatch):
+
+def test_atomic_report_write_parent_swap_to_real_directory_fails_identity(
+    tmp_path, monkeypatch
+):
     if os.name != "posix":
         pytest.skip("POSIX descriptor anchoring")
     root = tmp_path / "reports"
@@ -839,7 +923,9 @@ def test_atomic_report_write_parent_swap_to_real_directory_fails_identity(tmp_pa
     assert not (root / "run" / "report.md").exists()
 
 
-def test_atomic_report_write_rejects_identical_bytes_with_replaced_leaf_identity(tmp_path, monkeypatch):
+def test_atomic_report_write_rejects_identical_bytes_with_replaced_leaf_identity(
+    tmp_path, monkeypatch
+):
     if os.name != "posix":
         pytest.skip("POSIX descriptor anchoring")
     root = tmp_path / "reports"
@@ -861,7 +947,10 @@ def test_atomic_report_write_rejects_identical_bytes_with_replaced_leaf_identity
     with pytest.raises(ReportRenderError, match="replacement occurred"):
         atomic_write_report(root, "report.md", b"report\n")
 
-def test_atomic_report_write_surfaces_outer_close_failures_after_commit(tmp_path, monkeypatch):
+
+def test_atomic_report_write_surfaces_outer_close_failures_after_commit(
+    tmp_path, monkeypatch
+):
     if os.name != "posix":
         pytest.skip("POSIX descriptor backend")
     root = tmp_path / "reports"
@@ -882,17 +971,22 @@ def test_atomic_report_write_surfaces_outer_close_failures_after_commit(tmp_path
 
     monkeypatch.setattr(reporting, "_open_posix_parent", recording_parent)
     monkeypatch.setattr(os, "close", failing_held_close)
-    with pytest.raises(ReportRenderError, match="replacement occurred.*outer descriptor close failure"):
+    with pytest.raises(
+        ReportRenderError, match="replacement occurred.*outer descriptor close failure"
+    ):
         atomic_write_report(root, "report.md", b"report\n")
     assert (root / "report.md").read_bytes() == b"report\n"
 
 
-
-def test_write_report_bundle_rejects_empty_destination_before_pdf_render(tmp_path, monkeypatch):
+def test_write_report_bundle_rejects_empty_destination_before_pdf_render(
+    tmp_path, monkeypatch
+):
     def unexpected_import(name: str):
         raise AssertionError("PDF renderer should not be imported")
 
-    monkeypatch.setattr("claude_ads_core.reporting.importlib.import_module", unexpected_import)
+    monkeypatch.setattr(
+        "claude_ads_core.reporting.importlib.import_module", unexpected_import
+    )
     root = tmp_path / "reports"
     with pytest.raises(ReportRenderError, match="relative path"):
         write_report_bundle(
@@ -929,7 +1023,9 @@ def test_atomic_report_write_uses_private_permissions_and_leaves_no_temp_file(tm
     assert list(output.parent.glob(".report.md.*")) == []
 
 
-def test_atomic_report_write_verifies_binary_content_without_text_translation(tmp_path, monkeypatch):
+def test_atomic_report_write_verifies_binary_content_without_text_translation(
+    tmp_path, monkeypatch
+):
     payload = b"line1\r\n\x1a\xff\x00line2"
     native_binary_flag = getattr(os, "O_BINARY", 0)
     simulated_binary_flag = 0 if native_binary_flag else 1 << 30
@@ -950,8 +1046,11 @@ def test_atomic_report_write_verifies_binary_content_without_text_translation(tm
     assert any(flags & binary_flag == binary_flag for _, flags in open_calls)
     assert list(output.parent.glob(".report.bin.*")) == []
 
+
 @pytest.mark.skipif(os.name != "posix", reason="POSIX descriptor backend")
-def test_atomic_report_write_normalizes_temporary_open_error_before_root_temp(tmp_path, monkeypatch):
+def test_atomic_report_write_normalizes_temporary_open_error_before_root_temp(
+    tmp_path, monkeypatch
+):
     root = tmp_path / "reports"
     original_open = os.open
 
@@ -965,7 +1064,10 @@ def test_atomic_report_write_normalizes_temporary_open_error_before_root_temp(tm
         atomic_write_report(root, "report.md", b"report\n")
     assert not list(root.rglob(".report.md.*"))
 
-def test_atomic_report_write_rejects_noop_replace_and_leaves_no_temp_file(tmp_path, monkeypatch):
+
+def test_atomic_report_write_rejects_noop_replace_and_leaves_no_temp_file(
+    tmp_path, monkeypatch
+):
     root = tmp_path / "reports"
     root.mkdir(mode=0o700)
     destination = root / "report.md"
@@ -978,9 +1080,10 @@ def test_atomic_report_write_rejects_noop_replace_and_leaves_no_temp_file(tmp_pa
     assert list(root.glob(".report.md.*")) == []
 
 
-
 @pytest.mark.skipif(os.name != "posix", reason="POSIX descriptor backend")
-def test_atomic_report_write_post_replace_temp_stat_error_reports_unknown_without_cleanup(tmp_path, monkeypatch):
+def test_atomic_report_write_post_replace_temp_stat_error_reports_unknown_without_cleanup(
+    tmp_path, monkeypatch
+):
     root = tmp_path / "reports"
     original_stat = os.stat
     original_replace = os.replace
@@ -1009,11 +1112,15 @@ def test_atomic_report_write_post_replace_temp_stat_error_reports_unknown_withou
     with pytest.raises(ReportRenderError, match="replacement outcome is unknown"):
         atomic_write_report(root, "report.md", b"report\n")
     assert (root / "report.md").read_bytes() == b"report\n"
-    assert not any(isinstance(path, str) and path.startswith(".report.md.") for path in unlinked)
+    assert not any(
+        isinstance(path, str) and path.startswith(".report.md.") for path in unlinked
+    )
 
 
 @pytest.mark.skipif(os.name != "posix", reason="POSIX descriptor backend")
-def test_atomic_report_write_replace_interrupt_is_unknown_and_does_not_cleanup(tmp_path, monkeypatch):
+def test_atomic_report_write_replace_interrupt_is_unknown_and_does_not_cleanup(
+    tmp_path, monkeypatch
+):
     root = tmp_path / "reports"
     original_replace = os.replace
     original_unlink = os.unlink
@@ -1032,12 +1139,18 @@ def test_atomic_report_write_replace_interrupt_is_unknown_and_does_not_cleanup(t
     with pytest.raises(KeyboardInterrupt) as raised:
         atomic_write_report(root, "report.md", b"report\n")
     assert (root / "report.md").read_bytes() == b"report\n"
-    assert any("replacement outcome is unknown" in note for note in raised.value.__notes__)
-    assert not any(isinstance(path, str) and path.startswith(".report.md.") for path in unlinked)
+    assert any(
+        "replacement outcome is unknown" in note for note in raised.value.__notes__
+    )
+    assert not any(
+        isinstance(path, str) and path.startswith(".report.md.") for path in unlinked
+    )
 
 
 @pytest.mark.skipif(os.name != "nt", reason="native Windows coverage")
-def test_windows_replace_interrupt_is_unknown_and_does_not_cleanup(tmp_path, monkeypatch):
+def test_windows_replace_interrupt_is_unknown_and_does_not_cleanup(
+    tmp_path, monkeypatch
+):
     home = tmp_path / "home"
     home.mkdir()
     root = home / "reports"
@@ -1059,13 +1172,20 @@ def test_windows_replace_interrupt_is_unknown_and_does_not_cleanup(tmp_path, mon
     with pytest.raises(KeyboardInterrupt) as raised:
         atomic_write_report(root, "report.md", b"report\n")
     assert (root / "report.md").read_bytes() == b"report\n"
-    assert any("replacement outcome is unknown" in note for note in raised.value.__notes__)
+    assert any(
+        "replacement outcome is unknown" in note for note in raised.value.__notes__
+    )
     assert not any(path.name.startswith(".report.md.") for path in unlinked)
 
+
 @pytest.mark.skipif(os.name != "posix", reason="POSIX descriptor backend")
-def test_atomic_report_write_keyboard_interrupt_rethrows_and_cleans_owned_temp(tmp_path, monkeypatch):
+def test_atomic_report_write_keyboard_interrupt_rethrows_and_cleans_owned_temp(
+    tmp_path, monkeypatch
+):
     root = tmp_path / "reports"
-    monkeypatch.setattr(os, "write", lambda fd, data: (_ for _ in ()).throw(KeyboardInterrupt()))
+    monkeypatch.setattr(
+        os, "write", lambda fd, data: (_ for _ in ()).throw(KeyboardInterrupt())
+    )
     with pytest.raises(KeyboardInterrupt):
         atomic_write_report(root, "report.md", b"report\n")
     assert not (root / "report.md").exists()
@@ -1079,6 +1199,8 @@ def test_resolve_report_path_wraps_root_normalization_oserror(tmp_path, monkeypa
     monkeypatch.setattr(Path, "absolute", fail_absolute)
     with pytest.raises(ReportRenderError, match="root normalization failure"):
         resolve_report_path(tmp_path / "reports", "report.md")
+
+
 def test_atomic_report_write_normalizes_replace_oserror(tmp_path, monkeypatch):
     def fail_replace(source, destination, **kwargs):
         raise OSError("replace failure")
@@ -1086,6 +1208,7 @@ def test_atomic_report_write_normalizes_replace_oserror(tmp_path, monkeypatch):
     monkeypatch.setattr(os, "replace", fail_replace)
     with pytest.raises(ReportRenderError, match="replace failure"):
         atomic_write_report(tmp_path / "reports", "report.md", b"report\n")
+
 
 @pytest.mark.skipif(os.name != "posix", reason="POSIX descriptor backend")
 def test_atomic_report_write_closes_owned_fd_after_write_error(tmp_path, monkeypatch):
@@ -1100,7 +1223,13 @@ def test_atomic_report_write_closes_owned_fd_after_write_error(tmp_path, monkeyp
         return file_descriptor
 
     monkeypatch.setattr(os, "open", recording_open)
-    monkeypatch.setattr(os, "write", lambda file_descriptor, data: (_ for _ in ()).throw(OSError("write-stage failure")))
+    monkeypatch.setattr(
+        os,
+        "write",
+        lambda file_descriptor, data: (_ for _ in ()).throw(
+            OSError("write-stage failure")
+        ),
+    )
     with pytest.raises(ReportRenderError, match="write-stage failure"):
         atomic_write_report(root, "report.md", b"report\n")
     assert owned_fds
@@ -1108,11 +1237,24 @@ def test_atomic_report_write_closes_owned_fd_after_write_error(tmp_path, monkeyp
         os.fstat(owned_fds[0])
     assert list(root.glob(".report.md.*")) == []
 
+
 @pytest.mark.skipif(os.name != "posix", reason="POSIX descriptor backend")
-def test_atomic_report_write_preserves_primary_error_when_cleanup_fails(tmp_path, monkeypatch):
+def test_atomic_report_write_preserves_primary_error_when_cleanup_fails(
+    tmp_path, monkeypatch
+):
     root = tmp_path / "reports"
-    monkeypatch.setattr(os, "write", lambda file_descriptor, data: (_ for _ in ()).throw(OSError("write-stage failure")))
-    monkeypatch.setattr(os, "unlink", lambda path, *args, **kwargs: (_ for _ in ()).throw(OSError("cleanup failure")))
+    monkeypatch.setattr(
+        os,
+        "write",
+        lambda file_descriptor, data: (_ for _ in ()).throw(
+            OSError("write-stage failure")
+        ),
+    )
+    monkeypatch.setattr(
+        os,
+        "unlink",
+        lambda path, *args, **kwargs: (_ for _ in ()).throw(OSError("cleanup failure")),
+    )
     with pytest.raises(ReportRenderError, match="write-stage failure.*cleanup failure"):
         atomic_write_report(root, "report.md", b"report\n")
 
@@ -1143,7 +1285,9 @@ def test_atomic_report_write_surfaces_verification_close_error(tmp_path, monkeyp
 
 
 @pytest.mark.skipif(os.name != "posix", reason="POSIX descriptor backend")
-def test_atomic_report_write_preserves_verification_error_when_close_fails(tmp_path, monkeypatch):
+def test_atomic_report_write_preserves_verification_error_when_close_fails(
+    tmp_path, monkeypatch
+):
     root = tmp_path / "reports"
     original_open = os.open
     original_close = os.close
@@ -1199,7 +1343,9 @@ def test_pdf_bridge_fails_clearly_when_optional_dependency_is_unavailable(monkey
     def unavailable(name: str):
         raise ImportError(name)
 
-    monkeypatch.setattr("claude_ads_core.reporting.importlib.import_module", unavailable)
+    monkeypatch.setattr(
+        "claude_ads_core.reporting.importlib.import_module", unavailable
+    )
     with pytest.raises(PDFDependencyError, match="optional 'weasyprint'"):
         render_pdf(load_bundle(), registry=fixture_registry())
 
@@ -1251,7 +1397,9 @@ def test_cli_render_rejects_forged_score_before_writing(tmp_path, capsys):
     root = tmp_path / "runs"
     bundle_path = tmp_path / "report.json"
     bundle = no_score_bundle()
-    bundle["scoring"].update(health_score=100.0, evidence_coverage=100.0, status="normal")
+    bundle["scoring"].update(
+        health_score=100.0, evidence_coverage=100.0, status="normal"
+    )
     bundle_path.write_text(json.dumps(bundle), encoding="utf-8")
     assert (
         main(

@@ -134,7 +134,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   non-string list entries before adding ads or advancing page/cursor state.
 * **Windows report ACL access**: uses native .NET ACL calls and literal path
   transport instead of `Get-Acl`/`Set-Acl` module autoload. Installer write-ACE
-  rejection diagnostics expose rule flags without private paths or user SIDs.
+  rejection diagnostics expose rule flags without private paths.
 
 * **Meta token exchange hardening**: removed `debug_token` URL inspection. Token
   exchange is POST-only, uses a separate `META_APP_ID` Keychain value, and writes

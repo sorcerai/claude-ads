@@ -17,7 +17,10 @@ def _sha256(path: Path) -> str:
 
 
 def _target_id() -> str:
-    if sys.implementation.name != "cpython" or sys.version_info[:2] not in {(3, 11), (3, 12)}:
+    if sys.implementation.name != "cpython" or sys.version_info[:2] not in {
+        (3, 11),
+        (3, 12),
+    }:
         raise ValueError("managed install verification requires CPython 3.11 or 3.12")
     system = platform.system().lower()
     machine = platform.machine().lower()
@@ -25,11 +28,15 @@ def _target_id() -> str:
     if system == "linux" and machine == "x86_64":
         libc_name, libc_version = platform.libc_ver()
         try:
-            libc_ok = libc_name == "glibc" and tuple(map(int, libc_version.split(".")[:2])) >= (2, 27)
+            libc_ok = libc_name == "glibc" and tuple(
+                map(int, libc_version.split(".")[:2])
+            ) >= (2, 27)
         except ValueError:
             libc_ok = False
         if not libc_ok:
-            raise ValueError("managed install verification requires glibc >=2.27 on Linux; musl is unsupported")
+            raise ValueError(
+                "managed install verification requires glibc >=2.27 on Linux; musl is unsupported"
+            )
         platform_id = "linux"
     elif system == "darwin" and machine == "arm64":
         platform_id = "macos-arm"
@@ -44,14 +51,25 @@ def verify(repository: Path, skill_dir: Path) -> dict[str, object]:
     receipt_path = skill_dir / "managed-runtime-receipt.json"
     receipt = json.loads(receipt_path.read_text(encoding="utf-8-sig"))
     expected_fields = {
-        "schema_version", "receipt_class", "target_id", "target", "resolver",
-        "python_full_version", "pip_version", "requirements_lock_sha256",
-        "dependency_inventory_sha256", "target_evidence_sha256",
-        "pip_install_report_sha256", "components",
+        "schema_version",
+        "receipt_class",
+        "target_id",
+        "target",
+        "resolver",
+        "python_full_version",
+        "pip_version",
+        "requirements_lock_sha256",
+        "dependency_inventory_sha256",
+        "target_evidence_sha256",
+        "pip_install_report_sha256",
+        "components",
     }
     if not isinstance(receipt, dict) or set(receipt) != expected_fields:
         raise ValueError("managed runtime receipt fields mismatch")
-    if receipt.get("schema_version") != "1.0.0" or receipt.get("receipt_class") != "managed-python-runtime-install":
+    if (
+        receipt.get("schema_version") != "1.0.0"
+        or receipt.get("receipt_class") != "managed-python-runtime-install"
+    ):
         raise ValueError("managed runtime receipt identity mismatch")
     target_id = _target_id()
     if receipt.get("target_id") != target_id or receipt.get("resolver") != "pip / PyPI":
@@ -59,32 +77,48 @@ def verify(repository: Path, skill_dir: Path) -> dict[str, object]:
     components = receipt.get("components")
     if not isinstance(components, list) or len(components) != 33:
         raise ValueError("managed runtime receipt closure mismatch")
-    if receipt.get("requirements_lock_sha256") != _sha256(repository / "requirements.lock"):
+    if receipt.get("requirements_lock_sha256") != _sha256(
+        repository / "requirements.lock"
+    ):
         raise ValueError("managed runtime receipt lock binding mismatch")
     inventory_path = repository / "control-plane/manifests/dependency-inventory.json"
     if receipt.get("dependency_inventory_sha256") != _sha256(inventory_path):
         raise ValueError("managed runtime receipt inventory binding mismatch")
-    evidence_path = repository / "control-plane/dependency-evidence" / f"{target_id}.json"
+    evidence_path = (
+        repository / "control-plane/dependency-evidence" / f"{target_id}.json"
+    )
     if receipt.get("target_evidence_sha256") != _sha256(evidence_path):
         raise ValueError("managed runtime receipt target evidence binding mismatch")
 
-    python = skill_dir / ".venv" / ("Scripts/python.exe" if platform.system() == "Windows" else "bin/python")
+    python = (
+        skill_dir
+        / ".venv"
+        / ("Scripts/python.exe" if platform.system() == "Windows" else "bin/python")
+    )
     if not python.is_file():
         raise ValueError("managed runtime interpreter is missing")
     checks = (
         [str(python), "-m", "pip", "check"],
-        [str(python), "-c", "import claude_ads_core; print(claude_ads_core.__version__)"],
+        [
+            str(python),
+            "-c",
+            "import claude_ads_core; print(claude_ads_core.__version__)",
+        ],
     )
     for command in checks:
         result = subprocess.run(command, check=False, text=True, capture_output=True)
         if result.returncode:
-            raise ValueError(f"managed runtime execution check failed: {result.stderr.strip()}")
+            raise ValueError(
+                f"managed runtime execution check failed: {result.stderr.strip()}"
+            )
     return receipt
 
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--repository", type=Path, default=Path(__file__).resolve().parents[1])
+    parser.add_argument(
+        "--repository", type=Path, default=Path(__file__).resolve().parents[1]
+    )
     parser.add_argument("--skill-dir", type=Path, required=True)
     args = parser.parse_args()
     try:

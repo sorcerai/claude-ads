@@ -661,6 +661,7 @@ def test_malformed_response_is_failure_not_empty_archive(monkeypatch, payload):
     assert result["status"] == "failed"
     assert result["pages_fetched"] == 0
 
+
 def test_malformed_creative_text_does_not_advance_collection(monkeypatch):
     monkeypatch.setattr(
         fetch_ad_library,
@@ -677,7 +678,6 @@ def test_malformed_creative_text_does_not_advance_collection(monkeypatch):
     assert result["status"] == "failed"
     assert result["pages_fetched"] == 0
     assert result["ads"] == []
-
 
 
 def test_empty_page_follows_paging_link(monkeypatch):

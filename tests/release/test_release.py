@@ -34,7 +34,9 @@ def _git(root: Path, *args: str) -> None:
 
 
 def _commit(root: Path) -> str:
-    return subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=root, text=True).strip()
+    return subprocess.check_output(
+        ["git", "rev-parse", "HEAD"], cwd=root, text=True
+    ).strip()
 
 
 def _write(root: Path, relative: str, content: str) -> None:
@@ -78,7 +80,9 @@ def _repository(tmp_path: Path) -> Path:
             }
         ),
     )
-    _write(root, "ads/SKILL.md", "---\nname: ads\ndescription: Main skill.\n---\n# Ads\n")
+    _write(
+        root, "ads/SKILL.md", "---\nname: ads\ndescription: Main skill.\n---\n# Ads\n"
+    )
     _write(
         root,
         "skills/ads-google/SKILL.md",
@@ -89,13 +93,19 @@ def _repository(tmp_path: Path) -> Path:
     _write(root, "LICENSE", "MIT\n")
     source_root = RELEASE_SCRIPT.parents[1]
     for relative in (
-        "pyproject.toml", "requirements.txt", "requirements-dev.txt",
-        "requirements.lock", "requirements-dev.lock",
-        "THIRD_PARTY_NOTICES.md", "control-plane/manifests/dependency-inventory.json",
+        "pyproject.toml",
+        "requirements.txt",
+        "requirements-dev.txt",
+        "requirements.lock",
+        "requirements-dev.lock",
+        "THIRD_PARTY_NOTICES.md",
+        "control-plane/manifests/dependency-inventory.json",
         "control-plane/manifests/external-runtime-dependencies.json",
     ):
         _write(root, relative, (source_root / relative).read_text(encoding="utf-8"))
-    for evidence in sorted((source_root / "control-plane/dependency-evidence").glob("*.json")):
+    for evidence in sorted(
+        (source_root / "control-plane/dependency-evidence").glob("*.json")
+    ):
         relative = evidence.relative_to(source_root).as_posix()
         _write(root, relative, evidence.read_text(encoding="utf-8"))
     _write(root, "ads/research-sources/raw.md", "Research output does not ship.\n")
@@ -149,9 +159,10 @@ def test_package_is_deterministic_public_safe_and_verifiable(tmp_path: Path) -> 
     first = build_release(root, tmp_path / "dist-a")
     second = build_release(root, tmp_path / "dist-b")
 
-    assert hashlib.sha256(first["archive"].read_bytes()).digest() == hashlib.sha256(
-        second["archive"].read_bytes()
-    ).digest()
+    assert (
+        hashlib.sha256(first["archive"].read_bytes()).digest()
+        == hashlib.sha256(second["archive"].read_bytes()).digest()
+    )
     assert first["manifest"].read_bytes() == second["manifest"].read_bytes()
     assert first["sbom"].read_bytes() == second["sbom"].read_bytes()
     verify_release(tmp_path / "dist-a", _commit(root), root)
@@ -164,7 +175,9 @@ def test_package_is_deterministic_public_safe_and_verifiable(tmp_path: Path) -> 
             for name in names
             for excluded in ("research/", "research-sources/", "tests/", "branding/")
         )
-        assert all(info.date_time == (1980, 1, 1, 0, 0, 0) for info in archive.infolist())
+        assert all(
+            info.date_time == (1980, 1, 1, 0, 0, 0) for info in archive.infolist()
+        )
 
     sbom = json.loads(first["sbom"].read_text(encoding="utf-8"))
     assert sbom["bomFormat"] == "CycloneDX"
@@ -181,8 +194,12 @@ def test_verify_detects_tampering(tmp_path: Path) -> None:
         verify_release(tmp_path / "dist", _commit(root), root)
 
 
-@pytest.mark.parametrize("case", ["top-field", "bool-size", "float-size", "archive-field", "product"])
-def test_release_manifest_schema_and_types_fail_closed(tmp_path: Path, case: str) -> None:
+@pytest.mark.parametrize(
+    "case", ["top-field", "bool-size", "float-size", "archive-field", "product"]
+)
+def test_release_manifest_schema_and_types_fail_closed(
+    tmp_path: Path, case: str
+) -> None:
     root = _repository(tmp_path)
     artifacts = build_release(root, tmp_path / "dist")
     manifest = json.loads(artifacts["manifest"].read_text(encoding="utf-8"))
@@ -216,7 +233,9 @@ def test_release_manifest_schema_and_types_fail_closed(tmp_path: Path, case: str
         verify_release(tmp_path / "dist", _commit(root), root)
 
 
-def test_release_verifier_requires_trusted_commit_and_exact_checksum_set(tmp_path: Path) -> None:
+def test_release_verifier_requires_trusted_commit_and_exact_checksum_set(
+    tmp_path: Path,
+) -> None:
     root = _repository(tmp_path)
     artifacts = build_release(root, tmp_path / "dist")
     with pytest.raises(ReleaseError, match="trusted expected commit"):
@@ -230,13 +249,18 @@ def test_release_verifier_requires_trusted_commit_and_exact_checksum_set(tmp_pat
 def test_external_runtime_manifest_is_exact_and_archived(tmp_path: Path) -> None:
     root = _repository(tmp_path)
     document = release._load_external_runtime_dependencies(root)
-    assert {item["id"] for item in document["dependencies"]} == {"playwright-browser-payload", "weasyprint-native-libraries"}
+    assert {item["id"] for item in document["dependencies"]} == {
+        "playwright-browser-payload",
+        "weasyprint-native-libraries",
+    }
     build_release(root, tmp_path / "dist")
     verify_release(tmp_path / "dist", _commit(root), root)
     path = root / "control-plane/manifests/external-runtime-dependencies.json"
     value = json.loads(path.read_text(encoding="utf-8"))
     value["dependencies"][0]["included_in_python_sbom"] = True
-    path.write_text(json.dumps(value, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    path.write_text(
+        json.dumps(value, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
     with pytest.raises(ReleaseError, match="reviewed document|boundary"):
         release._load_external_runtime_dependencies(root)
 
@@ -258,25 +282,42 @@ def _rewrite_inventory(root: Path, mutate) -> None:
     path = root / "control-plane/manifests/dependency-inventory.json"
     inventory = json.loads(path.read_text(encoding="utf-8"))
     mutate(inventory)
-    _write(root, "control-plane/manifests/dependency-inventory.json", json.dumps(inventory, indent=2, sort_keys=True) + "\n")
+    _write(
+        root,
+        "control-plane/manifests/dependency-inventory.json",
+        json.dumps(inventory, indent=2, sort_keys=True) + "\n",
+    )
 
 
 @pytest.mark.parametrize("field", ["version", "license_expression"])
-def test_sbom_fails_closed_on_missing_version_or_license(tmp_path: Path, field: str) -> None:
+def test_sbom_fails_closed_on_missing_version_or_license(
+    tmp_path: Path, field: str
+) -> None:
     root = _repository(tmp_path)
-    _rewrite_inventory(root, lambda inventory: inventory["component_catalog"][0].__setitem__(field, ""))
-    with pytest.raises(ReleaseError, match="invalid name/version|lacks a reviewed license"):
+    _rewrite_inventory(
+        root, lambda inventory: inventory["component_catalog"][0].__setitem__(field, "")
+    )
+    with pytest.raises(
+        ReleaseError, match="invalid name/version|lacks a reviewed license"
+    ):
         build_sbom(root, "claude-ads", "2.0.0")
 
 
 def test_sbom_rejects_duplicate_components(tmp_path: Path) -> None:
     root = _repository(tmp_path)
-    _rewrite_inventory(root, lambda inventory: inventory["component_catalog"].append(copy.deepcopy(inventory["component_catalog"][0])))
+    _rewrite_inventory(
+        root,
+        lambda inventory: inventory["component_catalog"].append(
+            copy.deepcopy(inventory["component_catalog"][0])
+        ),
+    )
     with pytest.raises(ReleaseError, match="duplicate or multi-version"):
         build_sbom(root, "claude-ads", "2.0.0")
 
 
-def test_sbom_rejects_direct_requirement_coverage_or_constraint_mismatch(tmp_path: Path) -> None:
+def test_sbom_rejects_direct_requirement_coverage_or_constraint_mismatch(
+    tmp_path: Path,
+) -> None:
     root = _repository(tmp_path)
     _rewrite_inventory(root, lambda inventory: inventory["direct_requirements"].pop())
     with pytest.raises(ReleaseError, match="direct requirement coverage mismatch"):
@@ -285,11 +326,13 @@ def test_sbom_rejects_direct_requirement_coverage_or_constraint_mismatch(tmp_pat
     second = tmp_path / "second"
     second.mkdir()
     root = _repository(second)
+
     def mismatch(inventory):
         for item in inventory["direct_requirements"]:
             if item["name"] == "requests":
                 item["requirement"] = "requests>=3,<4"
                 break
+
     _rewrite_inventory(root, mismatch)
     with pytest.raises(ReleaseError, match="direct requirement coverage mismatch"):
         build_sbom(root, "claude-ads", "2.0.0")
@@ -297,59 +340,121 @@ def test_sbom_rejects_direct_requirement_coverage_or_constraint_mismatch(tmp_pat
 
 def test_lock_target_hash_and_marker_parity_fail_closed(tmp_path: Path) -> None:
     root = _repository(tmp_path)
-    _rewrite_inventory(root, lambda inventory: inventory["targets"][0]["components"][0]["artifact"].__setitem__("sha256", "0" * 64))
-    with pytest.raises(ReleaseError, match="target component evidence mismatch|lock target artifact mismatch"):
+    _rewrite_inventory(
+        root,
+        lambda inventory: inventory["targets"][0]["components"][0][
+            "artifact"
+        ].__setitem__("sha256", "0" * 64),
+    )
+    with pytest.raises(
+        ReleaseError,
+        match="target component evidence mismatch|lock target artifact mismatch",
+    ):
         build_sbom(root, "claude-ads", "2.0.0")
 
-    parsed = release._parse_hash_lock(RELEASE_SCRIPT.parents[1] / "requirements-dev.lock")
+    parsed = release._parse_hash_lock(
+        RELEASE_SCRIPT.parents[1] / "requirements-dev.lock"
+    )
     assert parsed["colorama"]["marker"] == 'sys_platform == "win32"'
 
 
-def test_notice_inventory_has_no_dangling_references_and_records_bundled_terms() -> None:
+def test_notice_inventory_has_no_dangling_references_and_records_bundled_terms() -> (
+    None
+):
     root = RELEASE_SCRIPT.parents[1]
     inventory = release._load_dependency_inventory(root)
     notices = {item["id"] for item in inventory["bundled_notices"]}
     assert len(notices) == len(inventory["component_catalog"])
-    assert {"pyphen-selected-wheel-documents", "reportlab-selected-wheel-documents", "matplotlib-selected-wheel-documents"} <= notices
-    artifacts = {component["artifact"]["sha256"] for target in inventory["targets"] for component in target["components"]}
-    covered = {digest for notice in inventory["bundled_notices"] for document in notice["documents"] for digest in document["artifact_sha256s"]} | {digest for notice in inventory["bundled_notices"] for digest in notice["documentless_artifact_sha256s"]}
+    assert {
+        "pyphen-selected-wheel-documents",
+        "reportlab-selected-wheel-documents",
+        "matplotlib-selected-wheel-documents",
+    } <= notices
+    artifacts = {
+        component["artifact"]["sha256"]
+        for target in inventory["targets"]
+        for component in target["components"]
+    }
+    covered = {
+        digest
+        for notice in inventory["bundled_notices"]
+        for document in notice["documents"]
+        for digest in document["artifact_sha256s"]
+    } | {
+        digest
+        for notice in inventory["bundled_notices"]
+        for digest in notice["documentless_artifact_sha256s"]
+    }
     assert covered == artifacts
-    urllib3 = next(item for item in inventory["component_catalog"] if item["name"] == "urllib3")
+    urllib3 = next(
+        item for item in inventory["component_catalog"] if item["name"] == "urllib3"
+    )
     assert urllib3["license_expression"] == "MIT"
 
 
-@pytest.mark.parametrize("case", ["header", "target-evidence", "artifact-filename", "dangling-edge", "dangling-notice"])
-def test_inventory_provenance_and_graph_tampering_fail_closed(tmp_path: Path, case: str) -> None:
+@pytest.mark.parametrize(
+    "case",
+    [
+        "header",
+        "target-evidence",
+        "artifact-filename",
+        "dangling-edge",
+        "dangling-notice",
+    ],
+)
+def test_inventory_provenance_and_graph_tampering_fail_closed(
+    tmp_path: Path, case: str
+) -> None:
     root = _repository(tmp_path)
+
     def mutate(inventory):
         if case == "header":
             inventory["schema_version"] = "9.0.0"
         elif case == "target-evidence":
             inventory["targets"][0]["resolution_evidence_sha256"] = "missing"
         elif case == "artifact-filename":
-            inventory["targets"][0]["components"][0]["artifact"]["filename"] = "wrong.whl"
+            inventory["targets"][0]["components"][0]["artifact"]["filename"] = (
+                "wrong.whl"
+            )
         elif case == "dangling-edge":
-            inventory["dependency_edges"].append({"profile": "runtime", "from": "requests", "to": "missing", "specifier": "", "marker": None, "extras": []})
+            inventory["dependency_edges"].append(
+                {
+                    "profile": "runtime",
+                    "from": "requests",
+                    "to": "missing",
+                    "specifier": "",
+                    "marker": None,
+                    "extras": [],
+                }
+            )
         else:
             inventory["component_catalog"][0]["bundled_notice_ids"] = ["missing-notice"]
+
     _rewrite_inventory(root, mutate)
     with pytest.raises(ReleaseError):
         build_sbom(root, "claude-ads", "2.0.0")
 
 
-def test_standalone_verify_rejects_self_consistent_sbom_semantic_tamper(tmp_path: Path) -> None:
+def test_standalone_verify_rejects_self_consistent_sbom_semantic_tamper(
+    tmp_path: Path,
+) -> None:
     root = _repository(tmp_path)
     artifacts = build_release(root, tmp_path / "dist")
     sbom = json.loads(artifacts["sbom"].read_text(encoding="utf-8"))
     sbom["components"][0]["scope"] = "optional"
-    artifacts["sbom"].write_text(json.dumps(sbom, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    artifacts["sbom"].write_text(
+        json.dumps(sbom, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
     checksum_lines = artifacts["checksums"].read_text(encoding="utf-8").splitlines()
     checksum_lines = [
         f"{hashlib.sha256(artifacts['sbom'].read_bytes()).hexdigest()}  sbom.cdx.json"
-        if line.endswith("  sbom.cdx.json") else line
+        if line.endswith("  sbom.cdx.json")
+        else line
         for line in checksum_lines
     ]
-    artifacts["checksums"].write_text("\n".join(checksum_lines) + "\n", encoding="utf-8")
+    artifacts["checksums"].write_text(
+        "\n".join(checksum_lines) + "\n", encoding="utf-8"
+    )
     with pytest.raises(ReleaseError, match="canonical archived-inventory projection"):
         verify_release(tmp_path / "dist", _commit(root), root)
 
@@ -364,7 +469,9 @@ def test_standalone_verify_rejects_self_consistent_sbom_semantic_tamper(tmp_path
         ("example-1.0-cp312-cp312-macosx_11_0_x86_64.whl", "runtime-macos-arm-cp312"),
     ],
 )
-def test_wheel_tag_policy_rejects_cross_target_and_boundary_swaps(filename: str, target_id: str) -> None:
+def test_wheel_tag_policy_rejects_cross_target_and_boundary_swaps(
+    filename: str, target_id: str
+) -> None:
     inventory = release._load_dependency_inventory(RELEASE_SCRIPT.parents[1])
     target = next(item for item in inventory["targets"] if item["id"] == target_id)
     with pytest.raises(ReleaseError, match="wheel platform|newer"):
@@ -373,34 +480,59 @@ def test_wheel_tag_policy_rejects_cross_target_and_boundary_swaps(filename: str,
 
 def test_inventory_rejects_direct_flag_and_empty_graph_forgery(tmp_path: Path) -> None:
     root = _repository(tmp_path)
+
     def forge(inventory):
         inventory["dependency_edges"] = []
         for target in inventory["targets"]:
             for component in target["components"]:
                 component["direct"] = True
+
     _rewrite_inventory(root, forge)
     with pytest.raises(ReleaseError, match="direct component flags mismatch"):
         build_sbom(root, "claude-ads", "2.0.0")
 
 
-@pytest.mark.parametrize("case", ["remove", "rename", "assignment", "text", "omit-document", "extra-artifact", "documentless"])
+@pytest.mark.parametrize(
+    "case",
+    [
+        "remove",
+        "rename",
+        "assignment",
+        "text",
+        "omit-document",
+        "extra-artifact",
+        "documentless",
+    ],
+)
 def test_inventory_rejects_bundled_notice_forgery(tmp_path: Path, case: str) -> None:
     root = _repository(tmp_path)
+
     def forge(inventory):
         if case == "remove":
             inventory["bundled_notices"].pop()
         elif case == "rename":
             inventory["bundled_notices"][0]["id"] = "renamed"
         elif case == "assignment":
-            next(item for item in inventory["component_catalog"] if item["name"] == "fonttools")["bundled_notice_ids"] = []
+            next(
+                item
+                for item in inventory["component_catalog"]
+                if item["name"] == "fonttools"
+            )["bundled_notice_ids"] = []
         elif case == "text":
             inventory["bundled_notices"][0]["documents"][0]["text"] += "tampered"
         elif case == "omit-document":
             inventory["bundled_notices"][0]["documents"].pop()
         elif case == "extra-artifact":
-            inventory["bundled_notices"][0]["documents"][0]["artifact_sha256s"].append("0" * 64)
+            inventory["bundled_notices"][0]["documents"][0]["artifact_sha256s"].append(
+                "0" * 64
+            )
         else:
-            next(item for item in inventory["bundled_notices"] if item["component"] == "webencodings")["documentless_artifact_sha256s"] = []
+            next(
+                item
+                for item in inventory["bundled_notices"]
+                if item["component"] == "webencodings"
+            )["documentless_artifact_sha256s"] = []
+
     _rewrite_inventory(root, forge)
     with pytest.raises(ReleaseError, match="notice"):
         build_sbom(root, "claude-ads", "2.0.0")
@@ -408,58 +540,104 @@ def test_inventory_rejects_bundled_notice_forgery(tmp_path: Path, case: str) -> 
 
 def test_inventory_rejects_arbitrary_license_and_header_policy(tmp_path: Path) -> None:
     root = _repository(tmp_path)
-    _rewrite_inventory(root, lambda inventory: inventory["component_catalog"][0].__setitem__("license_expression", "Definitely-A-License"))
+    _rewrite_inventory(
+        root,
+        lambda inventory: inventory["component_catalog"][0].__setitem__(
+            "license_expression", "Definitely-A-License"
+        ),
+    )
     with pytest.raises(ReleaseError, match="reviewed license"):
         build_sbom(root, "claude-ads", "2.0.0")
 
-    for field, value in (("managed_lock_python_range", ">=3.11"), ("source_date_epoch", 0), ("policy", "looks fine")):
+    for field, value in (
+        ("managed_lock_python_range", ">=3.11"),
+        ("source_date_epoch", 0),
+        ("policy", "looks fine"),
+    ):
         nested = tmp_path / field
         nested.mkdir()
         candidate = _repository(nested)
-        _rewrite_inventory(candidate, lambda inventory, field=field, value=value: inventory["resolution"].__setitem__(field, value))
+        _rewrite_inventory(
+            candidate,
+            lambda inventory, field=field, value=value: inventory[
+                "resolution"
+            ].__setitem__(field, value),
+        )
         with pytest.raises(ReleaseError, match="policy mismatch"):
             build_sbom(candidate, "claude-ads", "2.0.0")
 
 
-
-
-def test_standalone_verify_rejects_self_consistent_archive_inventory_tamper(tmp_path: Path) -> None:
+def test_standalone_verify_rejects_self_consistent_archive_inventory_tamper(
+    tmp_path: Path,
+) -> None:
     root = _repository(tmp_path)
     artifacts = build_release(root, tmp_path / "dist")
     archive_path = artifacts["archive"]
     manifest = json.loads(artifacts["manifest"].read_text(encoding="utf-8"))
     archive_root = manifest["archive"]["root"]
-    inventory_member = f"{archive_root}/control-plane/manifests/dependency-inventory.json"
+    inventory_member = (
+        f"{archive_root}/control-plane/manifests/dependency-inventory.json"
+    )
     with zipfile.ZipFile(archive_path) as archive:
         infos = archive.infolist()
         contents = {info.filename: archive.read(info.filename) for info in infos}
     inventory = json.loads(contents[inventory_member])
-    inventory["component_catalog"].reverse()  # Semantically equivalent, but not the reviewed bytes.
+    inventory[
+        "component_catalog"
+    ].reverse()  # Semantically equivalent, but not the reviewed bytes.
     inventory_bytes = (json.dumps(inventory, indent=2, sort_keys=True) + "\n").encode()
     contents[inventory_member] = inventory_bytes
     replacement = archive_path.with_suffix(".replacement")
-    with zipfile.ZipFile(replacement, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
+    with zipfile.ZipFile(
+        replacement, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9
+    ) as archive:
         for old in infos:
             info = zipfile.ZipInfo(old.filename, old.date_time)
             info.create_system = old.create_system
             info.external_attr = old.external_attr
             info.compress_type = zipfile.ZIP_DEFLATED
-            archive.writestr(info, contents[old.filename], compress_type=zipfile.ZIP_DEFLATED, compresslevel=9)
+            archive.writestr(
+                info,
+                contents[old.filename],
+                compress_type=zipfile.ZIP_DEFLATED,
+                compresslevel=9,
+            )
     replacement.replace(archive_path)
-    record = next(item for item in manifest["files"] if item["path"] == "control-plane/manifests/dependency-inventory.json")
-    record.update(size=len(inventory_bytes), sha256=hashlib.sha256(inventory_bytes).hexdigest())
-    manifest["archive"].update(size=archive_path.stat().st_size, sha256=hashlib.sha256(archive_path.read_bytes()).hexdigest())
-    artifacts["manifest"].write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    sbom = release._build_sbom_from_inventory(
-        inventory, manifest["product"]["name"], manifest["product"]["version"],
-        manifest["source"]["commit"], hashlib.sha256(inventory_bytes).hexdigest(),
+    record = next(
+        item
+        for item in manifest["files"]
+        if item["path"] == "control-plane/manifests/dependency-inventory.json"
     )
-    artifacts["sbom"].write_text(json.dumps(sbom, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    record.update(
+        size=len(inventory_bytes), sha256=hashlib.sha256(inventory_bytes).hexdigest()
+    )
+    manifest["archive"].update(
+        size=archive_path.stat().st_size,
+        sha256=hashlib.sha256(archive_path.read_bytes()).hexdigest(),
+    )
+    artifacts["manifest"].write_text(
+        json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
+    sbom = release._build_sbom_from_inventory(
+        inventory,
+        manifest["product"]["name"],
+        manifest["product"]["version"],
+        manifest["source"]["commit"],
+        hashlib.sha256(inventory_bytes).hexdigest(),
+    )
+    artifacts["sbom"].write_text(
+        json.dumps(sbom, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
     artifacts["checksums"].write_text(
-        "".join(f"{hashlib.sha256(path.read_bytes()).hexdigest()}  {path.name}\n" for path in (archive_path, artifacts["manifest"], artifacts["sbom"])),
+        "".join(
+            f"{hashlib.sha256(path.read_bytes()).hexdigest()}  {path.name}\n"
+            for path in (archive_path, artifacts["manifest"], artifacts["sbom"])
+        ),
         encoding="utf-8",
     )
-    with pytest.raises(ReleaseError, match="trusted Git commit|independently reviewed document"):
+    with pytest.raises(
+        ReleaseError, match="trusted Git commit|independently reviewed document"
+    ):
         verify_release(tmp_path / "dist", _commit(root), root)
 
 
@@ -473,7 +651,9 @@ def test_package_requires_clean_head_subject(tmp_path: Path) -> None:
 def test_claude_command_contract_distinguishes_plugin_namespace() -> None:
     root = RELEASE_SCRIPT.parents[1]
     product = json.loads(
-        (root / "control-plane/manifests/product-manifest.json").read_text(encoding="utf-8")
+        (root / "control-plane/manifests/product-manifest.json").read_text(
+            encoding="utf-8"
+        )
     )
     assert product["canonical_command"] == "/ads"
     assert product["runtime_commands"] == {
@@ -481,13 +661,17 @@ def test_claude_command_contract_distinguishes_plugin_namespace() -> None:
         "claude_plugin": "/claude-ads:ads",
     }
     readme = (root / "README.md").read_text(encoding="utf-8")
-    boundaries = (root / "control-plane/PRODUCT_BOUNDARIES.md").read_text(encoding="utf-8")
+    boundaries = (root / "control-plane/PRODUCT_BOUNDARIES.md").read_text(
+        encoding="utf-8"
+    )
     for text in (readme, boundaries):
         assert "/ads" in text
         assert "/claude-ads:ads" in text
 
 
-def test_release_grounding_gate_fails_closed_on_demoted_load_bearing_claim(tmp_path: Path) -> None:
+def test_release_grounding_gate_fails_closed_on_demoted_load_bearing_claim(
+    tmp_path: Path,
+) -> None:
     root = RELEASE_SCRIPT.parents[1]
     evidence = check_grounding_and_capabilities(root, release.date(2026, 8, 25))
     assert evidence["load_bearing_claim_count"] > 0
@@ -512,7 +696,9 @@ def test_release_grounding_gate_fails_closed_on_demoted_load_bearing_claim(tmp_p
         check_grounding_and_capabilities(fake_root, release.date(2026, 8, 25))
 
 
-def test_release_gate_fails_closed_without_external_model_review_and_ci_evidence() -> None:
+def test_release_gate_fails_closed_without_external_model_review_and_ci_evidence() -> (
+    None
+):
     root = RELEASE_SCRIPT.parents[1]
     report = evaluate_release_gate(
         root,
@@ -528,7 +714,9 @@ def test_release_gate_fails_closed_without_external_model_review_and_ci_evidence
     assert checks["remote-ci"]["status"] == "fail"
 
 
-def test_release_gate_forwards_external_model_trust_inputs(tmp_path: Path, monkeypatch) -> None:
+def test_release_gate_forwards_external_model_trust_inputs(
+    tmp_path: Path, monkeypatch
+) -> None:
     root = RELEASE_SCRIPT.parents[1]
     model_report = tmp_path / "model-report.json"
     model_report.write_text("{}", encoding="utf-8")
@@ -567,7 +755,11 @@ def test_remote_ci_verifier_requires_exact_private_subject_and_all_jobs(
 ) -> None:
     root = _repository(tmp_path)
     commit = subprocess.run(
-        ["git", "rev-parse", "HEAD"], cwd=root, check=True, capture_output=True, text=True
+        ["git", "rev-parse", "HEAD"],
+        cwd=root,
+        check=True,
+        capture_output=True,
+        text=True,
     ).stdout.strip()
     required_jobs = [
         "Repository audit",
@@ -587,7 +779,11 @@ def test_remote_ci_verifier_requires_exact_private_subject_and_all_jobs(
         if endpoint == "repos/AI-Marketing-Hub/claude-ads":
             return {"visibility": "private", "private": True}
         if endpoint.endswith("/jobs?per_page=100"):
-            return {"jobs": [{"name": name, "conclusion": "success"} for name in required_jobs]}
+            return {
+                "jobs": [
+                    {"name": name, "conclusion": "success"} for name in required_jobs
+                ]
+            }
         return {
             "head_sha": commit,
             "head_branch": "v2",
