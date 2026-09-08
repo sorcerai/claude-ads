@@ -485,3 +485,23 @@ def test_final_page_quota_stop_defers_remaining_advertisers(tmp_path, monkeypatc
         "queued",
     ]
     assert result["status"] == "quota-deferred"
+
+
+@pytest.mark.parametrize("status_code,error_code", [(401, 1), (400, 190)])
+def test_authentication_failure_remains_terminal_on_resume(
+    tmp_path, monkeypatch, status_code, error_code
+):
+    checkpoint = tmp_path / "checkpoint.json"
+    failure = Response(
+        {"error": {"code": error_code, "is_transient": True}},
+        status_code=status_code,
+    )
+    first, first_calls = _call_queue(monkeypatch, checkpoint, [failure])
+    assert first["status"] == "failed"
+    assert len(first_calls) == 1
+
+    resumed, resume_calls = _call_queue(
+        monkeypatch, checkpoint, [Response(_page(_ad("unexpected")))], resume=True
+    )
+    assert resume_calls == []
+    assert resumed["status"] == "failed"

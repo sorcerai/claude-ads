@@ -198,8 +198,10 @@ It is not an archive completeness claim. The result exposes an overall `status`
 and each advertiser's `exhausted`, `paginated`, `queued`, `quota-deferred`, or
 `failed` state. Intentional page-cap completion exits zero with `paginated`;
 failure or quota deferral exits nonzero. Exhausted resumes make no requests.
-Cursor-loop failures are non-retryable: inspect the failure rather than
-repeatedly resuming it.
+Cursor loops, authentication failures, and other non-retryable API errors remain
+terminal across resume. Inspect and correct the cause before starting a new
+checkpoint; do not repeatedly resume or overwrite the failed checkpoint.
+Quota deferrals remain resumable after the recovery deadline.
 
 Checkpoints store deduplicated normalized observations, compact per-page
 provenance receipts, and opaque cursors, not raw API responses or token-bearing

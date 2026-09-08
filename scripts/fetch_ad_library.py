@@ -352,6 +352,9 @@ def search_ad_library(
                     and observation["stop_reason"] != "authentication"
                     else "failed"
                 )
+                result["retryable"] = result["status"] == "quota-deferred" or (
+                    _is_retryable_response(response, error, code)
+                )
                 return result
 
             payload = response.json()
