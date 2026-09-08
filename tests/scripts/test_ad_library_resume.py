@@ -107,6 +107,29 @@ def test_interrupted_pagination_resumes_exact_opaque_cursor_without_duplicates(
     assert "cursor-1" not in json.dumps(calls2[0]["url"])
 
 
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [("search_type", "INVALID"), ("ad_active_status", "INVALID")],
+)
+def test_invalid_filters_are_terminal_across_resume(
+    tmp_path, monkeypatch, field, value
+):
+    checkpoint = tmp_path / "checkpoint.json"
+    result1, calls1 = _call_queue(
+        monkeypatch, checkpoint, [], **{field: value}
+    )
+    assert result1["advertisers"][0]["status"] == "failed"
+    assert result1["advertisers"][0]["retryable"] is False
+    assert calls1 == []
+
+    result2, calls2 = _call_queue(
+        monkeypatch, checkpoint, [], resume=True, **{field: value}
+    )
+    assert result2["advertisers"][0]["status"] == "failed"
+    assert result2["advertisers"][0]["retryable"] is False
+    assert calls2 == []
+
+
 def test_direct_api_resume_recovers_omitted_run_identity(tmp_path, monkeypatch):
     checkpoint = tmp_path / "checkpoint.json"
     first = _page(_ad("ad-1"), next_url=f"{fetch_ad_library.ENDPOINT}?after=cursor-1")

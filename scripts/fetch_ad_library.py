@@ -248,10 +248,12 @@ def search_ad_library(
             "search_type must be KEYWORD_UNORDERED or KEYWORD_EXACT_PHRASE."
         )
         result["status"] = "failed"
+        result["retryable"] = False
         return result
     if ad_active_status not in {"ALL", "ACTIVE", "INACTIVE"}:
         result["error"] = "ad_active_status must be ALL, ACTIVE, or INACTIVE."
         result["status"] = "failed"
+        result["retryable"] = False
         return result
 
     params: dict[str, Any] = {
