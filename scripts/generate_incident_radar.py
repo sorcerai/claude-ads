@@ -25,18 +25,20 @@ except ImportError:
     sys.exit(1)
 
 def load_repos() -> list[str]:
-    """Resolve target repositories from ADSINFRA_REPOS (os.pathsep-separated)."""
-    raw = os.environ.get("ADSINFRA_REPOS", "")
-    repos = [path for path in (part.strip() for part in raw.split(os.pathsep)) if path]
-    if not repos:
+    """Resolve the fleet output root from the controlled fleet contract."""
+    fleet_root = os.environ.get("ADSINFRA_FLEET_ROOT", "").strip()
+    if not fleet_root:
         sys.exit(
-            "Error: set ADSINFRA_REPOS to an os.pathsep-separated list of "
-            "microsite repository paths before generating the radar."
+            "Error: set ADSINFRA_FLEET_ROOT to the fleet output repository "
+            "path before generating the radar."
         )
-    return repos
+    return [fleet_root]
 
 def get_meta_token() -> str | None:
-    """Safely obtain Meta token from macOS Keychain without exposing it."""
+    """Safely obtain Meta token from the environment or macOS Keychain."""
+    token = os.environ.get("META_AD_LIBRARY_TOKEN")
+    if token:
+        return token
     try:
         res = subprocess.run(
             ["security", "find-generic-password", "-s", "META_AD_LIBRARY_TOKEN", "-w"],
@@ -76,15 +78,18 @@ def check_meta_api_health(token: str | None) -> dict:
         latency_ms = int((time.time() - t0) * 1000)
         
         usage_header = resp.headers.get("x-business-use-case-usage") or resp.headers.get("x-app-usage") or "{}"
-        usage_val = 1.0
+        usage_values = []
         try:
             parsed_usage = json.loads(usage_header)
             if isinstance(parsed_usage, dict):
                 for k, v in parsed_usage.items():
-                    if isinstance(v, list) and len(v) > 0 and isinstance(v[0], dict):
-                        usage_val = float(v[0].get("call_count", 1.0))
+                    if isinstance(v, list):
+                        for item in v:
+                            if isinstance(item, dict) and "call_count" in item:
+                                usage_values.append(float(item["call_count"]))
         except Exception:
             pass
+        usage_val = max(usage_values, default=1.0)
 
         return {
             "status": "OPERATIONAL" if resp.status_code == 200 else f"HTTP_{resp.status_code}",
@@ -105,6 +110,23 @@ def check_meta_api_health(token: str | None) -> dict:
 
 def build_incident_radar_dataset(meta_health: dict) -> dict:
     now_utc = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    api_operational = meta_health.get("status") == "OPERATIONAL"
+    if api_operational:
+        api_dispatch = {
+            "timestamp": "2h ago",
+            "source": "Meta Graph API Sentinel",
+            "vertical": "General Media Buying",
+            "headline": f"Meta Graph API latency verified at {meta_health['latency_ms']}ms. Token endpoint operational, usage rate < 1.5%",
+            "impact": "Graph endpoints stable, confirming that front-end ad manager rejections are policy/algorithm driven, not network outages.",
+        }
+    else:
+        api_dispatch = {
+            "timestamp": "2h ago",
+            "source": "Meta Graph API Sentinel",
+            "vertical": "General Media Buying",
+            "headline": f"Meta Graph API health unavailable ({meta_health.get('status', 'UNKNOWN')}); latency and token endpoint status not verified.",
+            "impact": "No API health conclusion is available; investigate the credential or network configuration before attributing front-end rejections.",
+        }
     
     return {
         "meta": {
@@ -229,13 +251,7 @@ def build_incident_radar_dataset(meta_health: dict) -> dict:
                 "headline": "Compliant LegitScript telehealth accounts throttled by blanket pharmaceutical keyword regex updates",
                 "impact": "Creatives rejected en masse despite active LegitScript certificate uploaded."
             },
-            {
-                "timestamp": "2h ago",
-                "source": "Meta Graph API Sentinel",
-                "vertical": "General Media Buying",
-                "headline": f"Meta Graph API latency verified at {meta_health.get('latency_ms', 521)}ms. Token endpoint operational, usage rate < 1.5%",
-                "impact": "Graph endpoints stable, confirming that front-end ad manager rejections are policy/algorithm driven, not network outages."
-            }
+            api_dispatch
         ]
     }
 
