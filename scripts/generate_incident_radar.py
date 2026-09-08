@@ -24,15 +24,23 @@ except ImportError:
     print("Error: requests library required. Install or use virtualenv.")
     sys.exit(1)
 
+REPOSITORY_NAMES = (
+    "legal-ad-infra",
+    "telehealth-ad-infra",
+    "ecom-ad-scale",
+    "adops-resilience",
+    "ad-spend-index",
+)
+
 def load_repos() -> list[str]:
-    """Resolve the fleet output root from the controlled fleet contract."""
+    """Resolve the fleet repositories beneath ADSINFRA_FLEET_ROOT."""
     fleet_root = os.environ.get("ADSINFRA_FLEET_ROOT", "").strip()
-    if not fleet_root:
+    if not fleet_root or not os.path.isdir(fleet_root):
         sys.exit(
-            "Error: set ADSINFRA_FLEET_ROOT to the fleet output repository "
-            "path before generating the radar."
+            "Error: set ADSINFRA_FLEET_ROOT to an existing fleet root "
+            "directory before generating the radar."
         )
-    return [fleet_root]
+    return [os.path.join(fleet_root, name) for name in REPOSITORY_NAMES]
 
 def get_meta_token() -> str | None:
     """Safely obtain Meta token from the environment or macOS Keychain."""
@@ -81,20 +89,26 @@ def check_meta_api_health(token: str | None) -> dict:
         usage_values = []
         try:
             parsed_usage = json.loads(usage_header)
-            if isinstance(parsed_usage, dict):
-                for k, v in parsed_usage.items():
-                    if isinstance(v, list):
-                        for item in v:
-                            if isinstance(item, dict) and "call_count" in item:
-                                usage_values.append(float(item["call_count"]))
+            def collect_call_counts(value: object) -> None:
+                if isinstance(value, dict):
+                    for key, nested_value in value.items():
+                        if key == "call_count" and isinstance(nested_value, (int, float)):
+                            usage_values.append(float(nested_value))
+                        else:
+                            collect_call_counts(nested_value)
+                elif isinstance(value, list):
+                    for nested_value in value:
+                        collect_call_counts(nested_value)
+
+            collect_call_counts(parsed_usage)
         except Exception:
             pass
-        usage_val = max(usage_values, default=1.0)
+        usage_val = max(usage_values, default=None)
 
         return {
             "status": "OPERATIONAL" if resp.status_code == 200 else f"HTTP_{resp.status_code}",
             "latency_ms": latency_ms,
-            "usage_pct": min(usage_val, 100.0),
+            "usage_pct": min(usage_val, 100.0) if usage_val is not None else None,
             "version": "v26.0",
             "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
             "http_status": resp.status_code
@@ -112,16 +126,23 @@ def build_incident_radar_dataset(meta_health: dict) -> dict:
     now_utc = datetime.datetime.now(datetime.timezone.utc).isoformat()
     api_operational = meta_health.get("status") == "OPERATIONAL"
     if api_operational:
+        usage_pct = meta_health.get("usage_pct")
+        if usage_pct is None:
+            usage_text = "usage rate unavailable"
+        elif usage_pct < 1.5:
+            usage_text = "usage rate < 1.5%"
+        else:
+            usage_text = f"usage rate {usage_pct:g}%"
         api_dispatch = {
-            "timestamp": "2h ago",
+            "timestamp": now_utc,
             "source": "Meta Graph API Sentinel",
             "vertical": "General Media Buying",
-            "headline": f"Meta Graph API latency verified at {meta_health['latency_ms']}ms. Token endpoint operational, usage rate < 1.5%",
+            "headline": f"Meta Graph API latency verified at {meta_health['latency_ms']}ms. Token endpoint operational, {usage_text}",
             "impact": "Graph endpoints stable, confirming that front-end ad manager rejections are policy/algorithm driven, not network outages.",
         }
     else:
         api_dispatch = {
-            "timestamp": "2h ago",
+            "timestamp": now_utc,
             "source": "Meta Graph API Sentinel",
             "vertical": "General Media Buying",
             "headline": f"Meta Graph API health unavailable ({meta_health.get('status', 'UNKNOWN')}); latency and token endpoint status not verified.",
@@ -133,126 +154,17 @@ def build_incident_radar_dataset(meta_health: dict) -> dict:
             "title": "Ad Platform Outage & Ban-Wave Incident Radar",
             "updated_at": now_utc,
             "version": "1.0.0",
-            "threat_level": "ELEVATED",
-            "threat_label": "Active Algorithmic Sweep & Spend Freeze",
-            "panic_score": 78,
-            "benchmark_basis": "Real-time Meta Graph API latency + crowdsourced media buyer pings + adops triage sentiment"
+            "threat_level": "UNKNOWN",
+            "benchmark_basis": "Meta Graph API health check only"
         },
         "meta_graph_api": meta_health,
-        "platforms": [
-            {
-                "platform": "Meta Ads (Facebook & Instagram)",
-                "threat_level": "HIGH",
-                "panic_index": 84,
-                "official_status": "All Systems Operational (metastatus.com)",
-                "field_reality": "Severe discrepancy. Aggressive bot sweep terminating Business Managers with shared billing profiles; Daily Spend Limit (DSL) forcibly reset to $50–$250 on 73% of self-serve accounts.",
-                "common_errors": [
-                    "We noticed unusual activity on your account and have disabled it.",
-                    "Your account has reached its daily spending limit ($50 / $250 cap).",
-                    "We were unable to place a temporary hold on your payment method."
-                ],
-                "active_remedy": "Deploy Tier-1 Agency Business Portfolio with pre-whitelisted billing profile and unlimited spend headroom."
-            },
-            {
-                "platform": "Google Ads",
-                "threat_level": "ELEVATED",
-                "panic_index": 72,
-                "official_status": "Normal Service (ads.google.com/status)",
-                "field_reality": "Algorithmic spike in 'Suspicious Payment Activity' and 'Circumventing Systems' automated suspensions on newly warmed accounts spending over $1,500/day.",
-                "common_errors": [
-                    "Your account is suspended: We've identified suspicious behavior in the payment activity.",
-                    "Account suspended for Circumventing Systems policy violation."
-                ],
-                "active_remedy": "Deploy Google Invoiced Credit Line accounts (30-day net terms, zero credit card triggers)."
-            },
-            {
-                "platform": "TikTok Ads",
-                "threat_level": "MODERATE",
-                "panic_index": 62,
-                "official_status": "Operational",
-                "field_reality": "Payment gateway pre-authorization failure rate elevated for US/EU advertisers scaling aggressive creatives; balance auto-freeze on sudden budget increases.",
-                "common_errors": [
-                    "Payment method rejected: Pre-authorization failed.",
-                    "Ad account balance frozen pending business verification review."
-                ],
-                "active_remedy": "Enterprise agency TikTok accounts with direct rep spend threshold increases."
-            }
-        ],
+        "platforms": [],
         "crowdsourced_triage": {
             "window_hours": 24,
-            "total_reports_today": 384,
-            "categories": [
-                {
-                    "id": "meta_bm_disabled",
-                    "name": "Meta Business Manager Disabled",
-                    "reports_24h": 146,
-                    "severity": "CRITICAL",
-                    "risk_badge": "High Risk (4h SLA)",
-                    "symptom": "Account or BM locked with no manual review available in Business Support Home.",
-                    "whatsapp_text": "URGENT:%20Our%20Meta%20Business%20Manager%20was%20disabled%20today.%20Need%20emergency%20Tier-1%20agency%20account%20deployment%20to%20restore%20campaigns."
-                },
-                {
-                    "id": "spend_cap_throttled",
-                    "name": "Daily Spend Limit (DSL) Capped ($50/$250)",
-                    "reports_24h": 98,
-                    "severity": "HIGH",
-                    "risk_badge": "Revenue Limiting",
-                    "symptom": "Account is active but Meta caps total account spend, killing scaling and ROAS.",
-                    "whatsapp_text": "URGENT:%20Our%20Meta%20ad%20account%20is%20capped%20at%20$250/day%20spend%20limit.%20Need%20unlimited%20agency%20spend%20cap%20account."
-                },
-                {
-                    "id": "google_suspicious_payment",
-                    "name": "Google Ads Suspicious Payment Suspension",
-                    "reports_24h": 68,
-                    "severity": "CRITICAL",
-                    "risk_badge": "Instant Ban",
-                    "symptom": "Google suspended ad account citing suspicious payment activity or billing discrepancy.",
-                    "whatsapp_text": "URGENT:%20Google%20Ads%20suspended%20our%20account%20for%20Suspicious%20Payment.%20Need%20Google%20Invoiced%20Credit%20Line%20account%20setup."
-                },
-                {
-                    "id": "card_preauth_failed",
-                    "name": "Card Pre-Authorization / Billing Loop Failure",
-                    "reports_24h": 42,
-                    "severity": "MEDIUM",
-                    "risk_badge": "Billing Bug",
-                    "symptom": "Temporary hold failed; ads paused automatically despite valid bank card with funds.",
-                    "whatsapp_text": "URGENT:%20Ad%20platform%20card%20pre-authorization%20failed%20and%20halted%20ad%20delivery.%20Need%20enterprise%20credit%20line%20infrastructure."
-                },
-                {
-                    "id": "review_in_limbo",
-                    "name": "Ads Stuck in Review > 48 Hours / Policy Sweep Flag",
-                    "reports_24h": 30,
-                    "severity": "MEDIUM",
-                    "risk_badge": "Review Limbo",
-                    "symptom": "Creatives never leave 'In Review' status or are rejected by automated text classifiers.",
-                    "whatsapp_text": "URGENT:%20Our%20ads%20are%20stuck%20in%20review%20or%20getting%20flagged%20by%20automated%20policy%20sweeps.%20Need%20whitelisted%20agency%20ad%20infrastructure."
-                }
-            ]
+            "total_reports_today": 0,
+            "categories": []
         },
-        "recent_dispatches": [
-            {
-                "timestamp": "12m ago",
-                "source": "AdOps Incident Feed",
-                "vertical": "E-Commerce / D2C",
-                "headline": "Meta Q3 bot sweep targeting shared Stripe/Wise card BINs across multiple ad accounts",
-                "impact": "Sudden disabling of secondary BMs without policy violation history. Manual chat queues backlogged > 48 hours."
-            },
-            {
-                "timestamp": "34m ago",
-                "source": "Search Engine Triage",
-                "vertical": "Mass Tort / Legal",
-                "headline": "Google automated crawler flagging $400+ CPC legal landing pages for landing page experience mismatches",
-                "impact": "Account quality score downgraded, triggering automated billing review."
-            },
-            {
-                "timestamp": "1h ago",
-                "source": "r/FacebookAds Sentiment Pulse",
-                "vertical": "Telehealth / GLP-1",
-                "headline": "Compliant LegitScript telehealth accounts throttled by blanket pharmaceutical keyword regex updates",
-                "impact": "Creatives rejected en masse despite active LegitScript certificate uploaded."
-            },
-            api_dispatch
-        ]
+        "recent_dispatches": [api_dispatch]
     }
 
 def main():
