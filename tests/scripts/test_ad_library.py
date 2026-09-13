@@ -13,6 +13,32 @@ sys.path.insert(0, str(SCRIPTS_DIR))
 
 import fetch_ad_library  # noqa: E402
 
+
+@pytest.fixture(autouse=True)
+def _isolated_quota_budget(tmp_path, monkeypatch):
+    from ad_library_quota import QuotaBudget as RealQuotaBudget
+
+    now = [0.0]
+
+    def clock():
+        return now[0]
+
+    def tick(seconds):
+        now[0] += seconds
+
+    monkeypatch.setattr(
+        fetch_ad_library,
+        "QuotaBudget",
+        lambda *args, **kwargs: RealQuotaBudget(
+            path=tmp_path / "quota.json",
+            min_interval=65.0,
+            clock=clock,
+            sleep=tick,
+            **{key: value for key, value in kwargs.items() if key != "path"},
+        ),
+    )
+
+
 FIXTURE = (
     Path(__file__).resolve().parent.parent
     / "fixtures"
@@ -25,7 +51,9 @@ class _Response:
     def __init__(self, payload: dict, status_code: int = 200) -> None:
         self._payload = payload
         self.status_code = status_code
-        self.headers: dict[str, str] = {}
+        self.headers: dict[str, str] = {
+            "x-business-use-case-usage": '{"test": [{"call_count": 1, "estimated_time_to_regain_access": 0}]}'
+        }
 
     def json(self) -> dict:
         return self._payload
@@ -71,7 +99,9 @@ def test_eu_country_or_political_type_is_in_scope():
 def test_paging_cursor_off_host_is_refused():
     """A server-supplied cursor must not redirect our bearer token to another host."""
     with pytest.raises(ValueError, match="refusing to send credentials"):
-        fetch_ad_library._validate_next_url("https://evil.test/v26.0/ads_archive?after=x")
+        fetch_ad_library._validate_next_url(
+            "https://evil.test/v26.0/ads_archive?after=x"
+        )
 
 
 def test_paging_cursor_on_host_is_accepted():
@@ -83,8 +113,17 @@ def test_search_pages_through_results_and_respects_max_pages(monkeypatch):
     calls: list[dict] = []
 
     def fake_guarded_request(session, method, url, **kwargs):
-        calls.append({"url": url, "headers": kwargs.get("headers"), "params": kwargs.get("params")})
-        return _Response(_fixture_payload())
+        calls.append(
+            {
+                "url": url,
+                "headers": kwargs.get("headers"),
+                "params": kwargs.get("params"),
+            }
+        )
+        payload = _fixture_payload()
+        if len(calls) >= 2:
+            payload["paging"] = {}
+        return _Response(payload)
 
     monkeypatch.setattr(fetch_ad_library, "guarded_request", fake_guarded_request)
 
@@ -97,10 +136,10 @@ def test_search_pages_through_results_and_respects_max_pages(monkeypatch):
 
     assert result["error"] is None
     assert result["pages_fetched"] == 2
-    assert len(result["ads"]) == 4  # two fixture ads per page
-    assert calls[1]["url"].startswith("https://graph.facebook.com/")
-    # The cursor already carries the query; re-sending params would double-apply them.
-    assert calls[1]["params"] is None
+    assert len(result["ads"]) == 2  # duplicate fixture ads are deduplicated by id
+    assert calls[1]["url"] == fetch_ad_library.ENDPOINT
+    # Only the opaque cursor is reconstructed; server query parameters are discarded.
+    assert calls[1]["params"]["after"] == "FIXTURECURSOR"
 
 
 def test_token_travels_in_header_never_in_params(monkeypatch):
@@ -187,7 +226,9 @@ def test_field_sets_are_opt_in():
 class _ResponseWithHeaders(_Response):
     def __init__(self, payload, status_code=200, headers=None):
         super().__init__(payload, status_code)
-        self.headers = headers or {}
+        self.headers = headers or {
+            "x-business-use-case-usage": '{"test": [{"call_count": 1, "estimated_time_to_regain_access": 0}]}'
+        }
 
 
 def test_usage_header_is_surfaced_for_throttle_headroom(monkeypatch):
@@ -195,7 +236,15 @@ def test_usage_header_is_surfaced_for_throttle_headroom(monkeypatch):
     payload = {"data": [], "paging": {}}
     headers = {
         "x-business-use-case-usage": json.dumps(
-            {"123": [{"type": "ads_archive", "call_count": 7, "estimated_time_to_regain_access": 0}]}
+            {
+                "123": [
+                    {
+                        "type": "ads_archive",
+                        "call_count": 7,
+                        "estimated_time_to_regain_access": 0,
+                    }
+                ]
+            }
         )
     }
     monkeypatch.setattr(
@@ -203,9 +252,11 @@ def test_usage_header_is_surfaced_for_throttle_headroom(monkeypatch):
         "guarded_request",
         lambda *a, **k: _ResponseWithHeaders(payload, 200, headers),
     )
-    result = fetch_ad_library.search_ad_library(token="t", countries=["DE"], search_terms="x")
-    assert result["usage"]["header"] == "x-business-use-case-usage"
-    assert result["usage"]["value"]["123"][0]["call_count"] == 7
+    result = fetch_ad_library.search_ad_library(
+        token="t", countries=["DE"], search_terms="x"
+    )
+    assert "x-business-use-case-usage" in result["usage"]
+    assert result["usage"]["x-business-use-case-usage"]["123"][0]["call_count"] == 7
 
 
 def test_rate_limit_error_is_named_as_throttling_not_a_penalty(monkeypatch):
@@ -216,7 +267,9 @@ def test_rate_limit_error_is_named_as_throttling_not_a_penalty(monkeypatch):
         "guarded_request",
         lambda *a, **k: _ResponseWithHeaders(payload, 400, {}),
     )
-    result = fetch_ad_library.search_ad_library(token="t", countries=["DE"], search_terms="x")
+    result = fetch_ad_library.search_ad_library(
+        token="t", countries=["DE"], search_terms="x"
+    )
     assert "Rate limited" in result["error"]
     assert "not a penalty" in result["error"]
     assert "app tokens are rejected" not in result["error"]
@@ -250,7 +303,9 @@ def test_throttle_code_is_never_retried(monkeypatch):
     def fake(session, method, url, **kwargs):
         calls.append(url)
         return _ResponseWithHeaders(
-            {"error": {"message": "rate limit", "code": 613, "is_transient": True}}, 400, {}
+            {"error": {"message": "rate limit", "code": 613, "is_transient": True}},
+            400,
+            {},
         )
 
     monkeypatch.setattr(fetch_ad_library, "guarded_request", fake)
@@ -268,7 +323,9 @@ def test_auth_failure_is_not_retried(monkeypatch):
     def fake(session, method, url, **kwargs):
         calls.append(url)
         return _ResponseWithHeaders(
-            {"error": {"message": "bad token", "code": 190, "is_transient": False}}, 401, {}
+            {"error": {"message": "bad token", "code": 190, "is_transient": False}},
+            401,
+            {},
         )
 
     monkeypatch.setattr(fetch_ad_library, "guarded_request", fake)
@@ -286,7 +343,9 @@ def test_retry_does_not_double_count_pages_or_resend_params(monkeypatch):
     def fake(session, method, url, **kwargs):
         seen.append(kwargs.get("params"))
         if len(seen) == 1:
-            return _ResponseWithHeaders({"error": {"code": 2, "is_transient": True}}, 500, {})
+            return _ResponseWithHeaders(
+                {"error": {"code": 2, "is_transient": True}}, 500, {}
+            )
         return _ResponseWithHeaders(ok, 200, {})
 
     monkeypatch.setattr(fetch_ad_library, "guarded_request", fake)
@@ -320,16 +379,26 @@ def test_search_stops_paging_on_high_usage_threshold(monkeypatch):
     calls = []
     payload1 = {
         "data": [{"id": "1", "page_name": "Test Page"}],
-        "paging": {"next": "https://graph.facebook.com/v26.0/ads_archive?after=cursor2"},
+        "paging": {
+            "next": "https://graph.facebook.com/v26.0/ads_archive?after=cursor2"
+        },
     }
     payload2 = {
         "data": [{"id": "2", "page_name": "Test Page"}],
         "paging": {},
     }
     headers = {
-        "x-business-use-case-usage": json.dumps({
-            "act_123": [{"type": "ads_archive", "call_count": 85, "estimated_time_to_regain_access": 0}]
-        })
+        "x-business-use-case-usage": json.dumps(
+            {
+                "act_123": [
+                    {
+                        "type": "ads_archive",
+                        "call_count": 85,
+                        "estimated_time_to_regain_access": 0,
+                    }
+                ]
+            }
+        )
     }
 
     def fake(session, method, url, **kwargs):
@@ -357,7 +426,11 @@ def test_build_canonical_artifact_normalizes_observations_and_binds_lifecycle():
         "source": "meta-ad-library-api",
         "endpoint": fetch_ad_library.ENDPOINT,
         "retrieved_at": "2026-09-04",
-        "query": {"search_terms": "crm", "ad_reached_countries": ["DE"], "ad_type": "ALL"},
+        "query": {
+            "search_terms": "crm",
+            "ad_reached_countries": ["DE"],
+            "ad_type": "ALL",
+        },
         "warning": None,
         "ads": [
             {
@@ -407,6 +480,7 @@ def test_build_canonical_artifact_normalizes_observations_and_binds_lifecycle():
 def test_cli_main_persists_canonical_artifact_to_output(tmp_path, monkeypatch):
     out_file = tmp_path / "normalized-ads.json"
     raw_fixture = _fixture_payload()
+    raw_fixture["paging"] = {}
 
     monkeypatch.setenv("CLAUDE_ADS_OUTPUT_ROOT", str(tmp_path))
     monkeypatch.setenv("META_AD_LIBRARY_TOKEN", "mock-token-xyz")
@@ -419,11 +493,16 @@ def test_cli_main_persists_canonical_artifact_to_output(tmp_path, monkeypatch):
         "sys.argv",
         [
             "fetch_ad_library.py",
-            "--search-terms", "project management",
-            "--countries", "DE",
-            "--run-id", "run-persist-001",
-            "--client-id", "client-persist",
-            "--output", str(out_file),
+            "--search-terms",
+            "project management",
+            "--countries",
+            "DE",
+            "--run-id",
+            "run-persist-001",
+            "--client-id",
+            "client-persist",
+            "--output",
+            str(out_file),
         ],
     )
 
@@ -440,3 +519,188 @@ def test_cli_main_persists_canonical_artifact_to_output(tmp_path, monkeypatch):
     assert len(saved["observations"]) > 0
     # Confirm raw 'ads' field is NOT present at top level of the saved artifact
     assert "ads" not in saved
+
+
+def test_search_type_and_filter_metadata_are_bound_to_request(monkeypatch):
+    seen = []
+
+    def fake_guarded_request(session, method, url, **kwargs):
+        seen.append(kwargs["params"])
+        return _ResponseWithHeaders({"data": [], "paging": {}}, 200, {})
+
+    monkeypatch.setattr(fetch_ad_library, "guarded_request", fake_guarded_request)
+    result = fetch_ad_library.search_ad_library(
+        token="t",
+        countries=["DE"],
+        search_terms="crm",
+        search_type="KEYWORD_EXACT_PHRASE",
+        ad_active_status="ACTIVE",
+        delivery_date_min="2026-01-01",
+        delivery_date_max="2026-02-01",
+    )
+    assert result["query"]["search_type"] == "KEYWORD_EXACT_PHRASE"
+    assert result["query"]["ad_active_status"] == "ACTIVE"
+    assert result["query"]["ad_delivery_date_min"] == "2026-01-01"
+    assert result["query"]["ad_delivery_date_max"] == "2026-02-01"
+    assert seen[0]["search_type"] == "KEYWORD_EXACT_PHRASE"
+    assert seen[0]["ad_active_status"] == "ACTIVE"
+    assert seen[0]["ad_delivery_date_min"] == "2026-01-01"
+    assert seen[0]["ad_delivery_date_max"] == "2026-02-01"
+
+
+def test_every_retry_is_inside_quota_budget_and_observes_response(monkeypatch):
+    from contextlib import contextmanager
+
+    class Budget:
+        def __init__(self):
+            self.attempts = 0
+            self.observations = []
+
+        @contextmanager
+        def attempt(self):
+            self.attempts += 1
+            yield
+
+        def observe(self, headers, *, status_code, error_code=None):
+            self.observations.append((headers, status_code, error_code))
+            return {"usage": None, "stop_reason": None, "retry_at": None}
+
+    budget = Budget()
+    calls = []
+
+    def fake(session, method, url, **kwargs):
+        calls.append(url)
+        if len(calls) == 1:
+            return _ResponseWithHeaders(
+                {"error": {"code": 2, "is_transient": True}}, 500, {}
+            )
+        return _ResponseWithHeaders({"data": [{"id": "1"}], "paging": {}}, 200, {})
+
+    monkeypatch.setattr(fetch_ad_library, "guarded_request", fake)
+    result = fetch_ad_library.search_ad_library(
+        token="t",
+        countries=["DE"],
+        search_terms="x",
+        quota_budget=budget,
+        sleep=lambda _: None,
+    )
+    assert result["error"] is None
+    assert len(calls) == 2
+    assert budget.attempts == 2
+    assert [status for _, status, _ in budget.observations] == [500, 200]
+
+
+def test_transient_auth_response_is_not_retried(monkeypatch):
+    calls = []
+
+    def fake(session, method, url, **kwargs):
+        calls.append(url)
+        return _ResponseWithHeaders(
+            {"error": {"code": 190, "is_transient": True, "message": "bad token"}},
+            401,
+            {},
+        )
+
+    monkeypatch.setattr(fetch_ad_library, "guarded_request", fake)
+    result = fetch_ad_library.search_ad_library(
+        token="t", countries=["DE"], search_terms="x", sleep=lambda _: None
+    )
+    assert len(calls) == 1
+    assert "401" in result["error"]
+
+
+def test_stopped_transient_response_returns_recovery_without_retry(monkeypatch):
+    calls, sleeps = [], []
+
+    def transport(*args, **kwargs):
+        calls.append(kwargs)
+        return _ResponseWithHeaders(
+            {"error": {"code": 2, "is_transient": True}},
+            503,
+            {"X-App-Usage": '{"call_count": 55}', "Retry-After": "7200"},
+        )
+
+    monkeypatch.setattr(fetch_ad_library, "guarded_request", transport)
+    result = fetch_ad_library.search_ad_library(
+        token="fixture-token",
+        countries=["DE"],
+        search_terms="fixture",
+        sleep=sleeps.append,
+    )
+    assert len(calls) == 1
+    assert sleeps == []
+    assert result["status"] == "quota-deferred"
+    assert result["quota_stop_reason"] == "usage-threshold"
+    assert result["retry_at"] == 7200
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {},
+        [],
+        {"data": ["invalid-row"]},
+        {"data": [], "paging": []},
+        {"data": [], "paging": "bad"},
+        {"data": [], "paging": 0},
+        {"data": [], "paging": {"next": 0}},
+        {"data": [], "paging": {"next": ""}},
+    ],
+)
+def test_malformed_response_is_failure_not_empty_archive(monkeypatch, payload):
+    monkeypatch.setattr(
+        fetch_ad_library,
+        "guarded_request",
+        lambda *a, **kw: _ResponseWithHeaders(payload),
+    )
+    result = fetch_ad_library.search_ad_library(
+        token="fixture",
+        countries=["DE"],
+        search_terms="fixture",
+    )
+    assert result["status"] == "failed"
+    assert result["pages_fetched"] == 0
+
+
+def test_malformed_creative_text_does_not_advance_collection(monkeypatch):
+    monkeypatch.setattr(
+        fetch_ad_library,
+        "guarded_request",
+        lambda *a, **kw: _ResponseWithHeaders(
+            {"data": [{"id": "ad-1", "ad_creative_bodies": "not-a-string-list"}]}
+        ),
+    )
+    result = fetch_ad_library.search_ad_library(
+        token="fixture",
+        countries=["DE"],
+        search_terms="fixture",
+    )
+    assert result["status"] == "failed"
+    assert result["pages_fetched"] == 0
+    assert result["ads"] == []
+
+
+def test_empty_page_follows_paging_link(monkeypatch):
+    calls = []
+
+    def transport(*args, **kwargs):
+        calls.append(kwargs)
+        if len(calls) == 1:
+            return _ResponseWithHeaders(
+                {
+                    "data": [],
+                    "paging": {"next": fetch_ad_library.ENDPOINT + "?after=next"},
+                }
+            )
+        return _ResponseWithHeaders({"data": [{"id": "ad-2"}], "paging": {}})
+
+    monkeypatch.setattr(fetch_ad_library, "guarded_request", transport)
+    result = fetch_ad_library.search_ad_library(
+        token="fixture",
+        countries=["DE"],
+        search_terms="fixture",
+    )
+    assert result["status"] == "exhausted"
+    assert result["next_cursor"] is None
+    assert len(calls) == 2
+    assert calls[1]["params"]["after"] == "next"

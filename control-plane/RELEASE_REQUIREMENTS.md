@@ -82,9 +82,12 @@ capability loses its test evidence, or required remote CI does not pass.
 
 ## Installation and packaging gates
 
-- Python-wheel resolution, install, upgrade, and uninstall are tested on the
-  declared Linux, macOS, and Windows interpreter tuples. This is not a claim of
-  cross-platform Playwright browser or WeasyPrint PDF feature execution.
+- Python-wheel resolution, install, upgrade, and uninstall are tested on CPython
+  3.11/3.12 with Linux x86_64 (glibc 2.27+), macOS 11+ arm64, and Windows amd64.
+  These six platform/interpreter pairs have twelve runtime/development
+  resolution targets. Intel macOS and older Linux libc baselines are not managed
+  targets. This is not a claim of cross-platform Playwright browser or
+  WeasyPrint PDF feature execution.
 - Installation does not silently mutate global Python or execute unverified
   network content.
 - Uninstall removes only ownership-manifest entries and leaves no unowned files.

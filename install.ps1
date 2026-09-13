@@ -274,6 +274,7 @@ function Main {
             -bor [System.Security.AccessControl.FileSystemRights]::DeleteSubdirectoriesAndFiles `
             -bor [System.Security.AccessControl.FileSystemRights]::ChangePermissions `
             -bor [System.Security.AccessControl.FileSystemRights]::TakeOwnership
+        $OwnerRightsSid = 'S-1-3-4'
         while ($true) {
             [void](Assert-NoReparseChain $Current $Root)
             $DirectoryItem = Get-Item -LiteralPath $Current -Force -ErrorAction SilentlyContinue
@@ -294,10 +295,20 @@ function Main {
             }
             foreach ($Rule in @($Security.GetAccessRules($true, $true, [System.Security.Principal.SecurityIdentifier]))) {
                 $Sid = $Rule.IdentityReference.Value
+                $EffectiveSid = if ($Sid.Equals($OwnerRightsSid, [StringComparison]::OrdinalIgnoreCase)) {
+                    $OwnerSid.Value
+                } else {
+                    $Sid
+                }
+                if ($Rule.AccessControlType -eq [System.Security.AccessControl.AccessControlType]::Deny `
+                    -and $EffectiveSid.Equals($Identity.User.Value, [StringComparison]::OrdinalIgnoreCase) `
+                    -and (($Rule.FileSystemRights -band $WriteRights) -ne 0)) {
+                    throw "Retired file parent denies current-user write access"
+                }
                 if ($Rule.AccessControlType -eq [System.Security.AccessControl.AccessControlType]::Allow `
                     -and (($Rule.FileSystemRights -band $WriteRights) -ne 0) `
-                    -and -not $TrustedSids.Contains($Sid)) {
-                    throw "Retired file parent grants untrusted write access: $Current"
+                    -and -not $TrustedSids.Contains($EffectiveSid)) {
+                    throw "Retired file parent grants untrusted write access"
                 }
             }
             if ($Current.Equals($ProfileRoot, $PathComparison)) { break }

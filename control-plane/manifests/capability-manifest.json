@@ -176,13 +176,16 @@
           "mode": "live-read",
           "status": "live-verified",
           "implementation_paths": [
+            "scripts/ad_library_quota.py",
             "scripts/fetch_ad_library.py"
           ],
           "fixture_paths": [
             "tests/fixtures/ad_library/meta_ads_archive.json"
           ],
           "test_paths": [
-            "tests/scripts/test_ad_library.py"
+            "tests/scripts/test_ad_library.py",
+            "tests/scripts/test_ad_library_quota.py",
+            "tests/scripts/test_ad_library_resume.py"
           ],
           "source_ids": [
             "meta-ad-library-ads-archive-official",

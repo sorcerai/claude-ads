@@ -121,9 +121,11 @@ Set-Location claude-ads
 .\install.ps1 -Source local
 ```
 
-Managed dependencies support CPython 3.11 and 3.12 on the declared Linux,
-macOS, and Windows wheel matrix. Unsupported interpreters fail before the
-destination changes. Use `--no-deps` or `-NoDeps` for a skill-only install.
+Managed dependencies support CPython 3.11 and 3.12 on Linux x86_64 with
+glibc 2.27+, macOS 11+ on Apple Silicon (arm64), and Windows amd64.
+Intel macOS, musl Linux, older glibc versions, and unlisted interpreters are
+unsupported managed targets and fail before destination changes.
+Use `--no-deps` or `-NoDeps` for a skill-only install without a managed runtime.
 
 Browser capture requires an operator-installed Playwright browser payload. PDF
 rendering requires the host's WeasyPrint and Pango system libraries. These are
@@ -169,6 +171,66 @@ Controls use `pass`, `fail`, `unknown`, or `not_applicable`.
 
 See the [scoring reference](ads/references/scoring-system.md) and production
 implementation in `claude_ads_core/scoring.py`.
+
+## Resumable Meta Ad Library collection
+
+Use the official API for keyword discovery, then verify Page identities before
+collecting advertiser archives. `KEYWORD_EXACT_PHRASE` reduces broad keyword
+matches; it does not verify advertiser identity.
+
+```bash
+python scripts/fetch_ad_library.py --countries DE \
+  --search-terms "example product" --search-type KEYWORD_EXACT_PHRASE \
+  --max-pages 1 --output .claude-ads/runs/discovery.json
+
+# Replace the example IDs with verified Facebook Page IDs.
+python scripts/fetch_ad_library.py --countries DE \
+  --search-page-ids 123456789,987654321 --ad-active-status ALL \
+  --run-id advertiser-research --client-id example-client \
+  --checkpoint .claude-ads/runs/advertisers.checkpoint.json \
+  --output .claude-ads/runs/advertisers.json --max-pages 5
+```
+
+Repeat the advertiser command with `--resume` to continue. Keep the same client,
+purpose, countries, Page IDs, creative fields, page size, and delivery filters.
+An omitted run ID is recovered from the checkpoint on resume, including across
+midnight; an explicitly conflicting ID is rejected. The page cap bounds the
+whole invocation, continuing the current advertiser before starting the next.
+It is not an archive completeness claim. The result exposes an overall `status`
+and each advertiser's `exhausted`, `paginated`, `queued`, `quota-deferred`, or
+`failed` state. Intentional page-cap completion exits zero with `paginated`;
+failure or quota deferral exits nonzero. Exhausted resumes make no requests.
+Cursor loops, authentication failures, and other non-retryable API errors remain
+terminal across resume. Inspect and correct the cause before starting a new
+checkpoint; do not repeatedly resume or overwrite the failed checkpoint.
+Quota deferrals remain resumable after the recovery deadline.
+
+Checkpoints store deduplicated normalized observations, compact per-page
+provenance receipts, and opaque cursors, not raw API responses or token-bearing
+pagination URLs. Keep checkpoints outside published source, and do not reuse an
+existing checkpoint for a different query. Checkpoints and exports are written
+atomically. File and directory synchronization is used on supported POSIX
+filesystems; Windows does not offer the same directory-fsync durability guarantee.
+
+Every request attempt, including retries and failed calls, uses the shared
+`~/.claude-ads/ad-library-quota.json` ledger. Defaults are at most **60 attempts
+per rolling hour**, at least **65 seconds apart**, and a **50% usage cutoff**.
+`--hourly-limit` can only lower the local attempt ceiling. Provider recovery
+signals can stop collection earlier; missing or malformed usage signals stop
+further collection rather than imply available quota. Wait until the reported
+`retry_at` before resuming. Do not delete the quota ledger to clear a deferral.
+
+These are conservative local controls, **not Meta's published Ads Archive
+quota**. Meta does not disclose the actual user call ceiling, and a user's
+usage can span multiple apps. Other machines, older collectors, and unrelated
+apps are not coordinated by this local ledger. Stop or coordinate those callers
+before a deep collection; never claim an account-wide hourly guarantee from a
+local counter. See Meta's [rate-limit documentation](https://developers.facebook.com/docs/graph-api/overview/rate-limiting/).
+
+Country coverage and disclosed fields remain API-limited. Exhaustion means only
+that this query's pagination ended, not that all advertising in a market was
+retrieved. Keep EU and non-EU evidence separate; do not substitute one market for
+another. The collector does not scrape the Ad Library UI or fetch creative media.
 
 ## Account safety
 

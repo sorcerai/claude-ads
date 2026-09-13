@@ -13,14 +13,14 @@
     },
     {
       "artifact": {
-        "filename": "cryptography-48.0.1-cp311-abi3-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",
-        "sha256": "f0d27a5696721ef7a672b8c810f6aded391058e0b9486e63e6d93baf765da691",
-        "url": "https://files.pythonhosted.org/packages/9c/87/c85d147b53323c7eb4d850920c8901377323c2a0ff8d79c262d4fee89aa2/cryptography-48.0.1-cp311-abi3-manylinux2014_x86_64.manylinux_2_17_x86_64.whl"
+        "filename": "cryptography-50.0.1-cp311-abi3-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",
+        "sha256": "ff838d62ec1bfce4f9ba7fa16f4a7b554cd8d0c299e6be37502161a660c84eef",
+        "url": "https://files.pythonhosted.org/packages/57/26/e6d4fc8512a51a5f9ee7bfdbfb853bce1197087df40c9ad993ad370b846f/cryptography-50.0.1-cp311-abi3-manylinux2014_x86_64.manylinux_2_17_x86_64.whl"
       },
       "direct": true,
       "name": "cryptography",
-      "purl": "pkg:pypi/cryptography@48.0.1",
-      "version": "48.0.1"
+      "purl": "pkg:pypi/cryptography@50.0.1",
+      "version": "50.0.1"
     },
     {
       "artifact": {
@@ -110,25 +110,27 @@
   },
   "evidence_class": "cross-target-pip-resolution-requiring-native-ci-confirmation",
   "evidence_id": "development-linux-cp311",
-  "normalization_notes": [],
+  "normalization_notes": [
+    "pip cross-target resolution used both manylinux_2_27_x86_64 and manylinux2014_x86_64 selectors so target-compatible Pillow manylinux_2_27 and Playwright manylinux1 wheels are both considered; selected target artifacts remain exact and require native CI confirmation."
+  ],
   "platform_policy": "Exact lowest-common lock with target-selected PyPI wheels",
-  "resolved_at": "2026-07-11T00:00:00Z",
+  "resolved_at": "2026-09-08T20:55:03Z",
   "resolver": "pip / PyPI",
   "schema_version": "1.0.0",
-  "source_date_epoch": 1783728000,
+  "source_date_epoch": 1788900903,
   "source_environment": {
     "implementation_name": "cpython",
-    "implementation_version": "3.14.4",
+    "implementation_version": "3.14.6",
     "os_name": "posix",
-    "platform_machine": "x86_64",
+    "platform_machine": "arm64",
     "platform_python_implementation": "CPython",
-    "platform_release": "6.19.14-101.fc44.x86_64",
-    "platform_system": "Linux",
-    "platform_version": "#1 SMP PREEMPT_DYNAMIC Fri May  8 18:24:24 UTC 2026",
-    "python_full_version": "3.14.4",
+    "platform_release": "25.5.0",
+    "platform_system": "Darwin",
+    "platform_version": "Darwin Kernel Version 25.5.0: Mon Apr 27 20:41:12 PDT 2026; root:xnu-12377.121.6~2/RELEASE_ARM64_T6050",
+    "python_full_version": "3.14.6",
     "python_version": "3.14",
-    "sys_platform": "linux"
+    "sys_platform": "darwin"
   },
-  "source_pip_version": "26.0.1",
-  "source_report_sha256": "8710f1c774b006fce5a4c76e85498fa8871c36b578d99304c795b7fc678829d3"
+  "source_pip_version": "26.1.2",
+  "source_report_sha256": "0d0bd0cb291057772e2d7f0d8dc82b3d21ac37b01aa41dc96fa1c38f6d17019a"
 }
