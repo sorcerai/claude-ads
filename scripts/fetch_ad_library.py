@@ -409,9 +409,18 @@ def search_ad_library(
                 result["retry_at"] = observation.get("retry_at")
                 result["warning"] = (
                     (f"{result['warning']}; " if result.get("warning") else "")
-                    + "Usage throttle threshold reached; quota budget requested a stop before further pagination."
+                    + (
+                        "Usage throttle threshold reached; quota budget requested a stop before further requests."
+                        if observation.get("stop_reason") == "usage-threshold"
+                        else "Quota budget requested a stop before further requests."
+                    )
                 )
-                result["status"] = "quota-deferred"
+                # Exhaustion describes accepted collection state, not permission
+                # to dispatch again. Keep the quota stop for the queue, but never
+                # reopen a terminal advertiser at page one on the next resume.
+                result["status"] = (
+                    "exhausted" if next_cursor is None else "quota-deferred"
+                )
                 return result
             elif next_cursor is None:
                 result["status"] = "exhausted"
@@ -1078,6 +1087,7 @@ def _main():
         print(payload)
     if result.get("error"):
         print(f"Error: {result['error']}", file=sys.stderr)
+    if result.get("error") or result.get("status") in {"failed", "quota-deferred"}:
         sys.exit(1)
 
 
