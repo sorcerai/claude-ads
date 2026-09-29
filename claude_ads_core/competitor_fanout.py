@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import re
 from typing import Any, Iterable, Mapping
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 SCHEMA_VERSION = "1.0.0"
 
@@ -135,7 +136,7 @@ def plan_slices(
             seen_cntry.add(c_str)
             dedup_countries.append(c_str)
 
-    sources = list(sources)
+    sources = list(dict.fromkeys(sources))
     if not dedup_competitors or not dedup_countries or not sources:
         raise ValueError("competitors, countries, and sources must each be non-empty")
 
@@ -151,6 +152,18 @@ def plan_slices(
     unknown = sorted(set(sources) - set(SOURCES))
     if unknown:
         raise ValueError(f"unknown source(s): {', '.join(unknown)}")
+
+    # Preserve existing IDs for unambiguous names. Reject collisions instead of
+    # silently assigning two independent workers the same artifact destination.
+    competitor_slugs: dict[str, str] = {}
+    for competitor in dedup_competitors:
+        slug = slugify(competitor)
+        if slug in competitor_slugs:
+            raise ValueError(
+                "competitor names collide after slug normalization; "
+                "supply distinct advertiser identifiers"
+            )
+        competitor_slugs[slug] = competitor
 
     tasks: list[dict[str, Any]] = []
     for source in sources:
@@ -225,6 +238,10 @@ def plan_slices(
         raise ValueError(
             f"total planned slices exceed maximum budget ({len(tasks)} > {MAX_TOTAL_SLICES})"
         )
+    if len({task["task_id"] for task in tasks}) != len(tasks) or len({
+        task["output_contract"]["destination"] for task in tasks
+    }) != len(tasks):
+        raise ValueError("planned tasks collide on identity or output destination")
     return tasks
 
 
@@ -260,27 +277,55 @@ POLITICAL_ONLY_FIELDS = (
 PROVENANCE = ("ad-library-api", "operator-supplied")
 
 
-# The archive appends the caller's credential to every ad_snapshot_url it
-# returns. Today Meta sends the bare parameter name with no value, but that is
-# Meta's choice on the day, not a contract — and these observations get embedded
-# in other repositories, where a populated one would be committed. Strip it at
-# the point the row becomes an observation, so no downstream caller has to
-# remember. Found because adsinfra's committed-record guard test rejected an
-# overlay that carried it through from here.
-_CREDENTIAL_PARAM_RE = re.compile(r"([?&])access_token(=[^&]*)?(&|$)")
+# Snapshot locators are persisted downstream. Remove every credential query
+# field after percent-decoding its name; fragments are not needed to retrieve
+# a snapshot and may themselves carry credentials. This is locator sanitation,
+# not network authorization: outbound requests still need the SSRF boundary.
+_SNAPSHOT_CREDENTIAL_KEYS = frozenset({
+    "access_token", "refresh_token", "token", "api_key", "apikey",
+    "authorization", "auth", "key", "secret", "client_secret",
+    "password", "passwd", "code", "signature",
+})
 
 
 def _strip_snapshot_credential(url: Any) -> Any:
-    """Return a snapshot URL with the credential parameter removed.
+    """Remove explicit locator credentials without echoing malformed input.
 
-    Non-strings pass through untouched: a missing ad_snapshot_url is None, and
-    turning that into "" would make an absent snapshot look like an empty one.
+    Missing/non-string values retain the existing normalizer behavior. Query
+    names are decoded once; ambiguous nested encoding and raw semicolon
+    separators are rejected rather than passed to a different URL parser.
     """
     if not isinstance(url, str):
         return url
-    return _CREDENTIAL_PARAM_RE.sub(
-        lambda match: match.group(1) if match.group(3) == "&" else "", url
-    )
+    try:
+        if (
+            not url
+            or len(url) > 8192
+            or "\\" in url
+            or any(ord(char) < 32 or ord(char) == 127 for char in url)
+        ):
+            raise ValueError
+        parsed = urlsplit(url)
+        if (
+            parsed.scheme not in {"http", "https"}
+            or not parsed.hostname
+            or parsed.username is not None
+            or parsed.password is not None
+            or ";" in parsed.query
+        ):
+            raise ValueError
+        # Accessing port validates malformed and out-of-range port syntax.
+        _ = parsed.port
+        pairs = parse_qsl(parsed.query, keep_blank_values=True, max_num_fields=128)
+        if any("%" in key for key, _ in pairs):
+            raise ValueError
+        safe_pairs = [
+            (key, value) for key, value in pairs
+            if key.lower().replace("-", "_") not in _SNAPSHOT_CREDENTIAL_KEYS
+        ]
+        return urlunsplit((parsed.scheme, parsed.netloc, parsed.path, urlencode(safe_pairs), ""))
+    except ValueError:
+        raise ValueError("snapshot URL is invalid or contains ambiguous credentials") from None
 
 
 def normalize_archived_ads(
