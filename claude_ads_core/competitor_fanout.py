@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import re
 from typing import Any, Iterable, Mapping
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 SCHEMA_VERSION = "1.0.0"
 
@@ -135,7 +136,8 @@ def plan_slices(
             seen_cntry.add(c_str)
             dedup_countries.append(c_str)
 
-    sources = list(sources)
+    # Repeated source selections must not duplicate single-writer tasks.
+    sources = list(dict.fromkeys(sources))
     if not dedup_competitors or not dedup_countries or not sources:
         raise ValueError("competitors, countries, and sources must each be non-empty")
 
@@ -151,6 +153,14 @@ def plan_slices(
     unknown = sorted(set(sources) - set(SOURCES))
     if unknown:
         raise ValueError(f"unknown source(s): {', '.join(unknown)}")
+
+    # Preserve existing task IDs for unambiguous inputs. Do not silently merge
+    # distinct advertiser names or rename prior task identities when slugs collide.
+    competitor_slugs = [slugify(name) for name in dedup_competitors]
+    if len(set(competitor_slugs)) != len(competitor_slugs):
+        raise ValueError(
+            "competitor names collide after normalization; supply distinct identifiers"
+        )
 
     tasks: list[dict[str, Any]] = []
     for source in sources:
@@ -260,27 +270,50 @@ POLITICAL_ONLY_FIELDS = (
 PROVENANCE = ("ad-library-api", "operator-supplied")
 
 
-# The archive appends the caller's credential to every ad_snapshot_url it
-# returns. Today Meta sends the bare parameter name with no value, but that is
-# Meta's choice on the day, not a contract — and these observations get embedded
-# in other repositories, where a populated one would be committed. Strip it at
-# the point the row becomes an observation, so no downstream caller has to
-# remember. Found because adsinfra's committed-record guard test rejected an
-# overlay that carried it through from here.
-_CREDENTIAL_PARAM_RE = re.compile(r"([?&])access_token(=[^&]*)?(&|$)")
+# Snapshot locators cross repository and report boundaries. Strip credential
+# transport at normalization rather than relying on each downstream caller.
+_SNAPSHOT_CREDENTIAL_KEYS = frozenset(
+    {
+        "access_token", "refresh_token", "api_key", "apikey", "authorization",
+        "token", "client_secret", "password",
+    }
+)
 
 
 def _strip_snapshot_credential(url: Any) -> Any:
-    """Return a snapshot URL with the credential parameter removed.
+    """Normalize an absolute HTTP(S) locator without credential transport.
 
-    Non-strings pass through untouched: a missing ad_snapshot_url is None, and
-    turning that into "" would make an absent snapshot look like an empty one.
+    Query parsing decodes parameter names before comparison, including repeated
+    and bare keys. Userinfo and fragments are not part of the public locator.
+    This is redaction, not fetch authorization: outbound requests still need the
+    existing DNS/redirect/SSRF boundary. A missing locator remains None.
     """
-    if not isinstance(url, str):
-        return url
-    return _CREDENTIAL_PARAM_RE.sub(
-        lambda match: match.group(1) if match.group(3) == "&" else "", url
-    )
+    if url is None:
+        return None
+    if not isinstance(url, str) or len(url) > 8192:
+        raise ValueError("snapshot URL must be bounded HTTP(S) text")
+    if any(ord(character) <= 32 or ord(character) == 127 for character in url) or "\\" in url:
+        raise ValueError("snapshot URL contains forbidden characters")
+    try:
+        parsed = urlsplit(url)
+        if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+            raise ValueError("invalid origin")
+        # Accessing port performs syntax/range validation without any network I/O.
+        parsed.port
+        public_query = [
+            (key, value)
+            for key, value in parse_qsl(
+                parsed.query, keep_blank_values=True, errors="strict", max_num_fields=128
+            )
+            if key.casefold().replace("-", "_") not in _SNAPSHOT_CREDENTIAL_KEYS
+        ]
+        return urlunsplit(
+            (parsed.scheme, parsed.netloc.rsplit("@", 1)[-1], parsed.path,
+             urlencode(public_query), "")
+        )
+    except (ValueError, UnicodeError):
+        # Never echo a raw locator or chain parser errors containing credentials.
+        raise ValueError("snapshot URL is malformed or exceeds query limits") from None
 
 
 def normalize_archived_ads(
