@@ -1201,6 +1201,8 @@ $access = @($acl.GetAccessRules($true, $true, [Security.Principal.SecurityIdenti
         type = [string]$_.AccessControlType
         rights = [string]$_.FileSystemRights
         inherited = [bool]$_.IsInherited
+        inheritance_flags = [string]$_.InheritanceFlags
+        propagation_flags = [string]$_.PropagationFlags
     }
 })
 [pscustomobject]@{
@@ -1365,6 +1367,11 @@ def _validate_windows_acl(path: Path, label: str) -> None:
             or not rights.strip()
         ):
             raise ReportRenderError(f"report {label} DACL is unverifiable")
+        # An inherit-only ACE applies to descendants, not to this object. The
+        # native query includes PropagationFlags so these placeholders cannot
+        # be mistaken for effective permissions on the home directory.
+        if "inheritonly" in str(entry.get("propagation_flags", "")).casefold():
+            continue
         sid_folded = sid.casefold()
         effective_sid_folded = (
             owner_folded if sid_folded == _WINDOWS_OWNER_RIGHTS_SID else sid_folded

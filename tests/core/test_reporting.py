@@ -551,6 +551,31 @@ def test_windows_actual_home_accepts_explicit_read_only_common_user_acl(
         reporting._validate_windows_acl(home, "home")
 
 
+def test_windows_home_ignores_only_non_effective_inherit_only_acl(
+    monkeypatch, tmp_path
+):
+    home = tmp_path / "home"
+    home.mkdir()
+    acl = _secure_windows_acl()
+    acl["access"].append(
+        {
+            "sid": "S-1-5-32-545",
+            "type": "Allow",
+            "rights": "FullControl",
+            "inherited": False,
+            "inheritance_flags": "ContainerInherit, ObjectInherit",
+            "propagation_flags": "InheritOnly",
+        }
+    )
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: home))
+    monkeypatch.setattr(reporting, "_windows_acl_snapshot", lambda _path: acl)
+    reporting._validate_windows_acl(home, "home")
+
+    acl["access"][-1]["propagation_flags"] = "None"
+    with pytest.raises(ReportRenderError, match="permissive"):
+        reporting._validate_windows_acl(home, "home")
+
+
 @pytest.mark.parametrize("sid", ["S-1-5-32-545", "S-1-5-11"])
 def test_windows_explicit_home_read_is_rejected_for_report_root(
     monkeypatch, tmp_path, sid
