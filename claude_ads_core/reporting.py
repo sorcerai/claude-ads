@@ -1126,6 +1126,13 @@ _WINDOWS_TRUSTED_SIDS = frozenset(
         "S-1-5-32-544",  # Built-in Administrators
     }
 )
+_WINDOWS_READ_ONLY_TRUSTED_SIDS = frozenset(
+    {
+        # Standard Windows user profiles commonly inherit read-only access for
+        # the local Users group.
+        "S-1-5-32-545",  # Built-in Users
+    }
+)
 _WINDOWS_OWNER_RIGHTS_SID = "s-1-3-4"
 _WINDOWS_MUTATING_RIGHTS = (
     "fullcontrol",
@@ -1360,7 +1367,10 @@ def _validate_windows_acl(path: Path, label: str) -> None:
             effective_sid_folded != current_folded
             and effective_sid_folded.upper() not in _WINDOWS_TRUSTED_SIDS
         ):
-            raise ReportRenderError(f"report {label} DACL is permissive")
+            if effective_sid_folded.upper() not in _WINDOWS_READ_ONLY_TRUSTED_SIDS:
+                raise ReportRenderError(f"report {label} DACL is permissive")
+            if any(token in rights_folded for token in _WINDOWS_MUTATING_RIGHTS):
+                raise ReportRenderError(f"report {label} DACL is permissive")
 
 
 def _protect_windows_path(path: Path) -> None:
