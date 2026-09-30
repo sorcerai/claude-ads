@@ -46,23 +46,6 @@ class RecordingBudget:
         return {"usage": None, "stop_reason": None, "retry_at": None}
 
 
-class ScriptedUsageBudget:
-    """Budget that requests a quota stop only for a high usage header."""
-
-    @contextmanager
-    def attempt(self):
-        yield
-
-    def observe(self, headers, *, status_code, error_code=None):
-        headers = dict(headers or {})
-        high = headers.get("X-App-Usage") == '{"call_count": 100}'
-        return {
-            "usage": {"call_count": 100} if high else None,
-            "stop_reason": "usage-threshold" if high else None,
-            "retry_at": 1234.0 if high else None,
-        }
-
-
 def _page(*ads, next_url: str | None = None):
     return {"data": list(ads), "paging": ({"next": next_url} if next_url else {})}
 
@@ -566,6 +549,7 @@ def test_final_page_quota_stop_defers_remaining_advertisers(tmp_path, monkeypatc
     assert result["status"] == "quota-deferred"
     persisted = json.loads(checkpoint.read_text(encoding="utf-8"))
     first = persisted["advertisers"][0]
+    assert first == result["advertisers"][0]
     assert first["status"] == "exhausted"
     assert first["next_cursor"] is None
     assert first["artifact"]["observation_count"] == 1
@@ -596,17 +580,19 @@ def test_final_page_quota_stop_defers_remaining_advertisers(tmp_path, monkeypatc
 
 
 @pytest.mark.parametrize(
-    ("usage_header", "expect_quota_stop"),
+    ("usage_header", "expected_reason"),
     [
-        (None, False),
-        ("not-json", False),
-        ('{"call_count": 100}', True),
+        (None, "usage-unavailable"),
+        ("not-json", "usage-invalid"),
+        ('{"call_count": 100}', "usage-threshold"),
     ],
     ids=["absent", "malformed", "high"],
 )
 def test_terminal_page_is_exhausted_under_any_usage_signal(
-    monkeypatch, usage_header, expect_quota_stop
+    tmp_path, monkeypatch, usage_header, expected_reason
 ):
+    from ad_library_quota import QuotaBudget
+
     headers = {"X-App-Usage": usage_header} if usage_header else {}
     monkeypatch.setattr(
         fetch_ad_library,
@@ -617,21 +603,18 @@ def test_terminal_page_is_exhausted_under_any_usage_signal(
         token="fixture",
         countries=["DE"],
         search_page_ids="page-1",
-        quota_budget=ScriptedUsageBudget(),
+        quota_budget=QuotaBudget(tmp_path / "quota.json", clock=lambda: 1000),
     )
     assert result["status"] == "exhausted"
     assert [ad["id"] for ad in result["ads"]] == ["ad-1"]
     assert result["next_cursor"] is None
-    if expect_quota_stop:
-        assert result["quota_stop_reason"] == "usage-threshold"
-        assert result["retry_at"] == 1234.0
-        assert "Usage throttle threshold reached" in result["warning"]
-    else:
-        assert result["quota_stop_reason"] is None
-        assert result["retry_at"] is None
+    assert result["quota_stop_reason"] == expected_reason
+    assert result["retry_at"] == 4600.0
 
 
-def test_cursor_page_with_quota_stop_stays_deferred_on_stored_cursor(monkeypatch):
+def test_cursor_page_with_quota_stop_stays_deferred_on_stored_cursor(tmp_path, monkeypatch):
+    from ad_library_quota import QuotaBudget
+
     next_url = f"{fetch_ad_library.ENDPOINT}?after=cursor-9"
     monkeypatch.setattr(
         fetch_ad_library,
@@ -645,12 +628,12 @@ def test_cursor_page_with_quota_stop_stays_deferred_on_stored_cursor(monkeypatch
         token="fixture",
         countries=["DE"],
         search_page_ids="page-1",
-        quota_budget=ScriptedUsageBudget(),
+        quota_budget=QuotaBudget(tmp_path / "quota.json", clock=lambda: 1000),
     )
     assert result["status"] == "quota-deferred"
     assert result["next_cursor"] == "cursor-9"
     assert result["quota_stop_reason"] == "usage-threshold"
-    assert result["retry_at"] == 1234.0
+    assert result["retry_at"] == 4600.0
     assert [ad["id"] for ad in result["ads"]] == ["ad-1"]
 
 
