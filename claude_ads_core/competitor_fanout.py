@@ -241,9 +241,9 @@ def plan_slices(
                         "status": "queued",
                     }
                 )
-    if len({task["task_id"] for task in tasks}) != len(tasks) or len({
-        task["output_contract"]["destination"] for task in tasks
-    }) != len(tasks):
+    if len({task["task_id"] for task in tasks}) != len(tasks) or len(
+        {task["output_contract"]["destination"] for task in tasks}
+    ) != len(tasks):
         raise ValueError("planned tasks collide on identity or output destination")
     return tasks
 
@@ -286,9 +286,23 @@ PROVENANCE = ("ad-library-api", "operator-supplied")
 # This is locator sanitation, not network authorization or an SSRF boundary.
 _SNAPSHOT_CREDENTIAL_KEYS = frozenset({"key", "code"})
 _SNAPSHOT_CREDENTIAL_SUFFIXES = (
-    "token", "secret", "secretkey", "signature", "sig", "credential",
-    "credentials", "password", "passwd", "apikey", "accesskey", "keyid",
-    "privatekey", "authorization", "auth", "assertion", "verifier",
+    "token",
+    "secret",
+    "secretkey",
+    "signature",
+    "sig",
+    "credential",
+    "credentials",
+    "password",
+    "passwd",
+    "apikey",
+    "accesskey",
+    "keyid",
+    "privatekey",
+    "authorization",
+    "auth",
+    "assertion",
+    "verifier",
 )
 _SNAPSHOT_PUBLIC_QUERY_KEYS = frozenset({"id", "tag", "blank"})
 _INVALID_PERCENT_ESCAPE = re.compile(r"%(?![0-9A-Fa-f]{2})")
@@ -297,10 +311,9 @@ _SNAPSHOT_PUBLIC_VALUE = re.compile(r"[A-Za-z0-9._~-]*")
 
 
 def _is_snapshot_credential(normalized_key: str) -> bool:
-    return (
-        normalized_key in _SNAPSHOT_CREDENTIAL_KEYS
-        or normalized_key.replace("_", "").endswith(_SNAPSHOT_CREDENTIAL_SUFFIXES)
-    )
+    return normalized_key in _SNAPSHOT_CREDENTIAL_KEYS or normalized_key.replace(
+        "_", ""
+    ).endswith(_SNAPSHOT_CREDENTIAL_SUFFIXES)
 
 
 def _strip_snapshot_credential(url: Any) -> str | None:
@@ -351,9 +364,13 @@ def _strip_snapshot_credential(url: Any) -> str | None:
             ):
                 raise ValueError
             safe_pairs.append((key, value))
-        return urlunsplit((parsed.scheme, parsed.netloc, parsed.path, urlencode(safe_pairs), ""))
+        return urlunsplit(
+            (parsed.scheme, parsed.netloc, parsed.path, urlencode(safe_pairs), "")
+        )
     except ValueError:
-        raise ValueError("snapshot URL is invalid or contains ambiguous credentials") from None
+        raise ValueError(
+            "snapshot URL is invalid or contains ambiguous credentials"
+        ) from None
 
 
 def normalize_archived_ads(
@@ -403,7 +420,11 @@ def normalize_archived_ads(
             )
             descriptions = list(
                 ad.get("ad_creative_link_descriptions")
-                or ([ad["description"]] if "description" in ad and ad["description"] else [])
+                or (
+                    [ad["description"]]
+                    if "description" in ad and ad["description"]
+                    else []
+                )
             )
             captions = list(
                 ad.get("ad_creative_link_captions")
@@ -425,7 +446,9 @@ def normalize_archived_ads(
             or (disclosed if disclosed else None)
         )
 
-        advertiser = ad.get("page_name") or ad.get("advertiser") or ad.get("advertiser_name")
+        advertiser = (
+            ad.get("page_name") or ad.get("advertiser") or ad.get("advertiser_name")
+        )
         advertiser_page_id = (
             ad.get("page_id") or ad.get("advertiser_page_id") or ad.get("advertiser_id")
         )
@@ -442,10 +465,15 @@ def normalize_archived_ads(
         )
         languages = list(ad.get("languages") or [])
         delivery_start = (
-            ad.get("ad_delivery_start_time") or ad.get("delivery_start") or ad.get("first_shown")
+            ad.get("ad_delivery_start_time")
+            or ad.get("delivery_start")
+            or ad.get("first_shown")
         )
         delivery_stop = (
-            ad.get("ad_delivery_stop_time") or ad.get("delivery_stop") or ad.get("last_shown") or None
+            ad.get("ad_delivery_stop_time")
+            or ad.get("delivery_stop")
+            or ad.get("last_shown")
+            or None
         )
 
         observation_id = f"{row_platform}-ad-library.{ad_id}"
@@ -474,7 +502,6 @@ def normalize_archived_ads(
 VISUAL_MEDIA_TYPES = ("single_image", "video", "carousel", "other")
 
 
-
 _RFC3339_RE = re.compile(
     r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$"
 )
@@ -483,6 +510,7 @@ _RFC3339_RE = re.compile(
 def _require_rfc3339(value: str) -> None:
     if not isinstance(value, str) or not _RFC3339_RE.match(value):
         raise ValueError(f"captured_at must be an RFC3339 timestamp, got {value!r}")
+
 
 def merge_operator_visuals(
     observations: Iterable[Mapping[str, Any]],
@@ -548,7 +576,9 @@ def _scripts(text: str) -> set[str]:
     }
 
 
-def mixed_script_advertisers(observations: Iterable[Mapping[str, Any]]) -> list[dict[str, Any]]:
+def mixed_script_advertisers(
+    observations: Iterable[Mapping[str, Any]],
+) -> list[dict[str, Any]]:
     """Flag advertiser names that blend Latin with a confusable alphabet.
 
     Substituting Cyrillic or Greek lookalikes into a brand name renders

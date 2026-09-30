@@ -563,7 +563,9 @@ def _load_checkpoint(path: Path) -> dict[str, Any]:
                 try:
                     canonical = _strip_snapshot_credential(snapshot)
                 except ValueError:
-                    raise ValueError("corrupt checkpoint: unsafe snapshot URL") from None
+                    raise ValueError(
+                        "corrupt checkpoint: unsafe snapshot URL"
+                    ) from None
                 if canonical != snapshot:
                     raise ValueError("corrupt checkpoint: noncanonical snapshot URL")
     return value
@@ -1078,7 +1080,9 @@ def _main():
         run_id=run_id,
         client_id=args.client_id if args.client_id is not None else "default-client",
         purpose=args.purpose if args.purpose is not None else "competitor_analysis",
-        privacy_class=args.privacy_class if args.privacy_class is not None else "public",
+        privacy_class=args.privacy_class
+        if args.privacy_class is not None
+        else "public",
     )
     payload = json.dumps(canonical_artifact, indent=2, ensure_ascii=False)
     if output_path:

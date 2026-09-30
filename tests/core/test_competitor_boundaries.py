@@ -53,7 +53,9 @@ def test_snapshot_query_removes_all_explicit_credentials(query):
     ["client_assertion", "clientAssertion", "code_verifier", "codeVerifier"],
 )
 def test_snapshot_drops_oauth_assertion_and_verifier_fields(credential_name):
-    result = _normalize(f"https://example.com/render_ad/?id=1&{credential_name}=fixture-secret")
+    result = _normalize(
+        f"https://example.com/render_ad/?id=1&{credential_name}=fixture-secret"
+    )
     assert result == "https://example.com/render_ad/?id=1"
 
 
@@ -80,7 +82,10 @@ def test_snapshot_rejects_nonallowlisted_or_structured_query_values(query):
 def test_snapshot_preserves_repeated_safe_fields_and_missing_locator():
     result = _normalize("https://example.com/render_ad/?id=1&tag=a&tag=b&blank=")
     assert parse_qsl(urlsplit(result).query, keep_blank_values=True) == [
-        ("id", "1"), ("tag", "a"), ("tag", "b"), ("blank", "")
+        ("id", "1"),
+        ("tag", "a"),
+        ("tag", "b"),
+        ("blank", ""),
     ]
     assert _normalize(None) is None
 

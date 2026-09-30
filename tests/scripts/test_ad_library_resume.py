@@ -473,9 +473,13 @@ def test_direct_resume_inherits_omitted_public_provenance_but_rejects_changes(
 ):
     checkpoint = tmp_path / "checkpoint.json"
     initial, _ = _call_queue(
-        monkeypatch, checkpoint, [Response(_page(_ad("ad-1")))],
-        run_id="run-custom", client_id="client-custom",
-        purpose="approved-research", privacy_class="public",
+        monkeypatch,
+        checkpoint,
+        [Response(_page(_ad("ad-1")))],
+        run_id="run-custom",
+        client_id="client-custom",
+        purpose="approved-research",
+        privacy_class="public",
     )
     assert initial["status"] == "exhausted"
 
@@ -552,18 +556,20 @@ def test_legacy_checkpoint_cannot_reemit_credential_on_exhausted_resume(
     tmp_path, monkeypatch, capsys, via_cli, snapshot_url
 ):
     checkpoint = tmp_path / "checkpoint.json"
-    _call_queue(
-        monkeypatch, checkpoint, [Response(_page(_ad("ad-1")))]
-    )
+    _call_queue(monkeypatch, checkpoint, [Response(_page(_ad("ad-1")))])
     state = json.loads(checkpoint.read_text(encoding="utf-8"))
     assert state["advertisers"][0]["status"] == "exhausted"
-    state["advertisers"][0]["artifact"]["observations"][0]["snapshot_url"] = snapshot_url
+    state["advertisers"][0]["artifact"]["observations"][0]["snapshot_url"] = (
+        snapshot_url
+    )
     checkpoint.write_text(json.dumps(state), encoding="utf-8")
     previous_bytes = checkpoint.read_bytes()
     monkeypatch.setattr(
         fetch_ad_library,
         "guarded_request",
-        lambda *args, **kwargs: pytest.fail("credential checkpoint dispatched a request"),
+        lambda *args, **kwargs: pytest.fail(
+            "credential checkpoint dispatched a request"
+        ),
     )
 
     if via_cli:
@@ -574,8 +580,16 @@ def test_legacy_checkpoint_cannot_reemit_credential_on_exhausted_resume(
             sys,
             "argv",
             [
-                "fetch_ad_library.py", "--countries", "DE", "--search-page-ids", "page-1",
-                "--checkpoint", str(checkpoint), "--resume", "--output", str(output),
+                "fetch_ad_library.py",
+                "--countries",
+                "DE",
+                "--search-page-ids",
+                "page-1",
+                "--checkpoint",
+                str(checkpoint),
+                "--resume",
+                "--output",
+                str(output),
             ],
         )
         with pytest.raises(SystemExit) as exit_status:
