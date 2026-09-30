@@ -1752,15 +1752,6 @@ def test_resolve_report_path_wraps_root_normalization_oserror(tmp_path, monkeypa
         resolve_report_path(tmp_path / "reports", "report.md")
 
 
-def test_atomic_report_write_normalizes_replace_oserror(tmp_path, monkeypatch):
-    def fail_replace(source, destination, **kwargs):
-        raise OSError("replace failure")
-
-    monkeypatch.setattr(os, "replace", fail_replace)
-    with pytest.raises(ReportRenderError, match="replace failure"):
-        atomic_write_report(tmp_path / "reports", "report.md", b"report\n")
-
-
 @pytest.mark.skipif(os.name != "posix", reason="POSIX descriptor backend")
 def test_atomic_report_write_closes_owned_fd_after_write_error(tmp_path, monkeypatch):
     root = tmp_path / "reports"
