@@ -55,23 +55,31 @@ def generate_setup_profile(
     if privacy_class not in {"public", "internal", "confidential", "restricted"}:
         raise SetupError(f"invalid privacy_class: {privacy_class}")
 
-
     if mutation_authority not in {"none", "draft-only", "approved-plan-required"}:
         raise SetupError(f"invalid mutation_authority: {mutation_authority}")
 
     if mutation_authority == "approved-plan-required" and not approver_ids:
-        raise SetupError("approver_ids is required when mutation_authority is approved-plan-required")
+        raise SetupError(
+            "approver_ids is required when mutation_authority is approved-plan-required"
+        )
 
     now = datetime.now(timezone.utc)
     now_iso = now.strftime("%Y-%m-%dT%H:%M:%SZ")
     delete_after_iso = None
     if retention_days is not None:
-        delete_after_iso = (now + timedelta(days=max(1, retention_days))).strftime("%Y-%m-%dT%H:%M:%SZ")
+        delete_after_iso = (now + timedelta(days=max(1, retention_days))).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        )
 
-    resolved_run_id = run_id or f"setup-{normalized_platform}-{now.strftime('%Y%m%d')}-{uuid.uuid4().hex[:8]}"
+    resolved_run_id = (
+        run_id
+        or f"setup-{normalized_platform}-{now.strftime('%Y%m%d')}-{uuid.uuid4().hex[:8]}"
+    )
     lifecycle_id = f"lifecycle-{resolved_run_id}"
 
-    purpose = f"Setup profile and data governance for {client_name} on {normalized_platform}"
+    purpose = (
+        f"Setup profile and data governance for {client_name} on {normalized_platform}"
+    )
     data_lifecycle = make_pending_lifecycle(
         lifecycle_id=lifecycle_id,
         classification=privacy_class,
@@ -138,7 +146,9 @@ def generate_setup_profile(
 
     if output_path is not None:
         target = Path(output_path)
-        payload_bytes = (json.dumps(profile, indent=2, sort_keys=True) + "\n").encode("utf-8")
+        payload_bytes = (json.dumps(profile, indent=2, sort_keys=True) + "\n").encode(
+            "utf-8"
+        )
         try:
             atomic_write_report(target.parent, target.name, payload_bytes)
         except ReportRenderError:
