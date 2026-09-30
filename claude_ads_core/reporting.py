@@ -1342,8 +1342,7 @@ def _validate_windows_acl(path: Path, label: str) -> None:
     # Hosted Windows runners can expose the profile's read-only Users or
     # Authenticated Users ACE as an explicit rule rather than an inherited one.
     # Keep that compatibility exception scoped to the actual home directory;
-    # report roots, parents, and outputs still require an inherited exception
-    # and therefore remain private before any write.
+    # report roots, parents, and outputs remain private before any write.
     try:
         is_actual_home = (
             label == "home" and path.resolve(strict=False) == Path.home().resolve()

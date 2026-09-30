@@ -533,6 +533,41 @@ def test_windows_home_accepts_only_inherited_read_only_common_user_acl(
 
 
 @pytest.mark.parametrize("sid", ["S-1-5-32-545", "S-1-5-11"])
+def test_windows_actual_home_accepts_explicit_read_only_common_user_acl(
+    monkeypatch, tmp_path, sid
+):
+    home = tmp_path / "home"
+    home.mkdir()
+    acl = _secure_windows_acl()
+    acl["access"].append(
+        {"sid": sid, "type": "Allow", "rights": "ReadAndExecute", "inherited": False}
+    )
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: home))
+    monkeypatch.setattr(reporting, "_windows_acl_snapshot", lambda _path: acl)
+    reporting._validate_windows_acl(home, "home")
+
+    acl["access"][-1]["rights"] = "ReadAndExecute, Write"
+    with pytest.raises(ReportRenderError, match="permissive"):
+        reporting._validate_windows_acl(home, "home")
+
+
+@pytest.mark.parametrize("sid", ["S-1-5-32-545", "S-1-5-11"])
+def test_windows_explicit_home_read_is_rejected_for_report_root(
+    monkeypatch, tmp_path, sid
+):
+    home = tmp_path / "home"
+    home.mkdir()
+    acl = _secure_windows_acl()
+    acl["access"].append(
+        {"sid": sid, "type": "Allow", "rights": "ReadAndExecute", "inherited": False}
+    )
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: home))
+    monkeypatch.setattr(reporting, "_windows_acl_snapshot", lambda _path: acl)
+    with pytest.raises(ReportRenderError, match="permissive"):
+        reporting._validate_windows_acl(home, "root")
+
+
+@pytest.mark.parametrize("sid", ["S-1-5-32-545", "S-1-5-11"])
 def test_windows_writer_refuses_common_user_read_on_output_root_before_mutation(
     monkeypatch, tmp_path, sid
 ):
