@@ -1170,6 +1170,8 @@ _WINDOWS_WRITE_MASK = 0x00040116
 _WINDOWS_DELETE_MASK = 0x00010040
 _WINDOWS_TRAVERSE_MASK = 0x00000020
 _WINDOWS_SYNCHRONIZE_MASK = 0x00100000
+_WINDOWS_TRAVERSE_ONLY_MASK = _WINDOWS_TRAVERSE_MASK | _WINDOWS_SYNCHRONIZE_MASK
+_WINDOWS_DATA_READ_MASK = _WINDOWS_READ_MASK & ~_WINDOWS_TRAVERSE_ONLY_MASK
 _WINDOWS_CONTROL_MASK = 0x000C0000
 
 _WINDOWS_ACL_PATH_ENV = "CLAUDE_ADS_ACL_PATH"
@@ -1381,7 +1383,7 @@ def _windows_home_acl_diagnostic(
         rights_detail = "read=unknown; write=unknown; delete=unknown; traverse=unknown; synchronize=unknown; control=unknown"
     else:
         mask_text = f"0x{mask:08X}"
-        has_read = bool(mask & _WINDOWS_READ_MASK)
+        has_read = bool(mask & _WINDOWS_DATA_READ_MASK)
         has_write = bool(mask & _WINDOWS_WRITE_MASK)
         has_delete = bool(mask & _WINDOWS_DELETE_MASK)
         has_traverse = bool(mask & _WINDOWS_TRAVERSE_MASK)
@@ -1458,6 +1460,11 @@ def _windows_rights_is_read_only(value: Any) -> bool:
     return bool(mask & _WINDOWS_READ_MASK) and not bool(mask & ~_WINDOWS_READ_MASK)
 
 
+def _windows_rights_is_traverse_only(value: Any) -> bool:
+    mask = _windows_rights_mask(value)
+    return bool(mask) and not bool(mask & ~_WINDOWS_TRAVERSE_ONLY_MASK)
+
+
 def _validate_windows_acl(path: Path, label: str) -> None:
     snapshot = _windows_acl_snapshot(path)
     owner_sid = snapshot.get("owner_sid")
@@ -1531,7 +1538,10 @@ def _validate_windows_acl(path: Path, label: str) -> None:
             effective_sid_folded != current_folded
             and effective_sid_folded.upper() not in _WINDOWS_TRUSTED_SIDS
         ):
-            if (
+            actual_home_traverse_only = (
+                is_actual_home and _windows_rights_is_traverse_only(rights)
+            )
+            if not actual_home_traverse_only and (
                 label != "home"
                 or (entry.get("inherited") is not True and not is_actual_home)
                 or effective_sid_folded.upper() not in _WINDOWS_HOME_READ_ONLY_SIDS

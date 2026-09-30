@@ -605,7 +605,7 @@ def test_windows_actual_home_rejection_reports_sanitized_ace_classification(
     assert "ace_category=account21" in message
     assert "access_kind=allow" in message
     assert "rights_kind=mixed" in message
-    assert "rights_mask=0x001200AB" in message
+    assert "rights_mask=0x001201BF" in message
     assert (
         "rights=read=yes; write=yes; delete=no; traverse=yes; synchronize=yes; control=no"
         in message
@@ -615,6 +615,88 @@ def test_windows_actual_home_rejection_reports_sanitized_ace_classification(
     assert "propagation=none" in message
     assert raw_sid not in message
     assert str(home) not in message
+
+
+@pytest.mark.parametrize("rights", ["Traverse", "Synchronize", "Traverse, Synchronize"])
+def test_windows_actual_home_accepts_traverse_only_acl_for_any_sid(
+    monkeypatch, tmp_path, rights
+):
+    home = tmp_path / "home"
+    home.mkdir()
+    acl = _secure_windows_acl()
+    acl["access"].append(
+        {
+            "sid": "S-1-5-21-untrusted",
+            "type": "Allow",
+            "rights": rights,
+            "inherited": False,
+        }
+    )
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: home))
+    monkeypatch.setattr(reporting, "_windows_acl_snapshot", lambda _path: acl)
+
+    reporting._validate_windows_acl(home, "home")
+
+
+def test_windows_actual_home_traverse_only_acl_is_strict_on_report_root(
+    monkeypatch, tmp_path
+):
+    home = tmp_path / "home"
+    home.mkdir()
+    acl = _secure_windows_acl()
+    acl["access"].append(
+        {
+            "sid": "S-1-5-21-untrusted",
+            "type": "Allow",
+            "rights": "Traverse, Synchronize",
+            "inherited": False,
+        }
+    )
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: home))
+    monkeypatch.setattr(reporting, "_windows_acl_snapshot", lambda _path: acl)
+
+    with pytest.raises(ReportRenderError, match="permissive"):
+        reporting._validate_windows_acl(home, "root")
+
+
+def test_windows_actual_home_traverse_only_diagnostic_has_no_data_read():
+    message = reporting._windows_home_acl_diagnostic(
+        {
+            "sid": "S-1-5-21-untrusted",
+            "type": "Allow",
+            "rights": "Traverse, Synchronize",
+            "inherited": False,
+        },
+        "S-1-5-21-current",
+        "S-1-5-21-current",
+    )
+    assert (
+        "rights=read=no; write=no; delete=no; traverse=yes; synchronize=yes" in message
+    )
+
+
+@pytest.mark.parametrize(
+    "rights", ["ReadData", "WriteAttributes", "Traverse, ReadData"]
+)
+def test_windows_actual_home_rejects_non_traverse_only_unknown_acl(
+    monkeypatch, tmp_path, rights
+):
+    home = tmp_path / "home"
+    home.mkdir()
+    acl = _secure_windows_acl()
+    acl["access"].append(
+        {
+            "sid": "S-1-5-21-untrusted",
+            "type": "Allow",
+            "rights": rights,
+            "inherited": False,
+        }
+    )
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: home))
+    monkeypatch.setattr(reporting, "_windows_acl_snapshot", lambda _path: acl)
+
+    with pytest.raises(ReportRenderError, match="permissive"):
+        reporting._validate_windows_acl(home, "home")
 
 
 @pytest.mark.parametrize(
