@@ -795,9 +795,7 @@ def test_windows_acl_rejects_owner_rights_deny_for_current_owner(monkeypatch, tm
         reporting._validate_windows_acl(tmp_path / "reports", "root")
 
 
-def test_windows_acl_rejects_owner_rights_deny_write_attributes(
-    monkeypatch, tmp_path
-):
+def test_windows_acl_rejects_owner_rights_deny_write_attributes(monkeypatch, tmp_path):
     acl = _secure_windows_acl()
     acl["access"].append(
         {"sid": "S-1-3-4", "type": "Deny", "rights": "WriteAttributes"}
