@@ -6,7 +6,7 @@ import hashlib
 import json
 import os
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from os import PathLike
 from pathlib import Path
 from typing import Any, Mapping
@@ -276,12 +276,11 @@ def run_audit(
     scoring = score_result.to_dict()
 
     lifecycle_id = f"lifecycle-{resolved_run_id}"
-    delete_after_iso = (now + timedelta(days=30)).strftime("%Y-%m-%dT%H:%M:%SZ")
     purpose = f"Audit execution and report generation for {normalized_platform}"
     data_lifecycle = make_pending_lifecycle(
         lifecycle_id=lifecycle_id,
         classification=privacy_class,
-        delete_after=delete_after_iso,
+        delete_after=None,
         purpose=purpose,
         owner=owner,
         authorized_roles=["operator"],

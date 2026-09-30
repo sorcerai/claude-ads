@@ -45,6 +45,16 @@ def test_setup_profile_generation_and_contract_validation():
     }
     assert lifecycle["deletion"]["status"] == "pending"
     assert lifecycle["deletion"]["scheduler_receipt_locator"] is None
+    assert lifecycle["retention"]["mode"] == "unassigned"
+    assert lifecycle["retention"]["delete_after"] is None
+    validate_workflow_contract("setup-profile", profile)
+
+
+def test_setup_profile_honors_explicit_retention_days():
+    profile = generate_setup_profile(retention_days=7)
+    retention = profile["data_lifecycle"]["retention"]
+    assert retention["mode"] == "operator-defined"
+    assert retention["delete_after"] is not None
     validate_workflow_contract("setup-profile", profile)
 
 
@@ -195,6 +205,8 @@ def test_run_audit_google_native_export_end_to_end(tmp_path):
     assert manifest["data_lifecycle"]["schema_version"] == "2.0.0"
     assert manifest["data_lifecycle"]["encryption"]["at_rest"] == "unknown"
     assert manifest["data_lifecycle"]["deletion"]["status"] == "pending"
+    assert manifest["data_lifecycle"]["retention"]["mode"] == "unassigned"
+    assert manifest["data_lifecycle"]["retention"]["delete_after"] is None
 
     assert any(
         ev.get("source_id", "").startswith("sha256:")

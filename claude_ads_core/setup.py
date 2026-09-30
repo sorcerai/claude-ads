@@ -37,7 +37,7 @@ def generate_setup_profile(
     approver_ids: Sequence[str] = (),
     owner: str = "operator",
     reporting_channel: str = "security@operator",
-    retention_days: int = 30,
+    retention_days: int | None = None,
     run_id: str | None = None,
     output_path: str | PathLike[str] | None = None,
 ) -> dict[str, Any]:
@@ -64,7 +64,9 @@ def generate_setup_profile(
 
     now = datetime.now(timezone.utc)
     now_iso = now.strftime("%Y-%m-%dT%H:%M:%SZ")
-    delete_after_iso = (now + timedelta(days=max(1, retention_days))).strftime("%Y-%m-%dT%H:%M:%SZ")
+    delete_after_iso = None
+    if retention_days is not None:
+        delete_after_iso = (now + timedelta(days=max(1, retention_days))).strftime("%Y-%m-%dT%H:%M:%SZ")
 
     resolved_run_id = run_id or f"setup-{normalized_platform}-{now.strftime('%Y%m%d')}-{uuid.uuid4().hex[:8]}"
     lifecycle_id = f"lifecycle-{resolved_run_id}"
