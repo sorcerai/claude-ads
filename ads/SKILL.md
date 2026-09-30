@@ -375,6 +375,8 @@ Before delivery:
   or deletion verification from an output path; refuse non-public persistence
   without independently authenticated encryption and scheduler proof. Raw
   prompts and resolved local paths must not enter shipped JSON.
+- Public-classified setup and report output still requires a validated private
+  root; a public data label never relaxes filesystem or Windows ACL checks.
 - For reports, run structural and visual checks before delivery.
 - For writes, verify remote state and preserve the rollback record.
 - Provide prioritized actions with owner, timing, confidence, evidence, and success

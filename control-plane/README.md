@@ -33,6 +33,10 @@ system text, account exports, credentials, or raw private corpus.
   report encryption as unknown, retention as unassigned when no deadline is
   set, and deletion as pending until verified. Non-public persistence is
   refused without independently authenticated encryption and scheduler proof.
+  Public-classified setup and audit output still requires a validated private
+  directory (POSIX mode 0700 or a restrictive Windows ACL). A permissive
+  preexisting file may be replaced atomically with a private one inside that
+  directory; permissive parents and links fail closed.
 - `manifests/control-registry.json` and `manifests/scoring-profiles.json`: the
   exhaustive typed audit catalog and fail-closed platform health state. A named
   check is not scoreable unless its versioned profile is enabled.

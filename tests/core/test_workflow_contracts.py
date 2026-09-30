@@ -282,6 +282,7 @@ def test_v2_lifecycle_rejects_unassigned_deadline_and_unknown_version(workflow_f
     lifecycle = copy.deepcopy(workflow_fixtures["data-lifecycle"])
     lifecycle["schema_version"] = "2.0.0"
     lifecycle["retention"]["mode"] = "unassigned"
+    lifecycle["retention"]["delete_after"] = None
     lifecycle["encryption"] = {"at_rest": "unknown", "in_transit": "unknown", "evidence_refs": []}
     lifecycle["deletion"]["status"] = "pending"
     lifecycle["deletion"]["scheduler_receipt_locator"] = None

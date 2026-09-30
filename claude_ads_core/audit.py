@@ -339,12 +339,7 @@ def run_audit(
     bundle_destination = f"{resolved_run_id}/bundle.json"
     bundle_bytes = (json.dumps(bundle, indent=2, sort_keys=True) + "\n").encode("utf-8")
     try:
-        bundle_path = atomic_write_report(
-            root,
-            bundle_destination,
-            bundle_bytes,
-            require_private_root=privacy_class != "public",
-        )
+        bundle_path = atomic_write_report(root, bundle_destination, bundle_bytes)
     except ReportRenderError as exc:
         raise AuditError(f"bundle persistence failed: {exc}") from exc
 
@@ -357,7 +352,6 @@ def run_audit(
             root,
             rel_destination,
             registry=registry,
-            require_private_root=privacy_class != "public",
         )
     except ReportRenderError as exc:
         raise AuditError(f"report rendering failed: {exc}") from exc

@@ -72,7 +72,6 @@ def test_nonpublic_setup_rejects_persistence_without_touching_destination(tmp_pa
 
 
 def test_public_setup_atomically_replaces_permissive_file(tmp_path):
-    tmp_path.chmod(0o755)
     existing = tmp_path / "setup.json"
     existing.write_bytes(b"prior-private-content")
     if os.name == "posix":
@@ -82,6 +81,16 @@ def test_public_setup_atomically_replaces_permissive_file(tmp_path):
     validate_workflow_contract("setup-profile", profile)
     if os.name == "posix":
         assert existing.stat().st_mode & 0o077 == 0
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX directory privacy boundary")
+def test_public_setup_rejects_permissive_parent_without_replacing_file(tmp_path):
+    tmp_path.chmod(0o755)
+    existing = tmp_path / "setup.json"
+    existing.write_bytes(b"prior-private-content")
+    with pytest.raises(SetupError, match="persistence"):
+        generate_setup_profile(privacy_class="public", output_path=existing)
+    assert existing.read_bytes() == b"prior-private-content"
 
 
 def test_setup_fsync_failure_preserves_previous_bytes(tmp_path, monkeypatch):
@@ -239,6 +248,23 @@ def test_public_audit_does_not_chmod_or_write_through_symlink_root(tmp_path):
         )
     assert outside.stat().st_mode & 0o777 == 0o755
     assert not (outside / "audit-symlink-boundary").exists()
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX directory privacy boundary")
+def test_public_audit_rejects_permissive_root_without_creating_run(tmp_path):
+    root = tmp_path / "runs"
+    root.mkdir()
+    root.chmod(0o755)
+    with pytest.raises(AuditError, match="bundle persistence"):
+        run_audit(
+            platform="google",
+            input_path=GOOGLE_FIXTURE,
+            output_dir=root,
+            run_id="audit-permissive-root",
+            privacy_class="public",
+            registry_root=REPO_ROOT,
+        )
+    assert not (root / "audit-permissive-root").exists()
 
 
 def test_nonpublic_audit_refuses_input_and_output_side_effects(tmp_path, monkeypatch):
