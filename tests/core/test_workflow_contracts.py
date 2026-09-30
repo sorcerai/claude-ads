@@ -507,6 +507,60 @@ def test_v1_lifecycle_still_rejects_unknown_encryption(workflow_fixtures):
         validate_contract("data-lifecycle", lifecycle)
 
 
+@pytest.fixture()
+def v2_setup_profile(workflow_fixtures):
+    profile = copy.deepcopy(workflow_fixtures["setup-profile"])
+    profile["schema_version"] = "2.0.0"
+    profile["data_lifecycle"] = make_pending_lifecycle(
+        lifecycle_id="lifecycle-setup",
+        classification=profile["privacy_class"],
+        delete_after=None,
+        purpose="In-memory setup",
+        owner="operator",
+        authorized_roles=["operator"],
+        reporting_channel="security@operator",
+    )
+    return profile
+
+
+def test_setup_profile_versions_require_matching_lifecycle(workflow_fixtures, v2_setup_profile):
+    v1_setup = workflow_fixtures["setup-profile"]
+    validate_contract("setup-profile", v1_setup)
+    validate_contract("setup-profile", v2_setup_profile)
+    for outer, nested in (
+        (v1_setup, v2_setup_profile["data_lifecycle"]),
+        (v2_setup_profile, v1_setup["data_lifecycle"]),
+    ):
+        with pytest.raises(ContractError):
+            validate_contract("setup-profile", {**outer, "data_lifecycle": nested})
+    with pytest.raises(ContractError):
+        validate_contract("setup-profile", {**v2_setup_profile, "schema_version": "3.0.0"})
+    brand = copy.deepcopy(workflow_fixtures["brand-profile"])
+    brand["data_lifecycle"] = v2_setup_profile["data_lifecycle"]
+    with pytest.raises(ContractError):
+        validate_contract("brand-profile", brand)
+
+
+def test_v2_setup_profile_portable_schema_pairs_v2_lifecycle(
+    repo_root, workflow_fixtures, v2_setup_profile
+):
+    jsonschema = pytest.importorskip("jsonschema")
+    referencing = pytest.importorskip("referencing")
+    schemas = repo_root / "claude_ads_core" / "schemas"
+    setup_schema = json.loads((schemas / "v2" / "setup-profile.schema.json").read_text())
+    common_schema = json.loads((schemas / "v1" / "workflow-common.schema.json").read_text())
+    lifecycle_schema = json.loads((schemas / "v2" / "data-lifecycle.schema.json").read_text())
+    registry = referencing.Registry()
+    for schema in (common_schema, lifecycle_schema):
+        registry = registry.with_resource(schema["$id"], referencing.Resource.from_contents(schema))
+    validator = jsonschema.Draft202012Validator(setup_schema, registry=registry)
+    validator.validate(v2_setup_profile)
+    with pytest.raises(jsonschema.ValidationError):
+        validator.validate(
+            {**v2_setup_profile, "data_lifecycle": workflow_fixtures["setup-profile"]["data_lifecycle"]}
+        )
+
+
 def test_store_is_append_only_and_result_reruns_require_supersedes(tmp_path, workflow_fixtures):
     store = OrchestrationStore(tmp_path / "orchestration")
     run = workflow_fixtures["orchestration-run"]

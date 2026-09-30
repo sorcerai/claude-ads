@@ -160,9 +160,14 @@ def _id(value: Any, path: str) -> str:
     return _string(value, path, pattern=r"[A-Za-z0-9][A-Za-z0-9._-]*")
 
 
-def _base(payload: Mapping[str, Any], artifact_type: str) -> None:
-    if payload["schema_version"] != SCHEMA_VERSION:
-        raise WorkflowContractError(f"$.schema_version must equal {SCHEMA_VERSION!r}")
+def _base(
+    payload: Mapping[str, Any],
+    artifact_type: str,
+    accepted_versions: Sequence[str] = (SCHEMA_VERSION,),
+) -> None:
+    if payload["schema_version"] not in accepted_versions:
+        expected = " or ".join(repr(v) for v in accepted_versions)
+        raise WorkflowContractError(f"$.schema_version must equal {expected}")
     if payload["artifact_type"] != artifact_type:
         raise WorkflowContractError(f"$.artifact_type must equal {artifact_type!r}")
     _id(payload["run_id"], "$.run_id")
@@ -334,8 +339,14 @@ def _validate_setup(payload: Mapping[str, Any]) -> None:
         "mutation_authority", "approver_ids", "assumptions", "data_lifecycle",
     )
     doc = _exact(payload, "$", required)
-    _base(doc, "setup-profile")
-    _validate_data_lifecycle_at(doc["data_lifecycle"], "$.data_lifecycle")
+    _base(doc, "setup-profile", accepted_versions=(SCHEMA_VERSION, LIFECYCLE_V2_SCHEMA_VERSION))
+    lifecycle = _object(doc["data_lifecycle"], "$.data_lifecycle")
+    if lifecycle.get("schema_version") != doc["schema_version"]:
+        raise WorkflowContractError("$.data_lifecycle.schema_version must match $.schema_version")
+    if doc["schema_version"] == SCHEMA_VERSION:
+        _validate_data_lifecycle_at(lifecycle, "$.data_lifecycle")
+    else:
+        _validate_data_lifecycle_v2_at(lifecycle, "$.data_lifecycle")
     business = _exact(doc["business"], "$.business", ("name", "business_model", "geographies", "regulated_categories"))
     _string(business["name"], "$.business.name")
     _string(business["business_model"], "$.business.business_model")
