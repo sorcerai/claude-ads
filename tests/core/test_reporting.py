@@ -484,6 +484,40 @@ def _secure_windows_acl() -> dict:
     }
 
 
+@pytest.mark.parametrize(
+    ("operation", "function"),
+    [
+        ("query", reporting._windows_acl_snapshot),
+        ("protection", reporting._protect_windows_path),
+    ],
+)
+@pytest.mark.parametrize("failure", ["stderr", "oserror"])
+def test_windows_acl_subprocess_failure_redacts_private_details(
+    monkeypatch, tmp_path, operation, function, failure
+):
+    private_path = tmp_path / "sensitive-client-name"
+    private_sid = "S-1-5-21-private-client-sid"
+    detail = f"{private_path} {private_sid}"
+    if failure == "stderr":
+        monkeypatch.setattr(
+            reporting,
+            "_run_windows_acl_script",
+            lambda *_: reporting.subprocess.CompletedProcess(
+                args=[], returncode=1, stdout="", stderr=detail
+            ),
+        )
+    else:
+        def fail(*_args):
+            raise OSError(detail)
+
+        monkeypatch.setattr(reporting, "_run_windows_acl_script", fail)
+
+    with pytest.raises(ReportRenderError) as error:
+        function(private_path)
+
+    assert str(error.value) == f"report Windows ACL {operation} failed"
+
+
 @pytest.mark.parametrize("rights", ["FullControl", "Read", "ReadAndExecute"])
 def test_windows_acl_rejects_permissive_entries_before_write(monkeypatch, tmp_path, rights):
     acl = _secure_windows_acl()
@@ -511,25 +545,42 @@ def test_windows_acl_rejects_common_user_read_on_private_paths(
 
 
 @pytest.mark.parametrize("sid", ["S-1-5-32-545", "S-1-5-11"])
-def test_windows_home_accepts_only_inherited_read_only_common_user_acl(
+def test_windows_actual_home_accepts_inherited_read_only_common_user_acl(
     monkeypatch, tmp_path, sid
 ):
+    home = tmp_path / "home"
+    home.mkdir()
     acl = _secure_windows_acl()
     entry = {
         "sid": sid, "type": "Allow", "rights": "ReadAndExecute",
         "inherited": True,
     }
     acl["access"].append(entry)
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: home))
     monkeypatch.setattr(reporting, "_windows_acl_snapshot", lambda _path: acl)
-    reporting._validate_windows_acl(tmp_path / "home", "home")
+    reporting._validate_windows_acl(home, "home")
 
-    entry["inherited"] = False
-    with pytest.raises(ReportRenderError, match="permissive"):
-        reporting._validate_windows_acl(tmp_path / "home", "home")
-    entry["inherited"] = True
     entry["rights"] = "ReadAndExecute, Write"
     with pytest.raises(ReportRenderError, match="permissive"):
-        reporting._validate_windows_acl(tmp_path / "home", "home")
+        reporting._validate_windows_acl(home, "home")
+
+
+def test_windows_inherited_common_user_read_cannot_spoof_home_label(
+    monkeypatch, tmp_path
+):
+    home = tmp_path / "actual-home"
+    home.mkdir()
+    fake_home = tmp_path / "fake-home"
+    fake_home.mkdir()
+    acl = _secure_windows_acl()
+    acl["access"].append(
+        {"sid": "S-1-5-11", "type": "Allow", "rights": "Read", "inherited": True}
+    )
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: home))
+    monkeypatch.setattr(reporting, "_windows_acl_snapshot", lambda _path: acl)
+
+    with pytest.raises(ReportRenderError, match="permissive"):
+        reporting._validate_windows_acl(fake_home, "home")
 
 
 @pytest.mark.parametrize("sid", ["S-1-5-32-545", "S-1-5-11"])
@@ -969,6 +1020,90 @@ def test_windows_atomic_write_applies_current_user_acl_on_non_windows(
     assert protected[2] == output
 
 
+def test_windows_replacement_failure_redacts_error_and_preserves_old_bytes(
+    monkeypatch, tmp_path
+):
+    home = tmp_path / "home"
+    root = home / "reports"
+    root.mkdir(parents=True)
+    existing = root / "report.md"
+    existing.write_bytes(b"old private content")
+    private_detail = f"{existing} S-1-5-21-private"
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: home))
+    monkeypatch.setattr(reporting, "_windows_reparse", lambda _info: False)
+    monkeypatch.setattr(
+        reporting, "_windows_acl_snapshot", lambda _path: _secure_windows_acl()
+    )
+    monkeypatch.setattr(reporting, "_protect_windows_path", lambda _path: None)
+
+    def fail_replace(*_args):
+        raise OSError(private_detail)
+
+    monkeypatch.setattr(reporting.os, "replace", fail_replace)
+    with pytest.raises(ReportRenderError) as error:
+        reporting._atomic_write_windows(root, "report.md", b"new private content")
+
+    assert "report output replacement failed" in str(error.value)
+    assert private_detail not in str(error.value)
+    assert existing.read_bytes() == b"old private content"
+    assert not list(root.glob(".report.md.*"))
+
+
+def test_windows_postreplacement_acl_failure_reports_committed_output(
+    monkeypatch, tmp_path
+):
+    home = tmp_path / "home"
+    root = home / "reports"
+    root.mkdir(parents=True)
+    existing = root / "report.md"
+    existing.write_bytes(b"old")
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: home))
+    monkeypatch.setattr(reporting, "_windows_reparse", lambda _info: False)
+    monkeypatch.setattr(
+        reporting, "_windows_acl_snapshot", lambda _path: _secure_windows_acl()
+    )
+
+    def protect(path):
+        if path == existing:
+            raise ReportRenderError(f"ACL refused {existing}")
+
+    monkeypatch.setattr(reporting, "_protect_windows_path", protect)
+    with pytest.raises(ReportRenderError) as error:
+        reporting._atomic_write_windows(root, "report.md", b"new")
+
+    assert "replacement occurred" in str(error.value)
+    assert str(existing) not in str(error.value)
+    assert existing.read_bytes() == b"new"
+    assert not list(root.glob(".report.md.*"))
+
+
+def test_windows_noop_replace_cleans_stage_before_output_acl_check(
+    monkeypatch, tmp_path
+):
+    home = tmp_path / "home"
+    root = home / "reports"
+    root.mkdir(parents=True)
+    existing = root / "report.md"
+    existing.write_bytes(b"old")
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: home))
+    monkeypatch.setattr(reporting, "_windows_reparse", lambda _info: False)
+    monkeypatch.setattr(
+        reporting, "_windows_acl_snapshot", lambda _path: _secure_windows_acl()
+    )
+
+    def protect(path):
+        if path == existing:
+            raise AssertionError("no-op must not protect the existing output")
+
+    monkeypatch.setattr(reporting, "_protect_windows_path", protect)
+    monkeypatch.setattr(reporting.os, "replace", lambda *_args: None)
+    with pytest.raises(ReportRenderError, match="no-op"):
+        reporting._atomic_write_windows(root, "report.md", b"new")
+
+    assert existing.read_bytes() == b"old"
+    assert not list(root.glob(".report.md.*"))
+
+
 @pytest.mark.skipif(os.name != "nt", reason="native Windows coverage")
 @pytest.mark.parametrize("target", ["root", "parent", "leaf"])
 def test_windows_reparse_proxy_rejects_root_parent_and_leaf(
@@ -1001,20 +1136,23 @@ def test_windows_reparse_proxy_rejects_root_parent_and_leaf(
 
 
 @pytest.mark.skipif(os.name != "nt", reason="native Windows coverage")
-def test_windows_write_error_normalizes_and_cleans_temporary_file(
+def test_windows_write_error_redacts_private_detail_and_cleans_temporary_file(
     tmp_path, monkeypatch
 ):
     home = tmp_path / "home"
     home.mkdir()
     root = home / "reports"
+    private_detail = f"{root / 'client-secret'} S-1-5-21-private"
     monkeypatch.setattr(Path, "home", classmethod(lambda cls: home))
     monkeypatch.setattr(
         os,
         "write",
-        lambda fd, data: (_ for _ in ()).throw(OSError("windows write failure")),
+        lambda fd, data: (_ for _ in ()).throw(OSError(private_detail)),
     )
-    with pytest.raises(ReportRenderError, match="windows write failure"):
+    with pytest.raises(ReportRenderError) as error:
         atomic_write_report(root, "report.md", b"report\n")
+    assert "report output operation failed" in str(error.value)
+    assert private_detail not in str(error.value)
     assert not list(root.glob(".report.md.*"))
 
 
@@ -1829,7 +1967,6 @@ def test_cli_render_rejects_forged_score_before_writing(tmp_path, capsys):
     )
     result = json.loads(capsys.readouterr().err)
     assert result["status"] == "invalid"
-    assert "report scoring does not match profile" in result["error"]
     assert not list(root.rglob("*"))
 
 
@@ -1853,4 +1990,5 @@ def test_cli_render_returns_machine_readable_error_for_unsafe_output(tmp_path, c
     )
     result = json.loads(capsys.readouterr().err)
     assert result["status"] == "invalid"
-    assert "relative path" in result["error"]
+    assert not (tmp_path / "outside.md").exists()
+    assert not (tmp_path / "runs").exists()

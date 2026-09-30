@@ -5,6 +5,8 @@ import os
 from pathlib import Path
 
 import pytest
+import claude_ads_core.audit as audit
+from claude_ads_core.reporting import ReportRenderError
 
 from claude_ads_core.audit import AuditError, run_audit
 from claude_ads_core.cli import main
@@ -290,6 +292,53 @@ def test_run_audit_rejects_missing_file(tmp_path):
             input_path=tmp_path / "missing.csv",
             privacy_class="public",
         )
+
+@pytest.mark.parametrize("failure", ["missing", "unreadable", "output", "registry"])
+def test_cli_audit_failure_does_not_echo_private_input_or_writer_detail(
+    capsys, monkeypatch, tmp_path, failure
+):
+    private_detail = "client-secret S-1-5-21-private sk_live_private"
+    input_path = (
+        tmp_path / private_detail / "missing.csv"
+        if failure == "missing"
+        else GOOGLE_FIXTURE
+    )
+    if failure == "unreadable":
+        original_read = Path.read_bytes
+
+        def fail_read(path):
+            if path == GOOGLE_FIXTURE:
+                raise OSError(private_detail)
+            return original_read(path)
+
+        monkeypatch.setattr(Path, "read_bytes", fail_read)
+    elif failure == "output":
+        def fail_writer(*_args):
+            raise ReportRenderError(private_detail)
+
+        monkeypatch.setattr(audit, "atomic_write_report", fail_writer)
+
+    result = main(
+        [
+            "audit", "--input", str(input_path),
+            "--privacy-class", "public",
+            "--root", str(tmp_path / "runs"),
+            "--registry-root", str(tmp_path / private_detail if failure == "registry" else REPO_ROOT),
+        ]
+    )
+    error = json.loads(capsys.readouterr().err)
+    assert result == 2
+    assert error["status"] == "invalid"
+    assert private_detail not in error["error"]
+    assert error["error"].startswith(
+        {
+            "missing": "input file",
+            "unreadable": "cannot read input file",
+            "output": "bundle persistence failed",
+            "registry": "control registry loading failed",
+        }[failure]
+    )
+
 
 
 def test_cli_doctor_json_output(capsys):

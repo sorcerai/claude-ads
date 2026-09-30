@@ -1316,11 +1316,10 @@ def _run_windows_acl_script(
 def _windows_acl_snapshot(path: Path) -> Mapping[str, Any]:
     try:
         result = _run_windows_acl_script(_WINDOWS_ACL_QUERY, path)
-    except (OSError, UnicodeError, subprocess.SubprocessError) as exc:
-        raise ReportRenderError(f"report Windows ACL query failed: {exc}") from exc
+    except (OSError, UnicodeError, subprocess.SubprocessError):
+        raise ReportRenderError("report Windows ACL query failed") from None
     if result.returncode != 0:
-        detail = result.stderr.strip() or "unknown error"
-        raise ReportRenderError(f"report Windows ACL query failed: {detail}")
+        raise ReportRenderError("report Windows ACL query failed")
     try:
         snapshot = json.loads(result.stdout)
     except (TypeError, ValueError, UnicodeError) as exc:
@@ -1538,15 +1537,14 @@ def _validate_windows_acl(path: Path, label: str) -> None:
             effective_sid_folded != current_folded
             and effective_sid_folded.upper() not in _WINDOWS_TRUSTED_SIDS
         ):
-            actual_home_traverse_only = (
-                is_actual_home and _windows_rights_is_traverse_only(rights)
+            actual_home_compatibility = is_actual_home and (
+                _windows_rights_is_traverse_only(rights)
+                or (
+                    effective_sid_folded.upper() in _WINDOWS_HOME_READ_ONLY_SIDS
+                    and _windows_rights_is_read_only(rights)
+                )
             )
-            if not actual_home_traverse_only and (
-                label != "home"
-                or (entry.get("inherited") is not True and not is_actual_home)
-                or effective_sid_folded.upper() not in _WINDOWS_HOME_READ_ONLY_SIDS
-                or not _windows_rights_is_read_only(rights)
-            ):
+            if not actual_home_compatibility:
                 detail = (
                     _windows_home_acl_diagnostic(entry, current_sid, owner_sid)
                     if is_actual_home
@@ -1558,19 +1556,18 @@ def _validate_windows_acl(path: Path, label: str) -> None:
 def _protect_windows_path(path: Path) -> None:
     try:
         result = _run_windows_acl_script(_WINDOWS_ACL_APPLY, path)
-    except (OSError, UnicodeError, subprocess.SubprocessError) as exc:
-        raise ReportRenderError(f"report Windows ACL protection failed: {exc}") from exc
+    except (OSError, UnicodeError, subprocess.SubprocessError):
+        raise ReportRenderError("report Windows ACL protection failed") from None
     if result.returncode != 0:
-        detail = result.stderr.strip() or "unknown error"
-        raise ReportRenderError(f"report Windows ACL protection failed: {detail}")
+        raise ReportRenderError("report Windows ACL protection failed")
     _validate_windows_acl(path, "output")
 
 
 def _validate_windows_tree(root_path: Path, destination: Path) -> Path:
     try:
         home = Path.home().resolve()
-    except (OSError, RuntimeError) as exc:
-        raise ReportRenderError(f"report home normalization failed: {exc}") from exc
+    except (OSError, RuntimeError):
+        raise ReportRenderError("report home normalization failed") from None
     _validate_windows_acl(home, "home")
     try:
         root_path.resolve(strict=False).relative_to(home)
@@ -1631,20 +1628,20 @@ def _atomic_write_windows(
     relative = _validate_report_destination(destination)
     try:
         root_path = Path(root).expanduser().absolute()
-    except (OSError, RuntimeError) as exc:
-        raise ReportRenderError(f"report root normalization failed: {exc}") from exc
+    except (OSError, RuntimeError):
+        raise ReportRenderError("report root normalization failed") from None
     try:
         output_path = _validate_windows_tree(root_path, relative)
     except ReportRenderError:
         raise
-    except OSError as exc:
-        raise ReportRenderError(f"report output path validation failed: {exc}") from exc
+    except OSError:
+        raise ReportRenderError("report output path validation failed") from None
     try:
         file_descriptor, temporary_name = tempfile.mkstemp(
             prefix=f".{output_path.name}.", dir=output_path.parent
         )
-    except OSError as exc:
-        raise ReportRenderError(f"report output temporary file failed: {exc}") from exc
+    except OSError:
+        raise ReportRenderError("report output temporary file failed") from None
 
     temporary_path = Path(temporary_name)
     temporary_owned = True
@@ -1673,16 +1670,16 @@ def _atomic_write_windows(
             except BaseException as exc:
                 if stage_error is None:
                     stage_error = (
-                        ReportRenderError(f"report output close failed: {exc}")
+                        ReportRenderError("report output close failed")
                         if isinstance(exc, Exception)
                         else exc
                     )
                 elif isinstance(stage_error, Exception):
                     stage_error = ReportRenderError(
-                        f"{stage_error}; report output close failed: {exc}"
+                        "report output operation and close failed"
                     )
                 else:
-                    stage_error.add_note(f"report output close failed: {exc}")
+                    stage_error.add_note("report output close failed")
         if stage_error is not None:
             raise stage_error
 
@@ -1691,13 +1688,12 @@ def _atomic_write_windows(
         try:
             os.replace(temporary_path, output_path)
             replace_returned = True
-        except OSError as exc:
-            raise ReportRenderError(f"report output replacement failed: {exc}") from exc
+        except OSError:
+            raise ReportRenderError("report output replacement failed") from None
         except BaseException as exc:
             outcome_unknown = True
             exc.add_note("report output replacement outcome is unknown")
             raise
-        _protect_windows_path(output_path)
 
         try:
             temporary_path.lstat()
@@ -1708,8 +1704,8 @@ def _atomic_write_windows(
             outcome_unknown = True
             if isinstance(exc, Exception):
                 raise ReportRenderError(
-                    f"report output replacement outcome is unknown: {exc}"
-                ) from exc
+                    "report output replacement outcome is unknown"
+                ) from None
             exc.add_note("report output replacement outcome is unknown")
             raise
         else:
@@ -1721,7 +1717,7 @@ def _atomic_write_windows(
             except BaseException as exc:
                 if isinstance(exc, Exception):
                     raise ReportRenderError(
-                        f"{no_op_error}; temporary cleanup failed: {exc}"
+                        f"{no_op_error}; temporary cleanup failed"
                     ) from no_op_error
                 exc.add_note(str(no_op_error))
                 raise
@@ -1729,13 +1725,21 @@ def _atomic_write_windows(
             raise no_op_error
 
         try:
+            _protect_windows_path(output_path)
+        except Exception:
+            raise ReportRenderError(
+                "report output replacement occurred but ACL protection failed; "
+                "inspect destination"
+            ) from None
+
+        try:
             with output_path.open("rb") as stream:
                 actual = stream.read()
         except BaseException as exc:
             if isinstance(exc, Exception):
                 raise ReportRenderError(
-                    f"report output replacement occurred but verification failed: {exc}"
-                ) from exc
+                    "report output replacement occurred but verification failed"
+                ) from None
             exc.add_note(
                 "report output replacement occurred before verification interruption"
             )
@@ -1754,18 +1758,17 @@ def _atomic_write_windows(
         ):
             try:
                 temporary_path.unlink(missing_ok=True)
-                temporary_owned = False
             except BaseException as cleanup_error:
                 if isinstance(exc, Exception):
                     exc = ReportRenderError(
-                        f"{exc}; temporary cleanup failed: {cleanup_error}"
+                        "report output operation and temporary cleanup failed"
                     )
                 else:
                     exc.add_note(f"temporary cleanup failed: {cleanup_error}")
         if isinstance(exc, ReportRenderError):
             primary_error = exc
         elif isinstance(exc, Exception):
-            primary_error = ReportRenderError(f"report output operation failed: {exc}")
+            primary_error = ReportRenderError("report output operation failed")
         else:
             primary_error = exc
     if primary_error is not None:

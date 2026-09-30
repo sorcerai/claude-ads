@@ -36,8 +36,8 @@ def _default_report_root(platform_name: str | None = None) -> str:
     if platform_name == "nt":
         try:
             return str(Path.home() / ".claude-ads" / "runs")
-        except (OSError, RuntimeError) as exc:
-            raise AuditError(f"report root home normalization failed: {exc}") from exc
+        except (OSError, RuntimeError):
+            raise AuditError("report root home normalization failed") from None
     return ".claude-ads/runs"
 
 
@@ -189,8 +189,11 @@ def run_audit(
         raise AuditError(f"unsupported platform: {platform}")
 
     target_path = Path(input_path)
-    if not target_path.exists() or not target_path.is_file():
-        raise AuditError(f"input file does not exist or is not a file: {input_path}")
+    try:
+        if not target_path.exists() or not target_path.is_file():
+            raise AuditError("input file does not exist or is not a file")
+    except OSError:
+        raise AuditError("input file is inaccessible") from None
 
     if report_format not in {"markdown", "html", "pdf"}:
         raise AuditError(f"unsupported report format: {report_format}")
@@ -201,8 +204,8 @@ def run_audit(
 
     try:
         raw_bytes = target_path.read_bytes()
-    except OSError as exc:
-        raise AuditError(f"cannot read input file: {exc}") from exc
+    except OSError:
+        raise AuditError("cannot read input file") from None
 
     file_sha256 = hashlib.sha256(raw_bytes).hexdigest()
     canonical_source_id = f"sha256:{file_sha256}"
@@ -216,14 +219,14 @@ def run_audit(
             else:
                 adapter = NativeCSVExportAdapter(normalized_platform, context=context)
             snapshot = adapter.read_snapshot(target_path)
-        except (AdapterError, ValueError) as exc:
-            raise AuditError(f"native export ingestion failed: {exc}") from exc
+        except (AdapterError, ValueError):
+            raise AuditError("native export ingestion failed") from None
     elif export_format == "generic":
         try:
             gen_adapter = GenericCSVExportAdapter(normalized_platform)
             snapshot = gen_adapter.read_snapshot(target_path)
-        except (AdapterError, ValueError) as exc:
-            raise AuditError(f"generic export ingestion failed: {exc}") from exc
+        except (AdapterError, ValueError):
+            raise AuditError("generic export ingestion failed") from None
     else:  # auto
         try:
             if target_path.suffix.lower() == ".json":
@@ -235,22 +238,25 @@ def run_audit(
             try:
                 gen_adapter = GenericCSVExportAdapter(normalized_platform)
                 snapshot = gen_adapter.read_snapshot(target_path)
-            except Exception as exc:
+            except Exception:
                 raise AuditError(
-                    f"failed to ingest export {target_path.name} as native or generic CSV: {exc}"
-                ) from exc
+                    "failed to ingest export as native or generic CSV"
+                ) from None
 
     try:
         validate_contract("account-snapshot", snapshot)
-    except ContractError as exc:
-        raise AuditError(f"normalized snapshot contract validation failed: {exc}") from exc
+    except ContractError:
+        raise AuditError("normalized snapshot contract validation failed") from None
 
     # Ensure canonical SHA-256 is bound to measurement_context source_ids
     if canonical_source_id not in snapshot["measurement_context"]["source_ids"]:
         snapshot["measurement_context"]["source_ids"].append(canonical_source_id)
 
-    registry = load_control_registry(registry_root)
-    entries = {entry.control_id: entry for entry in registry.entries_for(normalized_platform)}
+    try:
+        registry = load_control_registry(registry_root)
+        entries = {entry.control_id: entry for entry in registry.entries_for(normalized_platform)}
+    except (RegistryError, OSError):
+        raise AuditError("control registry loading failed") from None
 
     findings, referenced_sources = _evaluate_google_findings(
         snapshot=snapshot,
@@ -272,7 +278,10 @@ def run_audit(
     for defn in control_definitions:
         all_sources.update(defn.get("source_ids", []))
 
-    score_result = registry.score_platform(normalized_platform, findings)
+    try:
+        score_result = registry.score_platform(normalized_platform, findings)
+    except RegistryError:
+        raise AuditError("audit scoring failed") from None
     scoring = score_result.to_dict()
 
     lifecycle_id = f"lifecycle-{resolved_run_id}"
@@ -326,13 +335,13 @@ def run_audit(
 
     try:
         validate_contract("report-bundle", bundle)
-    except ContractError as exc:
-        raise AuditError(f"assembled report bundle failed contract validation: {exc}") from exc
+    except ContractError:
+        raise AuditError("assembled report bundle failed contract validation") from None
 
     try:
         registry.validate_report_scoring(bundle)
-    except RegistryError as exc:
-        raise AuditError(f"assembled report bundle failed registry scoring validation: {exc}") from exc
+    except RegistryError:
+        raise AuditError("assembled report bundle failed registry scoring validation") from None
 
     root = Path(output_dir if output_dir is not None else _default_report_root())
 
@@ -340,8 +349,8 @@ def run_audit(
     bundle_bytes = (json.dumps(bundle, indent=2, sort_keys=True) + "\n").encode("utf-8")
     try:
         bundle_path = atomic_write_report(root, bundle_destination, bundle_bytes)
-    except ReportRenderError as exc:
-        raise AuditError(f"bundle persistence failed: {exc}") from exc
+    except ReportRenderError:
+        raise AuditError("bundle persistence failed; inspect destination") from None
 
     extension = {"markdown": "md", "html": "html", "pdf": "pdf"}[report_format]
     rel_destination = f"{resolved_run_id}/report.{extension}"
@@ -353,8 +362,8 @@ def run_audit(
             rel_destination,
             registry=registry,
         )
-    except ReportRenderError as exc:
-        raise AuditError(f"report rendering failed: {exc}") from exc
+    except ReportRenderError:
+        raise AuditError("report rendering or persistence failed; inspect destination") from None
 
     return {
         "status": "completed",
