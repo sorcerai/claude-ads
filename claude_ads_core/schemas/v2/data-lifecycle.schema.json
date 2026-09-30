@@ -77,7 +77,16 @@
     },
     {
       "if": {"properties": {"retention": {"properties": {"delete_after": {"type": "null"}}}}},
-      "then": {"properties": {"retention": {"properties": {"mode": {"const": "unassigned"}}}}}
+      "then": {
+        "properties": {
+          "retention": {
+            "oneOf": [
+              {"properties": {"mode": {"const": "unassigned"}}},
+              {"properties": {"mode": {"const": "exception"}, "exception_reason": {"$ref": "#/$defs/nonblank"}}}
+            ]
+          }
+        }
+      }
     },
     {
       "if": {

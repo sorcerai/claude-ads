@@ -272,7 +272,7 @@ def _validate_data_lifecycle_v2_at(value: Any, path: str) -> Mapping[str, Any]:
         _datetime(delete_after, f"{path}.retention.delete_after")
     if mode == "unassigned" and delete_after is not None:
         raise WorkflowContractError(f"{path}.retention.unassigned mode requires a null delete_after")
-    if mode != "unassigned" and delete_after is None:
+    if mode not in {"unassigned", "exception"} and delete_after is None:
         raise WorkflowContractError(f"{path}.retention.mode requires a delete_after")
     _string(retention["purpose"], f"{path}.retention.purpose")
     exception_reason = _nullable_string(retention["exception_reason"], f"{path}.retention.exception_reason")

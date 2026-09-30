@@ -490,6 +490,16 @@ def test_v2_retention_exception_requires_nonblank_reason(
         validator.validate(v2_pending_lifecycle)
 
 
+def test_v2_retention_exception_allows_null_deadline(
+    v2_lifecycle_validator, v2_pending_lifecycle
+):
+    validator, _ = v2_lifecycle_validator
+    v2_pending_lifecycle["retention"]["mode"] = "exception"
+    v2_pending_lifecycle["retention"]["exception_reason"] = "legal hold"
+    validate_contract("data-lifecycle", v2_pending_lifecycle)
+    validator.validate(v2_pending_lifecycle)
+
+
 @pytest.mark.parametrize("status", ("open", "contained", "resolved"))
 def test_v2_triggered_incident_requires_record(
     v2_lifecycle_validator, v2_pending_lifecycle, status

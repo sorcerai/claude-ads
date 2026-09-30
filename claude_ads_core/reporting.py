@@ -1434,8 +1434,7 @@ def _validate_windows_tree(
                 )
             if not stat.S_ISDIR(info.st_mode):
                 raise ReportRenderError("report root must be a directory")
-            if require_private_root or current != root_path:
-                _validate_windows_acl(current, "root")
+            _validate_windows_acl(current, "root")
         else:
             current.mkdir(mode=0o700)
             _protect_windows_path(current)

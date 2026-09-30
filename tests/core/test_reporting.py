@@ -587,6 +587,20 @@ def test_windows_secure_home_can_be_report_root(monkeypatch, tmp_path):
     assert reporting._validate_windows_tree(home, Path("report.md")) == home / "report.md"
 
 
+def test_windows_public_root_rejects_permissive_acl(monkeypatch, tmp_path):
+    home = tmp_path / "home"
+    root = home / "reports"
+    root.mkdir(parents=True)
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: home))
+    acl = _secure_windows_acl()
+    acl["access"].append(
+        {"sid": "S-1-5-32-545", "type": "Allow", "rights": "ReadAndExecute", "inherited": True}
+    )
+    monkeypatch.setattr(reporting, "_windows_acl_snapshot", lambda _path: acl)
+    with pytest.raises(ReportRenderError, match="report root DACL is permissive"):
+        reporting._validate_windows_tree(root, Path("report.md"), require_private_root=False)
+
+
 def test_windows_acl_resolves_owner_rights_to_object_owner(monkeypatch, tmp_path):
     acl = _secure_windows_acl()
     acl["access"] = [{"sid": "S-1-3-4", "type": "Allow", "rights": "FullControl"}]
