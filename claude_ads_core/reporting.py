@@ -52,6 +52,8 @@ _SENSITIVE_KEY_RE = re.compile(
     r"password|passwd|authorization|cookie|set[_-]?cookie|email|phone)([_-]|$)"
 )
 _CONTROL_CHARS_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
+_WINDOWS_PATH_RE = re.compile(r"(?:[A-Za-z]:[\\/]|[\\/])")
+_WINDOWS_SID_RE = re.compile(r"(?i)\bS-\d-\d+(?:-\d+)+\b")
 
 _STATUS_LABELS = {
     "normal": "Normal",
@@ -73,6 +75,15 @@ def _redact_text(value: str) -> str:
         lambda match: f"{match.group(1)}{match.group(2)}[REDACTED]", value
     )
     return _EMAIL_RE.sub("[REDACTED EMAIL]", value)
+
+
+def _safe_os_error_detail(error: BaseException) -> str | None:
+    """Keep a useful OS error summary without exposing private identifiers."""
+
+    detail = _redact_text(str(error)).strip()
+    if not detail or _WINDOWS_PATH_RE.search(detail) or _WINDOWS_SID_RE.search(detail):
+        return None
+    return detail
 
 
 def _redact_value(value: Any, *, key: str | None = None) -> Any:
@@ -1688,8 +1699,12 @@ def _atomic_write_windows(
         try:
             os.replace(temporary_path, output_path)
             replace_returned = True
-        except OSError:
-            raise ReportRenderError("report output replacement failed") from None
+        except OSError as exc:
+            detail = _safe_os_error_detail(exc)
+            message = "report output replacement failed"
+            if detail is not None:
+                message = f"{message}: {detail}"
+            raise ReportRenderError(message) from None
         except BaseException as exc:
             outcome_unknown = True
             exc.add_note("report output replacement outcome is unknown")
