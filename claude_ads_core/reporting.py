@@ -1140,20 +1140,37 @@ _WINDOWS_HOME_READ_ONLY_SIDS = frozenset(
     }
 )
 _WINDOWS_OWNER_RIGHTS_SID = "s-1-3-4"
-_WINDOWS_MUTATING_RIGHTS = (
-    "fullcontrol",
-    "modify",
-    "write",
-    "writedata",
-    "appenddata",
-    "createfiles",
-    "createdirectories",
-    "delete",
-    "changepermissions",
-    "takeownership",
-    "writeattributes",
-    "writeextendedattributes",
-)
+_WINDOWS_RIGHTS_BITS = {
+    "readdata": 0x00000001,
+    "listdirectory": 0x00000001,
+    "writedata": 0x00000002,
+    "createfiles": 0x00000002,
+    "appenddata": 0x00000004,
+    "createdirectories": 0x00000004,
+    "readextendedattributes": 0x00000008,
+    "writeextendedattributes": 0x00000010,
+    "executefile": 0x00000020,
+    "traverse": 0x00000020,
+    "deletesubdirectoriesandfiles": 0x00000040,
+    "readattributes": 0x00000080,
+    "writeattributes": 0x00000100,
+    "delete": 0x00010000,
+    "readpermissions": 0x00020000,
+    "changepermissions": 0x00040000,
+    "takeownership": 0x00080000,
+    "synchronize": 0x00100000,
+    "read": 0x00120089,
+    "readandexecute": 0x001200A9,
+    "write": 0x00000116,
+    "modify": 0x001301BF,
+    "fullcontrol": 0x001F01FF,
+}
+_WINDOWS_READ_MASK = 0x00020000 | 0x000001A9
+_WINDOWS_WRITE_MASK = 0x00040016
+_WINDOWS_DELETE_MASK = 0x00010040
+_WINDOWS_TRAVERSE_MASK = 0x00000020
+_WINDOWS_SYNCHRONIZE_MASK = 0x00100000
+_WINDOWS_CONTROL_MASK = 0x000C0000
 
 _WINDOWS_ACL_PATH_ENV = "CLAUDE_ADS_ACL_PATH"
 
@@ -1338,10 +1355,18 @@ def _windows_home_acl_diagnostic(
         category = "trusted"
     elif sid_folded.upper() in _WINDOWS_HOME_READ_ONLY_SIDS:
         category = "common_users"
-    elif sid_folded == "s-1-3-0":
-        category = "creator_owner"
+    elif sid_folded.startswith("s-1-5-32-"):
+        category = "builtin32"
+    elif sid_folded.startswith("s-1-5-21-"):
+        category = "account21"
+    elif sid_folded.startswith("s-1-15-2-"):
+        category = "app15"
+    elif sid_folded.startswith("s-1-5-80-"):
+        category = "service80"
+    elif sid_folded.startswith("s-1-3-"):
+        category = "creator3"
     else:
-        category = "other"
+        category = "other-known" if sid_folded.startswith("s-") else "other-unknown"
 
     access_type = entry.get("type")
     access_kind = (
@@ -1349,21 +1374,34 @@ def _windows_home_acl_diagnostic(
         if isinstance(access_type, str) and access_type.casefold() in {"allow", "deny"}
         else "unknown"
     )
-    rights = entry.get("rights")
-    rights_folded = rights.casefold() if isinstance(rights, str) else ""
-    has_mutating = any(token in rights_folded for token in _WINDOWS_MUTATING_RIGHTS)
-    has_read = any(
-        token in rights_folded
-        for token in ("read", "readandexecute", "listdirectory", "readattributes")
-    )
-    if has_mutating and has_read:
-        rights_kind = "mixed"
-    elif has_mutating:
-        rights_kind = "mutating"
-    elif has_read:
-        rights_kind = "read_only"
+    mask = _windows_rights_mask(entry.get("rights"))
+    if mask is None:
+        rights_kind = "unsupported"
+        mask_text = "unknown"
+        rights_detail = "read=unknown; write=unknown; delete=unknown; traverse=unknown; synchronize=unknown; control=unknown"
     else:
-        rights_kind = "other"
+        mask_text = f"0x{mask:08X}"
+        has_read = bool(mask & _WINDOWS_READ_MASK)
+        has_write = bool(mask & _WINDOWS_WRITE_MASK)
+        has_delete = bool(mask & _WINDOWS_DELETE_MASK)
+        has_traverse = bool(mask & _WINDOWS_TRAVERSE_MASK)
+        has_sync = bool(mask & _WINDOWS_SYNCHRONIZE_MASK)
+        has_control = bool(mask & _WINDOWS_CONTROL_MASK)
+        mutating = has_write or has_delete or has_control
+        rights_kind = (
+            "mixed"
+            if mutating and has_read
+            else "mutating"
+            if mutating
+            else "read_only"
+            if has_read
+            else "other"
+        )
+        rights_detail = (
+            f"read={'yes' if has_read else 'no'}; write={'yes' if has_write else 'no'}; "
+            f"delete={'yes' if has_delete else 'no'}; traverse={'yes' if has_traverse else 'no'}; "
+            f"synchronize={'yes' if has_sync else 'no'}; control={'yes' if has_control else 'no'}"
+        )
 
     inherited = entry.get("inherited")
     inherited_kind = (
@@ -1389,9 +1427,36 @@ def _windows_home_acl_diagnostic(
     return (
         " (ace_category="
         f"{category}; access_kind={access_kind}; rights_kind={rights_kind}; "
+        f"rights_mask={mask_text}; rights={rights_detail}; "
         f"inherited={inherited_kind}; "
         f"inheritance={flag_class(entry.get('inheritance_flags'))}; "
         f"propagation={flag_class(entry.get('propagation_flags'))})"
+    )
+
+
+def _windows_rights_mask(value: Any) -> int | None:
+    """Decode PowerShell FileSystemRights as a bounded unsigned mask."""
+    if not isinstance(value, str) or not value.strip():
+        return None
+    text = value.strip()
+    try:
+        mask = int(text, 10)
+    except ValueError:
+        mask = 0
+        for token in text.replace(" ", "").casefold().split(","):
+            bit = _WINDOWS_RIGHTS_BITS.get(token)
+            if bit is None:
+                return None
+            mask |= bit
+    return mask if 0 <= mask <= 0xFFFFFFFF else None
+
+
+def _windows_rights_is_read_only(value: Any) -> bool:
+    mask = _windows_rights_mask(value)
+    if mask is None:
+        return False
+    return bool(mask & _WINDOWS_READ_MASK) and not bool(
+        mask & (_WINDOWS_WRITE_MASK | _WINDOWS_DELETE_MASK | _WINDOWS_CONTROL_MASK)
     )
 
 
@@ -1451,10 +1516,12 @@ def _validate_windows_acl(path: Path, label: str) -> None:
         effective_sid_folded = (
             owner_folded if sid_folded == _WINDOWS_OWNER_RIGHTS_SID else sid_folded
         )
-        rights_folded = rights.casefold()
         if access_type.casefold() == "deny":
-            if effective_sid_folded == current_folded and any(
-                token in rights_folded for token in _WINDOWS_MUTATING_RIGHTS
+            denied_mask = _windows_rights_mask(rights)
+            if denied_mask is None:
+                raise ReportRenderError(f"report {label} DACL is unverifiable")
+            if effective_sid_folded == current_folded and denied_mask & (
+                _WINDOWS_WRITE_MASK | _WINDOWS_DELETE_MASK | _WINDOWS_CONTROL_MASK
             ):
                 raise ReportRenderError(
                     f"report {label} DACL denies current-user access"
@@ -1470,7 +1537,7 @@ def _validate_windows_acl(path: Path, label: str) -> None:
                 label != "home"
                 or (entry.get("inherited") is not True and not is_actual_home)
                 or effective_sid_folded.upper() not in _WINDOWS_HOME_READ_ONLY_SIDS
-                or any(token in rights_folded for token in _WINDOWS_MUTATING_RIGHTS)
+                or not _windows_rights_is_read_only(rights)
             ):
                 detail = (
                     _windows_home_acl_diagnostic(entry, current_sid, owner_sid)

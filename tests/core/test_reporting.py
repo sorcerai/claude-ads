@@ -581,14 +581,77 @@ def test_windows_actual_home_rejection_reports_sanitized_ace_classification(
         reporting._validate_windows_acl(home, "home")
 
     message = str(error.value)
-    assert "ace_category=other" in message
+    assert "ace_category=account21" in message
     assert "access_kind=allow" in message
     assert "rights_kind=mixed" in message
+    assert "rights_mask=0x001200AB" in message
+    assert (
+        "rights=read=yes; write=yes; delete=no; traverse=yes; synchronize=yes; control=no"
+        in message
+    )
     assert "inherited=false" in message
     assert "inheritance=container_and_object" in message
     assert "propagation=none" in message
     assert raw_sid not in message
     assert str(home) not in message
+
+
+@pytest.mark.parametrize(
+    ("sid", "family"),
+    [
+        ("S-1-5-32-999", "builtin32"),
+        ("S-1-5-21-1-2-3-999", "account21"),
+        ("S-1-15-2-999", "app15"),
+        ("S-1-5-80-999", "service80"),
+        ("S-1-3-99", "creator3"),
+        ("not-a-sid", "other-unknown"),
+    ],
+)
+def test_windows_actual_home_diagnostic_uses_bounded_sid_family_and_numeric_mask(
+    monkeypatch, tmp_path, sid, family
+):
+    home = tmp_path / "home"
+    home.mkdir()
+    acl = _secure_windows_acl()
+    acl["access"].append(
+        {
+            "sid": sid,
+            "type": "Allow",
+            "rights": "1179799",
+            "inherited": False,
+        }
+    )
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: home))
+    monkeypatch.setattr(reporting, "_windows_acl_snapshot", lambda _path: acl)
+    with pytest.raises(ReportRenderError) as error:
+        reporting._validate_windows_acl(home, "home")
+    message = str(error.value)
+    assert f"ace_category={family}" in message
+    assert "rights_mask=0x00120097" in message
+    assert (
+        "rights=read=yes; write=yes; delete=no; traverse=no; synchronize=yes; control=no"
+        in message
+    )
+    assert sid not in message
+
+
+def test_windows_actual_home_rejects_unsupported_numeric_rights(monkeypatch, tmp_path):
+    home = tmp_path / "home"
+    home.mkdir()
+    acl = _secure_windows_acl()
+    acl["access"].append(
+        {
+            "sid": "S-1-5-32-545",
+            "type": "Allow",
+            "rights": "not-a-mask",
+            "inherited": False,
+        }
+    )
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: home))
+    monkeypatch.setattr(reporting, "_windows_acl_snapshot", lambda _path: acl)
+    with pytest.raises(ReportRenderError, match="permissive") as error:
+        reporting._validate_windows_acl(home, "home")
+    assert "rights_kind=unsupported" in str(error.value)
 
 
 def test_windows_home_ignores_only_non_effective_inherit_only_acl(
