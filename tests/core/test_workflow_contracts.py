@@ -446,6 +446,60 @@ def test_v2_portable_and_runtime_contracts_reject_malformed_locators(
         validator.validate(pending)
 
 
+@pytest.fixture()
+def v2_pending_lifecycle():
+    return make_pending_lifecycle(
+        lifecycle_id="lifecycle-conditional",
+        classification="internal",
+        delete_after=None,
+        purpose="In-memory review",
+        owner="operator",
+        authorized_roles=["operator"],
+        reporting_channel="security@operator",
+    )
+
+
+@pytest.mark.parametrize(
+    ("classification", "mode"),
+    (("internal", "operator-defined"), ("confidential", "policy-defined")),
+)
+def test_v2_nonpublic_assigned_retention_requires_deadline(
+    v2_lifecycle_validator, v2_pending_lifecycle, classification, mode
+):
+    validator, validation_error = v2_lifecycle_validator
+    v2_pending_lifecycle["classification"] = classification
+    v2_pending_lifecycle["retention"]["mode"] = mode
+    with pytest.raises(ContractError):
+        validate_contract("data-lifecycle", v2_pending_lifecycle)
+    with pytest.raises(validation_error):
+        validator.validate(v2_pending_lifecycle)
+
+
+@pytest.mark.parametrize("reason", (None, " ", "\n"))
+def test_v2_retention_exception_requires_nonblank_reason(
+    v2_lifecycle_validator, v2_pending_lifecycle, reason
+):
+    validator, validation_error = v2_lifecycle_validator
+    v2_pending_lifecycle["retention"]["mode"] = "exception"
+    v2_pending_lifecycle["retention"]["exception_reason"] = reason
+    with pytest.raises(ContractError):
+        validate_contract("data-lifecycle", v2_pending_lifecycle)
+    with pytest.raises(validation_error):
+        validator.validate(v2_pending_lifecycle)
+
+
+@pytest.mark.parametrize("status", ("open", "contained", "resolved"))
+def test_v2_triggered_incident_requires_record(
+    v2_lifecycle_validator, v2_pending_lifecycle, status
+):
+    validator, validation_error = v2_lifecycle_validator
+    v2_pending_lifecycle["incident"]["status"] = status
+    with pytest.raises(ContractError):
+        validate_contract("data-lifecycle", v2_pending_lifecycle)
+    with pytest.raises(validation_error):
+        validator.validate(v2_pending_lifecycle)
+
+
 def test_v1_lifecycle_still_rejects_unknown_encryption(workflow_fixtures):
     lifecycle = copy.deepcopy(workflow_fixtures["data-lifecycle"])
     lifecycle["encryption"]["at_rest"] = "unknown"

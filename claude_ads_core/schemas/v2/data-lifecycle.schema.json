@@ -6,6 +6,7 @@
   "additionalProperties": false,
   "required": ["schema_version", "lifecycle_id", "classification", "retention", "encryption", "access", "deletion", "incident"],
   "$defs": {
+    "nonblank": {"type": "string", "pattern": "\\S"},
     "contained_path": {
       "type": ["string", "null"],
       "pattern": "^(?![\\s\\S]*\\u0000)(?=[\\s\\S]*\\S)(?!\\.{1,2}(?:/|$))[^/\\\\]+(?:/(?!\\.{1,2}(?:/|$))[^/\\\\]+)*$"
@@ -34,7 +35,7 @@
         "in_transit": {"enum": ["unknown", "verified", "not-applicable"]},
         "evidence_refs": {
           "$ref": "urn:ai-marketing-hub:claude-ads:schema:core:v1:workflow-common.schema.json#/$defs/string_array",
-          "items": {"type": "string", "pattern": "\\S"}
+          "items": {"$ref": "#/$defs/nonblank"}
         }
       }
     },
@@ -75,12 +76,29 @@
       "then": {"properties": {"retention": {"properties": {"delete_after": {"type": "null"}}}}}
     },
     {
+      "if": {
+        "properties": {
+          "classification": {"not": {"const": "public"}},
+          "retention": {"properties": {"mode": {"enum": ["ephemeral", "operator-defined", "policy-defined"]}}}
+        }
+      },
+      "then": {"properties": {"retention": {"properties": {"delete_after": {"type": "string"}}}}}
+    },
+    {
+      "if": {"properties": {"retention": {"properties": {"mode": {"const": "exception"}}}}},
+      "then": {"properties": {"retention": {"properties": {"exception_reason": {"$ref": "#/$defs/nonblank"}}}}}
+    },
+    {
       "if": {"properties": {"deletion": {"properties": {"status": {"const": "scheduled"}}}}},
       "then": {"properties": {"deletion": {"properties": {"scheduler_receipt_locator": {"type": "string"}}}}}
     },
     {
       "if": {"properties": {"deletion": {"properties": {"status": {"const": "verified"}}}}},
       "then": {"properties": {"deletion": {"properties": {"verification_artifact_locator": {"type": "string"}}}}}
+    },
+    {
+      "if": {"properties": {"incident": {"properties": {"status": {"enum": ["open", "contained", "resolved"]}}}}},
+      "then": {"properties": {"incident": {"properties": {"record_locator": {"type": "string"}}}}}
     },
     {
       "if": {
