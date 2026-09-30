@@ -21,6 +21,8 @@ def make_pending_lifecycle(
     reporting_channel: str,
 ) -> dict[str, Any]:
     """Build and validate a v2 lifecycle without claiming unavailable controls."""
+    if isinstance(authorized_roles, (str, bytes)):
+        raise TypeError("authorized_roles must be a sequence of role names")
     lifecycle = {
         "schema_version": "2.0.0",
         "lifecycle_id": lifecycle_id,

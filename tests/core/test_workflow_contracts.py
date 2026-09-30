@@ -330,7 +330,35 @@ def test_v2_verified_encryption_requires_evidence(field):
         validate_contract("data-lifecycle", pending)
 
 
-def test_v2_json_schema_rejects_unsubstantiated_verified_encryption(repo_root):
+@pytest.mark.parametrize("roles", ("admin", b"admin"))
+def test_make_pending_lifecycle_rejects_scalar_roles(roles):
+    with pytest.raises(TypeError):
+        make_pending_lifecycle(
+            lifecycle_id="lifecycle-roles",
+            classification="internal",
+            delete_after=None,
+            purpose="In-memory review",
+            owner="operator",
+            authorized_roles=roles,
+            reporting_channel="security@operator",
+        )
+
+
+def test_make_pending_lifecycle_accepts_tuple_roles():
+    pending = make_pending_lifecycle(
+        lifecycle_id="lifecycle-tuple",
+        classification="internal",
+        delete_after=None,
+        purpose="In-memory review",
+        owner="operator",
+        authorized_roles=("operator", "reviewer"),
+        reporting_channel="security@operator",
+    )
+    assert pending["access"]["authorized_roles"] == ["operator", "reviewer"]
+
+
+@pytest.fixture(scope="module")
+def v2_lifecycle_validator(repo_root):
     jsonschema = pytest.importorskip("jsonschema")
     referencing = pytest.importorskip("referencing")
     schemas = repo_root / "claude_ads_core" / "schemas"
@@ -339,6 +367,14 @@ def test_v2_json_schema_rejects_unsubstantiated_verified_encryption(repo_root):
     registry = referencing.Registry().with_resource(
         common_schema["$id"], referencing.Resource.from_contents(common_schema)
     )
+    return (
+        jsonschema.Draft202012Validator(lifecycle_schema, registry=registry),
+        jsonschema.ValidationError,
+    )
+
+
+def test_v2_json_schema_rejects_unsubstantiated_verified_encryption(v2_lifecycle_validator):
+    validator, validation_error = v2_lifecycle_validator
     pending = make_pending_lifecycle(
         lifecycle_id="lifecycle-unverified",
         classification="internal",
@@ -349,8 +385,40 @@ def test_v2_json_schema_rejects_unsubstantiated_verified_encryption(repo_root):
         reporting_channel="security@operator",
     )
     pending["encryption"]["at_rest"] = "verified"
-    with pytest.raises(jsonschema.ValidationError):
-        jsonschema.Draft202012Validator(lifecycle_schema, registry=registry).validate(pending)
+    with pytest.raises(validation_error):
+        validator.validate(pending)
+
+
+@pytest.mark.parametrize(
+    ("section", "locator_field", "status"),
+    (
+        ("access", "access_log_locator", None),
+        ("deletion", "scheduler_receipt_locator", "scheduled"),
+        ("deletion", "verification_artifact_locator", "verified"),
+        ("incident", "record_locator", "open"),
+    ),
+)
+@pytest.mark.parametrize("locator", ("receipts/./job", "receipts//job", "receipts/job/"))
+def test_v2_portable_and_runtime_contracts_reject_malformed_locators(
+    v2_lifecycle_validator, section, locator_field, status, locator
+):
+    validator, validation_error = v2_lifecycle_validator
+    pending = make_pending_lifecycle(
+        lifecycle_id="lifecycle-receipt",
+        classification="internal",
+        delete_after=None,
+        purpose="In-memory review",
+        owner="operator",
+        authorized_roles=["operator"],
+        reporting_channel="security@operator",
+    )
+    if status is not None:
+        pending[section]["status"] = status
+    pending[section][locator_field] = locator
+    with pytest.raises(ContractError):
+        validate_contract("data-lifecycle", pending)
+    with pytest.raises(validation_error):
+        validator.validate(pending)
 
 
 def test_v1_lifecycle_still_rejects_unknown_encryption(workflow_fixtures):
