@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 
 from claude_ads_core.contracts import CONTRACT_NAMES, ContractError, schema_path, validate_contract
+from claude_ads_core.lifecycle import make_pending_lifecycle
 from claude_ads_core.orchestration import OrchestrationError, OrchestrationStore, evaluate_artifact_gate
 
 
@@ -234,6 +235,128 @@ def test_non_public_lifecycle_requires_encryption_and_deletion_deadline(workflow
     lifecycle = copy.deepcopy(workflow_fixtures["data-lifecycle"])
     lifecycle["retention"]["delete_after"] = None
     with pytest.raises(ContractError, match="delete_after is required"):
+        validate_contract("data-lifecycle", lifecycle)
+
+
+def test_v2_lifecycle_discloses_unknown_controls_without_inventing_retention(workflow_fixtures):
+    lifecycle = copy.deepcopy(workflow_fixtures["data-lifecycle"])
+    lifecycle["schema_version"] = "2.0.0"
+    lifecycle["retention"]["mode"] = "unassigned"
+    lifecycle["retention"]["delete_after"] = None
+    lifecycle["encryption"] = {
+        "at_rest": "unknown",
+        "in_transit": "unknown",
+        "evidence_refs": [],
+    }
+    lifecycle["deletion"]["status"] = "pending"
+    lifecycle["deletion"]["method"] = "file-removal"
+    lifecycle["deletion"]["scheduler_receipt_locator"] = None
+    validate_contract("data-lifecycle", lifecycle)
+
+
+@pytest.mark.parametrize(
+    ("status", "locator"),
+    (("scheduled", "scheduler_receipt_locator"), ("verified", "verification_artifact_locator")),
+)
+def test_v2_lifecycle_requires_status_receipts(workflow_fixtures, status, locator):
+    lifecycle = copy.deepcopy(workflow_fixtures["data-lifecycle"])
+    lifecycle["schema_version"] = "2.0.0"
+    lifecycle["encryption"] = {"at_rest": "unknown", "in_transit": "unknown", "evidence_refs": []}
+    lifecycle["deletion"]["status"] = status
+    lifecycle["deletion"]["scheduler_receipt_locator"] = None
+    lifecycle["deletion"][locator] = None
+    with pytest.raises(ContractError, match="requires a"):
+        validate_contract("data-lifecycle", lifecycle)
+
+
+def test_v2_lifecycle_requires_verification(workflow_fixtures):
+    lifecycle = copy.deepcopy(workflow_fixtures["data-lifecycle"])
+    lifecycle["schema_version"] = "2.0.0"
+    lifecycle["encryption"] = {"at_rest": "unknown", "in_transit": "unknown", "evidence_refs": []}
+    lifecycle["deletion"]["status"] = "pending"
+    lifecycle["deletion"]["scheduler_receipt_locator"] = None
+    lifecycle["deletion"]["verification_required"] = False
+    with pytest.raises(ContractError, match="verification_required must be true"):
+        validate_contract("data-lifecycle", lifecycle)
+
+
+def test_v2_lifecycle_rejects_unassigned_deadline_and_unknown_version(workflow_fixtures):
+    lifecycle = copy.deepcopy(workflow_fixtures["data-lifecycle"])
+    lifecycle["schema_version"] = "2.0.0"
+    lifecycle["retention"]["mode"] = "unassigned"
+    lifecycle["encryption"] = {"at_rest": "unknown", "in_transit": "unknown", "evidence_refs": []}
+    lifecycle["deletion"]["status"] = "pending"
+    lifecycle["deletion"]["scheduler_receipt_locator"] = None
+    invalid_deadline = copy.deepcopy(lifecycle)
+    invalid_deadline["retention"]["delete_after"] = "2026-07-12T16:00:00Z"
+    with pytest.raises(ContractError, match="unassigned"):
+        validate_contract("data-lifecycle", invalid_deadline)
+    unsupported = copy.deepcopy(lifecycle)
+    unsupported["schema_version"] = "3.0.0"
+    with pytest.raises(ContractError, match="schema_version"):
+        validate_contract("data-lifecycle", unsupported)
+
+
+def test_make_pending_lifecycle_is_truthful_when_retention_is_unassigned():
+    pending = make_pending_lifecycle(
+        lifecycle_id="lifecycle-case",
+        classification="internal",
+        delete_after=None,
+        purpose="In-memory review",
+        owner="operator",
+        authorized_roles=["operator"],
+        reporting_channel="security@operator",
+    )
+    assert pending["retention"]["mode"] == "unassigned"
+    assert pending["retention"]["delete_after"] is None
+    assert pending["encryption"] == {"at_rest": "unknown", "in_transit": "unknown", "evidence_refs": []}
+    assert pending["deletion"]["status"] == "pending"
+    validate_contract("data-lifecycle", pending)
+
+
+@pytest.mark.parametrize("field", ("at_rest", "in_transit"))
+def test_v2_verified_encryption_requires_evidence(field):
+    pending = make_pending_lifecycle(
+        lifecycle_id="lifecycle-unverified",
+        classification="internal",
+        delete_after=None,
+        purpose="In-memory review",
+        owner="operator",
+        authorized_roles=["operator"],
+        reporting_channel="security@operator",
+    )
+    pending["encryption"][field] = "verified"
+    with pytest.raises(ContractError, match="verified controls require evidence"):
+        validate_contract("data-lifecycle", pending)
+
+
+def test_v2_json_schema_rejects_unsubstantiated_verified_encryption(repo_root):
+    jsonschema = pytest.importorskip("jsonschema")
+    referencing = pytest.importorskip("referencing")
+    schemas = repo_root / "claude_ads_core" / "schemas"
+    lifecycle_schema = json.loads((schemas / "v2" / "data-lifecycle.schema.json").read_text())
+    common_schema = json.loads((schemas / "v1" / "workflow-common.schema.json").read_text())
+    registry = referencing.Registry().with_resource(
+        common_schema["$id"], referencing.Resource.from_contents(common_schema)
+    )
+    pending = make_pending_lifecycle(
+        lifecycle_id="lifecycle-unverified",
+        classification="internal",
+        delete_after=None,
+        purpose="In-memory review",
+        owner="operator",
+        authorized_roles=["operator"],
+        reporting_channel="security@operator",
+    )
+    pending["encryption"]["at_rest"] = "verified"
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.Draft202012Validator(lifecycle_schema, registry=registry).validate(pending)
+
+
+def test_v1_lifecycle_still_rejects_unknown_encryption(workflow_fixtures):
+    lifecycle = copy.deepcopy(workflow_fixtures["data-lifecycle"])
+    lifecycle["encryption"]["at_rest"] = "unknown"
+    with pytest.raises(ContractError):
         validate_contract("data-lifecycle", lifecycle)
 
 
