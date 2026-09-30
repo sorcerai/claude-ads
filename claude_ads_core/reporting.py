@@ -1339,6 +1339,18 @@ def _validate_windows_acl(path: Path, label: str) -> None:
     if not isinstance(access, list) or not access:
         raise ReportRenderError(f"report {label} DACL is unprotected or unverifiable")
 
+    # Hosted Windows runners can expose the profile's read-only Users or
+    # Authenticated Users ACE as an explicit rule rather than an inherited one.
+    # Keep that compatibility exception scoped to the actual home directory;
+    # report roots, parents, and outputs still require an inherited exception
+    # and therefore remain private before any write.
+    try:
+        is_actual_home = (
+            label == "home" and path.resolve(strict=False) == Path.home().resolve()
+        )
+    except (OSError, RuntimeError):
+        is_actual_home = False
+
     for entry in access:
         if not isinstance(entry, Mapping):
             raise ReportRenderError(f"report {label} DACL is unverifiable")
@@ -1375,7 +1387,7 @@ def _validate_windows_acl(path: Path, label: str) -> None:
         ):
             if (
                 label != "home"
-                or entry.get("inherited") is not True
+                or (entry.get("inherited") is not True and not is_actual_home)
                 or effective_sid_folded.upper() not in _WINDOWS_HOME_READ_ONLY_SIDS
                 or any(token in rights_folded for token in _WINDOWS_MUTATING_RIGHTS)
             ):
