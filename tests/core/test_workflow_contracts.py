@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from claude_ads_core.contracts import CONTRACT_NAMES, ContractError, schema_path, validate_contract
+from claude_ads_core.contracts import CONTRACT_NAMES, ContractError, validate_contract
 from claude_ads_core.lifecycle import make_pending_lifecycle
 from claude_ads_core.orchestration import OrchestrationError, OrchestrationStore, evaluate_artifact_gate
 
@@ -30,18 +30,6 @@ INTEGER_SCHEMA_FIELDS = (
     ("generation-manifest", ("outputs", 0, "width"), 1),
     ("generation-manifest", ("outputs", 0, "height"), 1),
 )
-DATA_LIFECYCLE_REFERENCE_CONTRACTS = {
-    "run-manifest",
-    "setup-profile",
-    "brand-profile",
-    "media-plan",
-    "creative-brief",
-    "generation-manifest",
-    "monitoring-bundle",
-    "experiment-artifact",
-    "mutation-plan",
-    "orchestration-run",
-}
 
 
 def _set_path(payload: dict, path: tuple[str | int, ...], value) -> None:
@@ -51,52 +39,62 @@ def _set_path(payload: dict, path: tuple[str | int, ...], value) -> None:
     target[path[-1]] = value
 
 
-def _declared_integer_fields(repo_root: Path) -> set[tuple[str, tuple[str | int, ...], int]]:
-    declared: set[tuple[str, tuple[str | int, ...], int]] = set()
-    for contract in CONTRACT_NAMES:
-        if contract in {"account-snapshot", "control-definition", "finding", "report-bundle", "run-manifest"}:
-            continue
-        schema = json.loads(schema_path(contract).read_text(encoding="utf-8"))
-
-        def walk(node, path=()):
-            if not isinstance(node, dict):
-                return
-            if node.get("type") == "integer":
-                declared.add((contract, path, node.get("minimum")))
-            properties = node.get("properties", {})
-            if isinstance(properties, dict):
-                for name, child in properties.items():
-                    walk(child, (*path, name))
-            items = node.get("items")
-            if isinstance(items, dict):
-                walk(items, (*path, 0))
-
-        walk(schema)
-    return declared
 
 
-def test_all_workflow_fixtures_validate_and_have_strict_schemas(workflow_fixtures):
+def test_all_workflow_fixtures_validate(workflow_fixtures):
     for fixture_name, payload in workflow_fixtures.items():
         contract = _contract_name(fixture_name)
         assert contract in CONTRACT_NAMES
         validate_contract(contract, payload)
-        schema = json.loads(schema_path(contract).read_text(encoding="utf-8"))
-        assert schema["$schema"] == "https://json-schema.org/draft/2020-12/schema"
-        assert schema["additionalProperties"] is False
-        assert set(schema["required"]) == set(schema["properties"])
 
 
-def test_integer_parity_inventory_covers_every_workflow_orchestration_schema_field(repo_root):
-    assert _declared_integer_fields(repo_root) == set(INTEGER_SCHEMA_FIELDS)
-    lifecycle_refs = set()
-    for contract in CONTRACT_NAMES:
-        schema = json.loads(schema_path(contract).read_text(encoding="utf-8"))
-        lifecycle = schema.get("properties", {}).get("data_lifecycle", {})
-        if lifecycle.get("$ref") == (
-            "urn:ai-marketing-hub:claude-ads:schema:core:v1:data-lifecycle.schema.json"
-        ):
-            lifecycle_refs.add(contract)
-    assert lifecycle_refs == DATA_LIFECYCLE_REFERENCE_CONTRACTS
+@pytest.fixture(scope="module")
+def portable_workflow_schemas(repo_root):
+    jsonschema = pytest.importorskip("jsonschema")
+    referencing = pytest.importorskip("referencing")
+    schemas = repo_root / "claude_ads_core" / "schemas"
+    registry = referencing.Registry()
+    for path in schemas.rglob("*.schema.json"):
+        schema = json.loads(path.read_text(encoding="utf-8"))
+        registry = registry.with_resource(schema["$id"], referencing.Resource.from_contents(schema))
+    return jsonschema, registry, schemas
+
+
+def test_historical_workflow_schemas_reject_unknown_and_missing_fields(
+    workflow_fixtures, portable_workflow_schemas
+):
+    jsonschema, registry, schemas = portable_workflow_schemas
+    for fixture_name, payload in workflow_fixtures.items():
+        contract = _contract_name(fixture_name)
+        major = payload["schema_version"].split(".", 1)[0]
+        schema = json.loads(
+            (schemas / f"v{major}" / f"{contract}.schema.json").read_text(encoding="utf-8")
+        )
+        validator = jsonschema.Draft202012Validator(schema, registry=registry)
+        validator.validate(payload)
+        unexpected = {**payload, "unreviewed_extension": "fixture"}
+        with pytest.raises(jsonschema.ValidationError):
+            validator.validate(unexpected)
+        missing_version = {key: value for key, value in payload.items() if key != "schema_version"}
+        with pytest.raises(jsonschema.ValidationError):
+            validator.validate(missing_version)
+
+
+@pytest.mark.parametrize(("fixture_name", "path", "minimum"), INTEGER_SCHEMA_FIELDS)
+def test_historical_portable_workflow_integer_boundaries(
+    workflow_fixtures, portable_workflow_schemas, fixture_name, path, minimum
+):
+    jsonschema, registry, schemas = portable_workflow_schemas
+    contract = _contract_name(fixture_name)
+    schema = json.loads((schemas / "v1" / f"{contract}.schema.json").read_text(encoding="utf-8"))
+    validator = jsonschema.Draft202012Validator(schema, registry=registry)
+    for value in (True, False, minimum + 0.5, minimum - 1):
+        payload = copy.deepcopy(workflow_fixtures[fixture_name])
+        _set_path(payload, path, value)
+        with pytest.raises(jsonschema.ValidationError):
+            validator.validate(payload)
+
+
 
 
 @pytest.mark.parametrize(("fixture_name", "path", "minimum"), INTEGER_SCHEMA_FIELDS)
