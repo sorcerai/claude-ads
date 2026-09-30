@@ -1346,8 +1346,7 @@ def _windows_home_acl_diagnostic(
     access_type = entry.get("type")
     access_kind = (
         access_type.casefold()
-        if isinstance(access_type, str)
-        and access_type.casefold() in {"allow", "deny"}
+        if isinstance(access_type, str) and access_type.casefold() in {"allow", "deny"}
         else "unknown"
     )
     rights = entry.get("rights")
@@ -1367,7 +1366,9 @@ def _windows_home_acl_diagnostic(
         rights_kind = "other"
 
     inherited = entry.get("inherited")
-    inherited_kind = "true" if inherited is True else "false" if inherited is False else "unknown"
+    inherited_kind = (
+        "true" if inherited is True else "false" if inherited is False else "unknown"
+    )
 
     def flag_class(value: Any) -> str:
         if not isinstance(value, str) or not value.strip():
@@ -1476,9 +1477,7 @@ def _validate_windows_acl(path: Path, label: str) -> None:
                     if is_actual_home
                     else ""
                 )
-                raise ReportRenderError(
-                    f"report {label} DACL is permissive{detail}"
-                )
+                raise ReportRenderError(f"report {label} DACL is permissive{detail}")
 
 
 def _protect_windows_path(path: Path) -> None:
