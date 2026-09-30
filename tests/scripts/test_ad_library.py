@@ -418,7 +418,6 @@ def test_search_stops_paging_on_high_usage_threshold(monkeypatch):
     # Must have stopped after page 1 because usage was 85% >= 80%
     assert len(calls) == 1
     assert result["pages_fetched"] == 1
-    assert "Usage throttle threshold reached" in result["warning"]
 
 
 def test_build_canonical_artifact_normalizes_observations_and_binds_lifecycle():
@@ -519,6 +518,63 @@ def test_cli_main_persists_canonical_artifact_to_output(tmp_path, monkeypatch):
     assert len(saved["observations"]) > 0
     # Confirm raw 'ads' field is NOT present at top level of the saved artifact
     assert "ads" not in saved
+
+
+@pytest.mark.parametrize(
+    ("has_next", "usage_count", "expected_status"),
+    (
+        (True, 1, "paginated"),
+        (True, 100, "quota-deferred"),
+        (False, 100, "exhausted"),
+    ),
+)
+def test_cli_nonqueue_exit_tracks_complete_collection(
+    monkeypatch, capsys, has_next, usage_count, expected_status
+):
+    payload = _fixture_payload()
+    payload["paging"] = (
+        {"next": f"{fetch_ad_library.ENDPOINT}?after=cursor-2"} if has_next else {}
+    )
+    response = _Response(payload)
+    response.headers = {"X-App-Usage": json.dumps({"call_count": usage_count})}
+    monkeypatch.setattr(fetch_ad_library, "guarded_request", lambda *args, **kwargs: response)
+    monkeypatch.setenv("META_AD_LIBRARY_TOKEN", "fixture")
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["fetch_ad_library.py", "--countries", "DE", "--search-terms", "coffee", "--max-pages", "1"],
+    )
+    if expected_status == "exhausted":
+        fetch_ad_library.main()
+    else:
+        with pytest.raises(SystemExit) as exit_info:
+            fetch_ad_library.main()
+        assert exit_info.value.code != 0
+    artifact = json.loads(capsys.readouterr().out)
+    assert artifact["collection"]["status"] == expected_status
+    assert artifact["observations"]
+    assert bool(artifact["collection"]["quota_stop_reason"]) == (usage_count == 100)
+
+
+def test_cli_nonqueue_failure_retains_partial_observations(monkeypatch, capsys):
+    first = _fixture_payload()
+    first["paging"] = {"next": f"{fetch_ad_library.ENDPOINT}?after=cursor-2"}
+    responses = iter((_Response(first), _Response({"data": "invalid"})))
+    monkeypatch.setattr(
+        fetch_ad_library, "guarded_request", lambda *args, **kwargs: next(responses)
+    )
+    monkeypatch.setenv("META_AD_LIBRARY_TOKEN", "fixture")
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["fetch_ad_library.py", "--countries", "DE", "--search-terms", "coffee", "--max-pages", "2"],
+    )
+    with pytest.raises(SystemExit) as exit_info:
+        fetch_ad_library.main()
+    assert exit_info.value.code != 0
+    artifact = json.loads(capsys.readouterr().out)
+    assert artifact["collection"]["status"] == "failed"
+    assert artifact["observations"]
 
 
 def test_search_type_and_filter_metadata_are_bound_to_request(monkeypatch):

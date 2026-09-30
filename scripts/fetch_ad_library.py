@@ -1043,7 +1043,7 @@ def _main():
             _atomic_write_json(output_path, result)
         else:
             print(payload)
-        if result["status"] in {"failed", "quota-deferred"}:
+        if result["status"] != "exhausted":
             sys.exit(1)
         return
 
@@ -1082,6 +1082,7 @@ def _main():
         print(payload)
     if result.get("error"):
         print(f"Error: {result['error']}", file=sys.stderr)
+    if result.get("status") != "exhausted":
         sys.exit(1)
 
 

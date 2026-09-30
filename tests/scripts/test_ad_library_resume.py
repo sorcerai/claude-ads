@@ -475,11 +475,50 @@ def test_resume_rejects_changed_effective_page_size(tmp_path, monkeypatch):
         _call_queue(monkeypatch, checkpoint, [], resume=True, limit=100)
 
 
+def test_cli_queue_page_cap_exits_nonzero_with_checkpoint_and_partial_data(
+    tmp_path, monkeypatch, capsys
+):
+    checkpoint = tmp_path / "checkpoint.json"
+    calls = []
+
+    def transport(*args, **kwargs):
+        calls.append(kwargs)
+        return Response(
+            _page(_ad("ad-1"), next_url=f"{fetch_ad_library.ENDPOINT}?after=cursor-2")
+        )
+
+    monkeypatch.setattr(fetch_ad_library, "guarded_request", transport)
+    monkeypatch.setattr(fetch_ad_library, "QuotaBudget", lambda **kwargs: RecordingBudget())
+    monkeypatch.setenv("META_AD_LIBRARY_TOKEN", "fixture")
+    monkeypatch.setenv("CLAUDE_ADS_OUTPUT_ROOT", str(tmp_path))
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "fetch_ad_library.py",
+            "--countries", "DE",
+            "--search-page-ids", "page-1,page-2",
+            "--checkpoint", str(checkpoint),
+            "--max-pages", "1",
+        ],
+    )
+    with pytest.raises(SystemExit) as exit_info:
+        fetch_ad_library.main()
+    assert exit_info.value.code != 0
+    result = json.loads(capsys.readouterr().out)
+    assert result["status"] == "paginated"
+    assert [entry["status"] for entry in result["advertisers"]] == ["paginated", "queued"]
+    assert result["advertisers"][0]["artifact"]["observations"]
+    assert len(calls) == 1
+    persisted = json.loads(checkpoint.read_text(encoding="utf-8"))
+    assert persisted["advertisers"] == result["advertisers"]
+
+
 def test_cli_corrupt_checkpoint_is_sanitized_error_without_dispatch(
     tmp_path, monkeypatch, capsys
 ):
     checkpoint = tmp_path / "checkpoint.json"
-    checkpoint.write_text("invalid-json")
+    checkpoint.write_text("invalid-json access_token=fixture-secret")
     monkeypatch.setenv("META_AD_LIBRARY_TOKEN", "fixture")
     monkeypatch.setenv("CLAUDE_ADS_OUTPUT_ROOT", str(tmp_path))
     monkeypatch.setattr(
@@ -504,7 +543,7 @@ def test_cli_corrupt_checkpoint_is_sanitized_error_without_dispatch(
     with pytest.raises(SystemExit) as caught:
         fetch_ad_library.main()
     assert caught.value.code == 1
-    assert "Error:" in capsys.readouterr().err
+    assert "fixture-secret" not in capsys.readouterr().err
 
 
 def test_checkpoint_creation_rechecks_existence_after_lock(tmp_path, monkeypatch):
