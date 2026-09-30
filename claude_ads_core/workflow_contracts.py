@@ -285,7 +285,7 @@ def _validate_data_lifecycle_v2_at(value: Any, path: str) -> Mapping[str, Any]:
     _string(access["owner"], f"{path}.access.owner")
     _strings(access["authorized_roles"], f"{path}.access.authorized_roles", minimum=1)
     if access["access_log_locator"] is not None:
-        _relative_path(access["access_log_locator"], f"{path}.access.access_log_locator")
+        _relative_path_v2(access["access_log_locator"], f"{path}.access.access_log_locator")
 
     deletion = _exact(
         doc["deletion"], f"{path}.deletion",
@@ -297,10 +297,10 @@ def _validate_data_lifecycle_v2_at(value: Any, path: str) -> Mapping[str, Any]:
         raise WorkflowContractError(f"{path}.deletion.verification_required must be true")
     verification_locator = deletion["verification_artifact_locator"]
     if verification_locator is not None:
-        _relative_path(verification_locator, f"{path}.deletion.verification_artifact_locator")
+        _relative_path_v2(verification_locator, f"{path}.deletion.verification_artifact_locator")
     scheduler_locator = deletion["scheduler_receipt_locator"]
     if scheduler_locator is not None:
-        _relative_path(scheduler_locator, f"{path}.deletion.scheduler_receipt_locator")
+        _relative_path_v2(scheduler_locator, f"{path}.deletion.scheduler_receipt_locator")
     if deletion_status == "scheduled" and scheduler_locator is None:
         raise WorkflowContractError(f"{path}.deletion.scheduled status requires a scheduler receipt")
     if deletion_status == "verified" and verification_locator is None:
@@ -311,7 +311,7 @@ def _validate_data_lifecycle_v2_at(value: Any, path: str) -> Mapping[str, Any]:
     _string(incident["reporting_channel"], f"{path}.incident.reporting_channel")
     incident_status = _enum(incident["status"], f"{path}.incident.status", {"not-triggered", "open", "contained", "resolved"})
     if incident["record_locator"] is not None:
-        _relative_path(incident["record_locator"], f"{path}.incident.record_locator")
+        _relative_path_v2(incident["record_locator"], f"{path}.incident.record_locator")
     if incident_status != "not-triggered" and incident["record_locator"] is None:
         raise WorkflowContractError(f"{path}.incident.record_locator is required after an incident is triggered")
     return doc
@@ -525,6 +525,13 @@ def _validate_generation(payload: Mapping[str, Any]) -> None:
 def _relative_path(value: Any, path: str) -> str:
     text = _string(value, path)
     if text.startswith(("/", "\\")) or "\\" in text or any(part in {"", ".", ".."} for part in text.split("/")):
+        raise WorkflowContractError(f"{path} must be a contained POSIX relative path")
+    return text
+
+
+def _relative_path_v2(value: Any, path: str) -> str:
+    text = _relative_path(value, path)
+    if "\x00" in text:
         raise WorkflowContractError(f"{path} must be a contained POSIX relative path")
     return text
 

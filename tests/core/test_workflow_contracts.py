@@ -389,6 +389,29 @@ def test_v2_json_schema_rejects_unsubstantiated_verified_encryption(v2_lifecycle
         validator.validate(pending)
 
 
+@pytest.mark.parametrize("field", ("at_rest", "in_transit"))
+@pytest.mark.parametrize("blank", (" ", "\n"))
+def test_v2_portable_and_runtime_contracts_reject_blank_encryption_evidence(
+    v2_lifecycle_validator, field, blank
+):
+    validator, validation_error = v2_lifecycle_validator
+    pending = make_pending_lifecycle(
+        lifecycle_id="lifecycle-blank-evidence",
+        classification="internal",
+        delete_after=None,
+        purpose="In-memory review",
+        owner="operator",
+        authorized_roles=["operator"],
+        reporting_channel="security@operator",
+    )
+    pending["encryption"][field] = "verified"
+    pending["encryption"]["evidence_refs"] = [blank]
+    with pytest.raises(ContractError):
+        validate_contract("data-lifecycle", pending)
+    with pytest.raises(validation_error):
+        validator.validate(pending)
+
+
 @pytest.mark.parametrize(
     ("section", "locator_field", "status"),
     (
@@ -398,7 +421,9 @@ def test_v2_json_schema_rejects_unsubstantiated_verified_encryption(v2_lifecycle
         ("incident", "record_locator", "open"),
     ),
 )
-@pytest.mark.parametrize("locator", ("receipts/./job", "receipts//job", "receipts/job/"))
+@pytest.mark.parametrize(
+    "locator", ("receipts/./job", "receipts//job", "receipts/job/", "receipts/\x00job")
+)
 def test_v2_portable_and_runtime_contracts_reject_malformed_locators(
     v2_lifecycle_validator, section, locator_field, status, locator
 ):

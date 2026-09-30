@@ -8,7 +8,7 @@
   "$defs": {
     "contained_path": {
       "type": ["string", "null"],
-      "pattern": "^(?=[\\s\\S]*\\S)(?!\\.{1,2}(?:/|$))[^/\\\\]+(?:/(?!\\.{1,2}(?:/|$))[^/\\\\]+)*$"
+      "pattern": "^(?![\\s\\S]*\\u0000)(?=[\\s\\S]*\\S)(?!\\.{1,2}(?:/|$))[^/\\\\]+(?:/(?!\\.{1,2}(?:/|$))[^/\\\\]+)*$"
     }
   },
   "properties": {
@@ -32,7 +32,10 @@
       "properties": {
         "at_rest": {"enum": ["unknown", "verified", "not-applicable"]},
         "in_transit": {"enum": ["unknown", "verified", "not-applicable"]},
-        "evidence_refs": {"$ref": "urn:ai-marketing-hub:claude-ads:schema:core:v1:workflow-common.schema.json#/$defs/string_array"}
+        "evidence_refs": {
+          "$ref": "urn:ai-marketing-hub:claude-ads:schema:core:v1:workflow-common.schema.json#/$defs/string_array",
+          "items": {"type": "string", "pattern": "\\S"}
+        }
       }
     },
     "access": {
