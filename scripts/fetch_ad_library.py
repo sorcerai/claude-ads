@@ -36,6 +36,9 @@ from url_utils import (
     sanitize_error,
 )
 
+from claude_ads_core.lifecycle import make_pending_lifecycle
+from claude_ads_core.workflow_contracts import validate_workflow_contract
+
 # The planner and this client must agree on when an empty result is a coverage
 # limit rather than absence of ads, so the rule has exactly one definition.
 from claude_ads_core.competitor_fanout import (
@@ -556,6 +559,24 @@ def _load_checkpoint(path: Path) -> dict[str, Any]:
             )
         ):
             raise ValueError("corrupt checkpoint: raw artifact or invalid artifact")
+        if artifact is not None:
+            lifecycle = artifact.get("data_lifecycle")
+            if not isinstance(lifecycle, dict):
+                raise ValueError("corrupt checkpoint: invalid lifecycle")
+            version = artifact.get("schema_version")
+            if (
+                version not in {"1.0.0", "2.0.0"}
+                or lifecycle.get("schema_version") != version
+            ):
+                raise ValueError("corrupt checkpoint: artifact lifecycle version mismatch")
+            try:
+                validate_workflow_contract("data-lifecycle", lifecycle)
+            except (TypeError, ValueError):
+                raise ValueError("corrupt checkpoint: invalid lifecycle") from None
+            if lifecycle.get("classification") != filters.get("privacy_class"):
+                raise ValueError(
+                    "corrupt checkpoint: artifact lifecycle classification mismatch"
+                )
     return value
 
 
@@ -619,6 +640,8 @@ def _collect_advertiser_queue_unlocked(
     privacy_class: str = "public",
 ) -> dict[str, Any]:
     """Collect page IDs sequentially, checkpointing normalized evidence per page."""
+    if privacy_class != "public":
+        raise ValueError("non-public Ad Library persistence requires verified controls")
     path = Path(checkpoint_path).expanduser()
     limit = min(_positive_int(limit), MAX_PAGE_LIMIT)
     max_pages = min(_positive_int(max_pages), MAX_PAGES_CEILING)
@@ -770,12 +793,20 @@ def _collect_advertiser_queue_unlocked(
 def collect_advertiser_queue(
     *, checkpoint_path: str | os.PathLike[str], resume: bool = False, **kwargs
 ):
+    if kwargs.get("privacy_class", "public") != "public":
+        raise ValueError("non-public Ad Library persistence requires verified controls")
     path = Path(checkpoint_path).expanduser()
+    # This preflight avoids creating a lock for stored non-public data.
+    # The collector reloads and checks the checkpoint again under the lock.
+    if resume:
+        state = _load_checkpoint(path)
+        if state["filters"].get("privacy_class") != "public":
+            raise ValueError("non-public Ad Library persistence requires verified controls")
+        if kwargs.get("run_id") is None:
+            kwargs["run_id"] = state["filters"]["run_id"]
     with _checkpoint_lock(path):
         if path.exists() and not resume:
             raise ValueError("checkpoint already exists; pass --resume to continue it")
-        if resume and kwargs.get("run_id") is None:
-            kwargs["run_id"] = _load_checkpoint(path)["filters"]["run_id"]
         return _collect_advertiser_queue_unlocked(
             checkpoint_path=path,
             resume=resume,
@@ -791,7 +822,7 @@ def build_canonical_artifact(
     purpose: str,
     privacy_class: str = "public",
 ) -> dict[str, Any]:
-    """Fold raw public ad search results into one canonical competitor artifact.
+    """Fold raw ad search results into one canonical competitor artifact.
 
     Raw API payloads are never persisted directly. Every artifact binds run,
     client-purpose, retrieval timestamp, source digest, warning/error/usage, and
@@ -810,8 +841,18 @@ def build_canonical_artifact(
         provenance="ad-library-api",
     )
 
+    data_lifecycle = make_pending_lifecycle(
+        lifecycle_id=f"lifecycle-{run_id}",
+        classification=privacy_class,
+        delete_after=None,
+        purpose=purpose,
+        owner="competitor-research-agent",
+        authorized_roles=["research-worker", "conductor"],
+        reporting_channel="security-incident",
+    )
+
     return {
-        "schema_version": "1.0.0",
+        "schema_version": "2.0.0",
         "artifact_type": "competitor-observations",
         "run_id": run_id,
         "client_id": client_id,
@@ -832,44 +873,7 @@ def build_canonical_artifact(
             "quota_stop_reason": result.get("quota_stop_reason"),
         },
         "observation_count": len(normalized_observations),
-        "data_lifecycle": {
-            "schema_version": "1.0.0",
-            "lifecycle_id": f"lifecycle-{run_id}",
-            "classification": privacy_class,
-            "retention": {
-                "minimum_seconds": 0,
-                "mode": "operator-defined",
-                "delete_after": None,
-                "purpose": purpose,
-                "exception_reason": None,
-            },
-            "encryption": {
-                "at_rest": "verified"
-                if privacy_class != "public"
-                else "not-applicable",
-                "in_transit": "verified"
-                if privacy_class != "public"
-                else "not-applicable",
-                "evidence_refs": [],
-            },
-            "access": {
-                "owner": "competitor-research-agent",
-                "authorized_roles": ["research-worker", "conductor"],
-                "access_log_locator": None,
-            },
-            "deletion": {
-                "status": "scheduled",
-                "method": "file-removal",
-                "verification_required": False,
-                "verification_artifact_locator": None,
-            },
-            "incident": {
-                "owner": "security-owner",
-                "reporting_channel": "security-incident",
-                "status": "not-triggered",
-                "record_locator": None,
-            },
-        },
+        "data_lifecycle": data_lifecycle,
         "observations": normalized_observations,
     }
 
@@ -947,6 +951,21 @@ def _main():
 
     args = parser.parse_args()
 
+    if args.privacy_class is not None and args.privacy_class != "public":
+        raise ValueError("non-public Ad Library persistence requires verified controls")
+    if args.resume and not args.checkpoint:
+        raise ValueError("--resume requires --checkpoint")
+
+    checkpoint_path = None
+    checkpoint_filters = {}
+    if args.resume:
+        checkpoint_path = resolve_output_path(args.checkpoint, create_parent=False)
+        checkpoint_filters = _load_checkpoint(checkpoint_path)["filters"]
+        if checkpoint_filters.get("privacy_class") != "public":
+            raise ValueError(
+                "non-public Ad Library persistence requires verified controls"
+            )
+
     # Pre-flight validate output path before making any network calls
     output_path = None
     if args.output:
@@ -955,8 +974,8 @@ def _main():
         except ValueError as exc:
             print(f"Error: {sanitize_error(exc)}", file=sys.stderr)
             sys.exit(1)
-    checkpoint_path = None
-    if args.checkpoint:
+
+    if args.checkpoint and not args.resume:
         try:
             checkpoint_path = resolve_output_path(args.checkpoint, create_parent=True)
         except ValueError as exc:
@@ -968,12 +987,19 @@ def _main():
                 file=sys.stderr,
             )
             sys.exit(1)
-        if checkpoint_path.exists() and not args.resume:
+        if checkpoint_path.exists():
             print(
                 "Error: checkpoint exists; pass --resume to continue it.",
                 file=sys.stderr,
             )
             sys.exit(1)
+
+    if args.resume and output_path and checkpoint_path == output_path:
+        print(
+            "Error: --checkpoint and --output must be different paths.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
 
     token = os.environ.get("META_AD_LIBRARY_TOKEN")
     if not token:
@@ -988,9 +1014,6 @@ def _main():
     run_id = args.run_id or (
         None if args.resume else f"run-{date.today().strftime('%Y%m%d')}-ad-lib"
     )
-    checkpoint_filters = {}
-    if args.resume and checkpoint_path:
-        checkpoint_filters = _load_checkpoint(checkpoint_path)["filters"]
     client_id = (
         args.client_id
         if args.client_id is not None
@@ -1008,10 +1031,6 @@ def _main():
     )
     quota_budget = QuotaBudget(hourly_limit=args.hourly_limit)
     fields = build_fields(args.include_political_fields, args.include_eu_fields)
-
-    if args.resume and not checkpoint_path:
-        print("Error: --resume requires --checkpoint.", file=sys.stderr)
-        sys.exit(1)
     if checkpoint_path:
         result = collect_advertiser_queue(
             token=token,
