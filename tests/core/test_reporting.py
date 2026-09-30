@@ -493,6 +493,100 @@ def test_windows_acl_rejects_permissive_entries_before_write(monkeypatch, tmp_pa
         reporting._validate_windows_acl(tmp_path / "reports", "root")
 
 
+@pytest.mark.parametrize("sid", ["S-1-5-32-545", "S-1-5-11"])
+@pytest.mark.parametrize("label", ["root", "output parent", "output"])
+def test_windows_acl_rejects_common_user_read_on_private_paths(
+    monkeypatch, tmp_path, sid, label
+):
+    acl = _secure_windows_acl()
+    acl["access"].append(
+        {
+            "sid": sid, "type": "Allow", "rights": "ReadAndExecute",
+            "inherited": True,
+        }
+    )
+    monkeypatch.setattr(reporting, "_windows_acl_snapshot", lambda _path: acl)
+    with pytest.raises(ReportRenderError, match="permissive"):
+        reporting._validate_windows_acl(tmp_path / "reports", label)
+
+
+@pytest.mark.parametrize("sid", ["S-1-5-32-545", "S-1-5-11"])
+def test_windows_home_accepts_only_inherited_read_only_common_user_acl(
+    monkeypatch, tmp_path, sid
+):
+    acl = _secure_windows_acl()
+    entry = {
+        "sid": sid, "type": "Allow", "rights": "ReadAndExecute",
+        "inherited": True,
+    }
+    acl["access"].append(entry)
+    monkeypatch.setattr(reporting, "_windows_acl_snapshot", lambda _path: acl)
+    reporting._validate_windows_acl(tmp_path / "home", "home")
+
+    entry["inherited"] = False
+    with pytest.raises(ReportRenderError, match="permissive"):
+        reporting._validate_windows_acl(tmp_path / "home", "home")
+    entry["inherited"] = True
+    entry["rights"] = "ReadAndExecute, Write"
+    with pytest.raises(ReportRenderError, match="permissive"):
+        reporting._validate_windows_acl(tmp_path / "home", "home")
+
+
+@pytest.mark.parametrize("sid", ["S-1-5-32-545", "S-1-5-11"])
+def test_windows_writer_refuses_common_user_read_on_output_root_before_mutation(
+    monkeypatch, tmp_path, sid
+):
+    home = tmp_path / "home"
+    home.mkdir()
+    root = home / "reports"
+    root.mkdir()
+    neighbor = root / "existing.md"
+    neighbor.write_bytes(b"keep")
+    acl = _secure_windows_acl()
+    acl["access"].append(
+        {
+            "sid": sid, "type": "Allow", "rights": "ReadAndExecute",
+            "inherited": True,
+        }
+    )
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: home))
+    monkeypatch.setattr(reporting, "_windows_reparse", lambda _info: False)
+    monkeypatch.setattr(reporting, "_windows_acl_snapshot", lambda _path: acl)
+    with pytest.raises(ReportRenderError, match="report root DACL is permissive"):
+        reporting._atomic_write_windows(root, "new.md", b"private\n")
+    assert neighbor.read_bytes() == b"keep" and not (root / "new.md").exists()
+
+
+@pytest.mark.parametrize("sid", ["S-1-5-32-545", "S-1-5-11"])
+def test_windows_writer_checks_home_as_private_root_before_direct_output(
+    monkeypatch, tmp_path, sid
+):
+    home = tmp_path / "home"
+    home.mkdir()
+    acl = _secure_windows_acl()
+    acl["access"].append(
+        {
+            "sid": sid, "type": "Allow", "rights": "ReadAndExecute",
+            "inherited": True,
+        }
+    )
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: home))
+    monkeypatch.setattr(reporting, "_windows_acl_snapshot", lambda _path: acl)
+    with pytest.raises(ReportRenderError, match="report root DACL is permissive"):
+        reporting._atomic_write_windows(home, "client-confidential.md", b"private\n")
+    assert not (home / "client-confidential.md").exists()
+
+
+def test_windows_secure_home_can_be_report_root(monkeypatch, tmp_path):
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: home))
+    monkeypatch.setattr(
+        reporting, "_windows_acl_snapshot", lambda _path: _secure_windows_acl()
+    )
+    assert reporting._validate_windows_tree(home, Path("report.md")) == home / "report.md"
+
+
 def test_windows_acl_resolves_owner_rights_to_object_owner(monkeypatch, tmp_path):
     acl = _secure_windows_acl()
     acl["access"] = [{"sid": "S-1-3-4", "type": "Allow", "rights": "FullControl"}]

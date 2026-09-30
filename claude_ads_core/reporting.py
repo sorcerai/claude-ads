@@ -1126,13 +1126,11 @@ _WINDOWS_TRUSTED_SIDS = frozenset(
         "S-1-5-32-544",  # Built-in Administrators
     }
 )
-_WINDOWS_READ_ONLY_TRUSTED_SIDS = frozenset(
+_WINDOWS_HOME_READ_ONLY_SIDS = frozenset(
     {
-        # Standard Windows user profiles commonly inherit read-only access for
-        # the local Users group.
+        # Hosted profiles may inherit these read-only entries on the home
+        # ancestor. They are never trusted on report directories or files.
         "S-1-5-32-545",  # Built-in Users
-        # Hosted Windows runners may materialize the same profile permission
-        # through the authenticated-users well-known SID.
         "S-1-5-11",  # Authenticated Users
     }
 )
@@ -1370,9 +1368,12 @@ def _validate_windows_acl(path: Path, label: str) -> None:
             effective_sid_folded != current_folded
             and effective_sid_folded.upper() not in _WINDOWS_TRUSTED_SIDS
         ):
-            if effective_sid_folded.upper() not in _WINDOWS_READ_ONLY_TRUSTED_SIDS:
-                raise ReportRenderError(f"report {label} DACL is permissive")
-            if any(token in rights_folded for token in _WINDOWS_MUTATING_RIGHTS):
+            if (
+                label != "home"
+                or entry.get("inherited") is not True
+                or effective_sid_folded.upper() not in _WINDOWS_HOME_READ_ONLY_SIDS
+                or any(token in rights_folded for token in _WINDOWS_MUTATING_RIGHTS)
+            ):
                 raise ReportRenderError(f"report {label} DACL is permissive")
 
 
@@ -1395,14 +1396,15 @@ def _validate_windows_tree(root_path: Path, destination: Path) -> Path:
     _validate_windows_acl(home, "home")
     try:
         root_path.resolve(strict=False).relative_to(home)
-        root_path.relative_to(home)
+        relative_root = root_path.relative_to(home)
     except (OSError, ValueError) as exc:
         raise ReportRenderError(
             "report root must be beneath the current user's home"
         ) from exc
 
     current = home
-    relative_root = root_path.relative_to(home)
+    if not relative_root.parts:
+        _validate_windows_acl(home, "root")
     for part in relative_root.parts:
         current = current / part
         if current.exists() or current.is_symlink():
