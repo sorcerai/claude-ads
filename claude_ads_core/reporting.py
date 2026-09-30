@@ -1687,7 +1687,7 @@ def _atomic_write_windows(
         try:
             os.replace(temporary_path, output_path)
             replace_returned = True
-        except OSError as exc:
+        except OSError:
             raise ReportRenderError("report output replacement failed") from None
         except BaseException as exc:
             outcome_unknown = True
