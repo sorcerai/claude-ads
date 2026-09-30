@@ -140,7 +140,12 @@ def generate_setup_profile(
         target = Path(output_path)
         payload_bytes = (json.dumps(profile, indent=2, sort_keys=True) + "\n").encode("utf-8")
         try:
-            atomic_write_report(target.parent, target.name, payload_bytes)
+            atomic_write_report(
+                target.parent,
+                target.name,
+                payload_bytes,
+                require_private_root=privacy_class != "public",
+            )
         except ReportRenderError:
             raise SetupError(
                 "setup profile persistence outcome is uncertain; inspect destination"

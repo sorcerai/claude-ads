@@ -615,13 +615,15 @@ def _directory_flags() -> int:
     return os.O_DIRECTORY | os.O_NOFOLLOW | getattr(os, "O_CLOEXEC", 0)
 
 
-def _check_private_directory(file_descriptor: int, label: str) -> os.stat_result:
+def _check_private_directory(
+    file_descriptor: int, label: str, *, require_private: bool = True
+) -> os.stat_result:
     info = os.fstat(file_descriptor)
     if not stat.S_ISDIR(info.st_mode):
         raise ReportRenderError(f"report {label} must be a directory")
     if info.st_uid != os.getuid():
         raise ReportRenderError(f"report {label} must be owned by the current user")
-    if info.st_mode & 0o077:
+    if require_private and info.st_mode & 0o077:
         raise ReportRenderError(
             f"report {label} must be private (mode must not grant group or other access)"
         )
@@ -735,6 +737,7 @@ def _verify_posix_namespace(
     held_parent: os.stat_result,
     held_leaf: os.stat_result,
     expected: bytes,
+    require_private_root: bool,
 ) -> None:
     fresh_fds: list[int] = []
     verification_error: BaseException | None = None
@@ -742,7 +745,9 @@ def _verify_posix_namespace(
     try:
         fresh_root_fd, root_walk_fds = _open_posix_root(root_path, create=False)
         fresh_fds.extend(root_walk_fds)
-        fresh_root = _check_private_directory(fresh_root_fd, "root")
+        fresh_root = _check_private_directory(
+            fresh_root_fd, "root", require_private=require_private_root
+        )
         if (fresh_root.st_dev, fresh_root.st_ino) != (
             held_root.st_dev,
             held_root.st_ino,
@@ -821,7 +826,11 @@ def _verify_posix_namespace(
 
 
 def _atomic_write_posix(
-    root: str | Path, destination: str | Path, expected: bytes
+    root: str | Path,
+    destination: str | Path,
+    expected: bytes,
+    *,
+    require_private_root: bool = True,
 ) -> Path:
     _require_posix_capabilities()
     relative = _validate_report_destination(destination)
@@ -863,7 +872,9 @@ def _atomic_write_posix(
 
     try:
         root_fd, root_walk_fds = _open_posix_root(root_path, create=True)
-        held_root = _check_private_directory(root_fd, "root")
+        held_root = _check_private_directory(
+            root_fd, "root", require_private=require_private_root
+        )
         parent_fd, opened_parent_fds = _open_posix_parent(
             root_fd, tuple(relative.parts[:-1])
         )
@@ -1029,7 +1040,13 @@ def _atomic_write_posix(
                 raise verification_error
             os.fsync(parent_fd)
             _verify_posix_namespace(
-                root_path, relative, held_root, held_parent, held_leaf, expected
+                root_path,
+                relative,
+                held_root,
+                held_parent,
+                held_leaf,
+                expected,
+                require_private_root,
             )
         except BaseException as exc:
             if isinstance(exc, Exception):
@@ -1388,7 +1405,9 @@ def _protect_windows_path(path: Path) -> None:
     _validate_windows_acl(path, "output")
 
 
-def _validate_windows_tree(root_path: Path, destination: Path) -> Path:
+def _validate_windows_tree(
+    root_path: Path, destination: Path, *, require_private_root: bool = True
+) -> Path:
     try:
         home = Path.home().resolve()
     except (OSError, RuntimeError) as exc:
@@ -1415,7 +1434,8 @@ def _validate_windows_tree(root_path: Path, destination: Path) -> Path:
                 )
             if not stat.S_ISDIR(info.st_mode):
                 raise ReportRenderError("report root must be a directory")
-            _validate_windows_acl(current, "root")
+            if require_private_root or current != root_path:
+                _validate_windows_acl(current, "root")
         else:
             current.mkdir(mode=0o700)
             _protect_windows_path(current)
@@ -1448,7 +1468,11 @@ def _validate_windows_tree(root_path: Path, destination: Path) -> Path:
 
 
 def _atomic_write_windows(
-    root: str | Path, destination: str | Path, expected: bytes
+    root: str | Path,
+    destination: str | Path,
+    expected: bytes,
+    *,
+    require_private_root: bool = True,
 ) -> Path:
     relative = _validate_report_destination(destination)
     try:
@@ -1456,7 +1480,9 @@ def _atomic_write_windows(
     except (OSError, RuntimeError) as exc:
         raise ReportRenderError(f"report root normalization failed: {exc}") from exc
     try:
-        output_path = _validate_windows_tree(root_path, relative)
+        output_path = _validate_windows_tree(
+            root_path, relative, require_private_root=require_private_root
+        )
     except ReportRenderError:
         raise
     except OSError as exc:
@@ -1508,7 +1534,9 @@ def _atomic_write_windows(
         if stage_error is not None:
             raise stage_error
 
-        _validate_windows_tree(root_path, relative)
+        _validate_windows_tree(
+            root_path, relative, require_private_root=require_private_root
+        )
         replace_called = True
         try:
             os.replace(temporary_path, output_path)
@@ -1602,7 +1630,11 @@ def _reporting_platform_name() -> str:
 
 
 def atomic_write_report(
-    root: str | Path, destination: str | Path, content: str | bytes
+    root: str | Path,
+    destination: str | Path,
+    content: str | bytes,
+    *,
+    require_private_root: bool = True,
 ) -> Path:
     """Atomically write report content beneath a safe root."""
 
@@ -1610,9 +1642,19 @@ def atomic_write_report(
     expected_bytes = content if isinstance(content, bytes) else content.encode("utf-8")
     platform_name = _reporting_platform_name()
     if platform_name == "posix":
-        return _atomic_write_posix(root, destination, expected_bytes)
+        return _atomic_write_posix(
+            root,
+            destination,
+            expected_bytes,
+            require_private_root=require_private_root,
+        )
     if platform_name == "nt":
-        return _atomic_write_windows(root, destination, expected_bytes)
+        return _atomic_write_windows(
+            root,
+            destination,
+            expected_bytes,
+            require_private_root=require_private_root,
+        )
     raise ReportRenderError("report output writing unsupported on this platform")
 
 
@@ -1623,10 +1665,14 @@ def write_report_bundle(
     destination: str | Path,
     *,
     registry: ControlRegistry,
+    require_private_root: bool = True,
 ) -> Path:
     """Validate, render, and atomically write a report bundle."""
 
     _validate_report_destination(destination)
     return atomic_write_report(
-        root, destination, render_report(bundle, output_format, registry=registry)
+        root,
+        destination,
+        render_report(bundle, output_format, registry=registry),
+        require_private_root=require_private_root,
     )

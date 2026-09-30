@@ -76,6 +76,10 @@
       "then": {"properties": {"retention": {"properties": {"delete_after": {"type": "null"}}}}}
     },
     {
+      "if": {"properties": {"retention": {"properties": {"delete_after": {"type": "null"}}}}},
+      "then": {"properties": {"retention": {"properties": {"mode": {"const": "unassigned"}}}}}
+    },
+    {
       "if": {
         "properties": {
           "classification": {"not": {"const": "public"}},

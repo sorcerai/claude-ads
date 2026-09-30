@@ -72,6 +72,7 @@ def test_nonpublic_setup_rejects_persistence_without_touching_destination(tmp_pa
 
 
 def test_public_setup_atomically_replaces_permissive_file(tmp_path):
+    tmp_path.chmod(0o755)
     existing = tmp_path / "setup.json"
     existing.write_bytes(b"prior-private-content")
     if os.name == "posix":

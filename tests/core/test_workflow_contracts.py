@@ -289,6 +289,10 @@ def test_v2_lifecycle_rejects_unassigned_deadline_and_unknown_version(workflow_f
     invalid_deadline["retention"]["delete_after"] = "2026-07-12T16:00:00Z"
     with pytest.raises(ContractError, match="unassigned"):
         validate_contract("data-lifecycle", invalid_deadline)
+    invalid_mode = copy.deepcopy(lifecycle)
+    invalid_mode["retention"]["mode"] = "operator-defined"
+    with pytest.raises(ContractError, match="requires a delete_after"):
+        validate_contract("data-lifecycle", invalid_mode)
     unsupported = copy.deepcopy(lifecycle)
     unsupported["schema_version"] = "3.0.0"
     with pytest.raises(ContractError, match="schema_version"):
