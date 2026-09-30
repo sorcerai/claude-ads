@@ -350,8 +350,10 @@ never hardcode `~/.claude`. Load only what the request needs:
 - `references/status-contract.md`: deterministic `/ads status` and `/ads next` evidence and priority rules.
 - `references/prompt-patterns.md`: worked routing, worker, evidence, mutation, and
   partial-failure examples for subtle cases.
-- `claude_ads_core/schemas/v1/`: strict workflow and orchestration contracts;
-  load only the schema for the artifact being produced or checked.
+- `claude_ads_core/schemas/v1/`, `v2/`, and `v3/`: versioned workflow and
+  report contracts; select by the artifact's `schema_version`. Historical v1
+  remains strict; current lifecycle and setup profiles use v2, report bundles
+  v3. Load only the schema for the artifact being produced or checked.
 - Platform audit and creative-spec references only for active platforms.
 - Workflow sub-skills only for the selected command.
 
@@ -366,10 +368,13 @@ Before delivery:
 - Reconcile platform and portfolio scores with the scoring engine.
 - Confirm all required workers finished or label the bundle partial.
 - Confirm no credentials, private paths, PII, or restricted research appear.
-- Validate the embedded per-run data lifecycle: classification, declared minimum
-  retention and deadline/exception, encryption evidence, access roles, deletion
-  verification, and incident owner/channel. Raw prompts and resolved local paths
-  must not enter shipped JSON.
+- Validate the embedded per-run data lifecycle against its versioned schema:
+  classification, retention deadline or unassigned status, encryption evidence
+  or unknown status, access roles, pending or verified deletion, and incident
+  owner/channel. Historical v1 records remain strict. Never infer encryption
+  or deletion verification from an output path; refuse non-public persistence
+  without independently authenticated encryption and scheduler proof. Raw
+  prompts and resolved local paths must not enter shipped JSON.
 - For reports, run structural and visual checks before delivery.
 - For writes, verify remote state and preserve the rollback record.
 - Provide prioritized actions with owner, timing, confidence, evidence, and success
