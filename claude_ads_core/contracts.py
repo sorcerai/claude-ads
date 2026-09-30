@@ -23,17 +23,19 @@ from .workflow_contracts import (
 
 CURRENT_CONTRACT_VERSIONS = {
     "account-snapshot": "2.0.0",
-    "run-manifest": "1.0.0",
+    "run-manifest": "2.0.0",
     "control-definition": "1.0.0",
     "finding": "2.0.0",
-    "report-bundle": "2.0.0",
+    "report-bundle": "3.0.0",
 }
 CURRENT_SCHEMA_DIRECTORIES = {
     "account-snapshot": "v2",
-    "run-manifest": "v1",
+    "run-manifest": "v2",
     "control-definition": "v1",
     "finding": "v2",
-    "report-bundle": "v2",
+    "report-bundle": "v3",
+    "data-lifecycle": "v2",
+    "setup-profile": "v2",
 }
 CORE_CONTRACT_NAMES = tuple(CURRENT_CONTRACT_VERSIONS)
 CONTRACT_NAMES = CORE_CONTRACT_NAMES + WORKFLOW_CONTRACT_NAMES
@@ -328,7 +330,13 @@ def _validate_run_manifest(payload: Mapping[str, Any]) -> None:
         payload,
         ("schema_version", "run_id", "started_at", "scopes", "adapters", "sources", "privacy_class", "data_lifecycle", "worker_status", "completeness"),
     )
-    _validate_version(payload, CURRENT_CONTRACT_VERSIONS["run-manifest"])
+    manifest_version = payload.get("schema_version")
+    lifecycle = _require_object(payload["data_lifecycle"], "$.data_lifecycle")
+    if (
+        manifest_version not in ("1.0.0", "2.0.0")
+        or lifecycle.get("schema_version") != manifest_version
+    ):
+        raise ContractError("run-manifest and data-lifecycle schema_version must match")
     _require_string(payload["run_id"], "$.run_id")
     _validate_datetime(payload["started_at"], "$.started_at")
     for field in ("scopes", "sources"):
@@ -349,7 +357,6 @@ def _validate_run_manifest(payload: Mapping[str, Any]) -> None:
         validate_workflow_contract("data-lifecycle", payload["data_lifecycle"])
     except WorkflowContractError as exc:
         raise ContractError(f"$.data_lifecycle: {exc}") from exc
-    lifecycle = _require_object(payload["data_lifecycle"], "$.data_lifecycle")
     if lifecycle.get("classification") != payload["privacy_class"]:
         raise ContractError("$.privacy_class must match $.data_lifecycle.classification")
     statuses = _require_object(payload["worker_status"], "$.worker_status")
@@ -470,8 +477,20 @@ def _validate_finding(
         raise ContractError("$.evidence must not be empty for pass/fail findings")
 
 def _validate_report_bundle(payload: Mapping[str, Any]) -> None:
-    _validate_version(payload, CURRENT_CONTRACT_VERSIONS["report-bundle"])
     _require_keys(payload, ("schema_version", "run_manifest", "account_snapshot", "control_definitions", "findings", "scoring"))
+    bundle_version = payload.get("schema_version")
+    manifest = _require_object(payload["run_manifest"], "$.run_manifest")
+    if bundle_version == "2.0.0":
+        expected_manifest_version = "1.0.0"
+    elif bundle_version == "3.0.0":
+        expected_manifest_version = "2.0.0"
+    else:
+        expected_manifest_version = None
+    if (
+        expected_manifest_version is None
+        or manifest.get("schema_version") != expected_manifest_version
+    ):
+        raise ContractError("report-bundle and run-manifest schema_version must match")
     validate_contract("run-manifest", payload["run_manifest"])
     validate_contract("account-snapshot", payload["account_snapshot"])
     controls = _require_list(payload["control_definitions"], "$.control_definitions")
