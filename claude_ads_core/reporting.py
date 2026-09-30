@@ -1131,6 +1131,9 @@ _WINDOWS_READ_ONLY_TRUSTED_SIDS = frozenset(
         # Standard Windows user profiles commonly inherit read-only access for
         # the local Users group.
         "S-1-5-32-545",  # Built-in Users
+        # Hosted Windows runners may materialize the same profile permission
+        # through the authenticated-users well-known SID.
+        "S-1-5-11",  # Authenticated Users
     }
 )
 _WINDOWS_OWNER_RIGHTS_SID = "s-1-3-4"
