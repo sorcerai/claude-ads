@@ -486,8 +486,11 @@ def test_nonpublic_queue_refuses_checkpoint_and_network_before_lock(
     )
     with pytest.raises(ValueError, match="non-public"):
         fetch_ad_library.collect_advertiser_queue(
-            token="fixture", countries=["DE"], search_page_ids="page-1",
-            checkpoint_path=checkpoint, privacy_class=privacy_class,
+            token="fixture",
+            countries=["DE"],
+            search_page_ids="page-1",
+            checkpoint_path=checkpoint,
+            privacy_class=privacy_class,
             quota_budget=RecordingBudget(),
         )
     assert not checkpoint.parent.exists()
@@ -502,8 +505,11 @@ def test_nonpublic_unlocked_queue_does_not_create_checkpoint(tmp_path, monkeypat
     )
     with pytest.raises(ValueError, match="non-public"):
         fetch_ad_library._collect_advertiser_queue_unlocked(
-            token="fixture", countries=["DE"], search_page_ids="page-1",
-            checkpoint_path=checkpoint, privacy_class="internal",
+            token="fixture",
+            countries=["DE"],
+            search_page_ids="page-1",
+            checkpoint_path=checkpoint,
+            privacy_class="internal",
             quota_budget=RecordingBudget(),
         )
     assert not checkpoint.parent.exists()
@@ -516,8 +522,13 @@ def test_cli_refuses_nonpublic_before_output_quota_or_network(
 ):
     output = tmp_path / "absent" / "ads.json"
     argv = [
-        "fetch_ad_library.py", "--countries", "DE", "--search-terms", "crm",
-        "--privacy-class", privacy_class,
+        "fetch_ad_library.py",
+        "--countries",
+        "DE",
+        "--search-terms",
+        "crm",
+        "--privacy-class",
+        privacy_class,
     ]
     if with_output:
         argv.extend(["--output", str(output)])
@@ -556,10 +567,21 @@ def test_cli_resume_rejects_stored_internal_class_before_output_preflight(
     output = tmp_path / "absent" / "ads.json"
 
     monkeypatch.setattr(
-        sys, "argv", [
-            "fetch_ad_library.py", "--countries", "DE", "--search-page-ids", "page-1",
-            "--checkpoint", str(checkpoint), "--resume", "--privacy-class", "public",
-            "--output", str(output),
+        sys,
+        "argv",
+        [
+            "fetch_ad_library.py",
+            "--countries",
+            "DE",
+            "--search-page-ids",
+            "page-1",
+            "--checkpoint",
+            str(checkpoint),
+            "--resume",
+            "--privacy-class",
+            "public",
+            "--output",
+            str(output),
         ],
     )
     monkeypatch.setenv("META_AD_LIBRARY_TOKEN", "fixture")
@@ -618,16 +640,28 @@ def test_resume_refuses_internal_artifact_with_unchanged_public_filter(
 
     if via_cli:
         monkeypatch.setattr(
-            sys, "argv", [
-                "fetch_ad_library.py", "--countries", "DE", "--search-page-ids", "page-1",
-                "--checkpoint", str(checkpoint), "--resume", "--privacy-class", "public",
-                "--output", str(output),
+            sys,
+            "argv",
+            [
+                "fetch_ad_library.py",
+                "--countries",
+                "DE",
+                "--search-page-ids",
+                "page-1",
+                "--checkpoint",
+                str(checkpoint),
+                "--resume",
+                "--privacy-class",
+                "public",
+                "--output",
+                str(output),
             ],
         )
         monkeypatch.setenv("META_AD_LIBRARY_TOKEN", "fixture")
         monkeypatch.setenv("CLAUDE_ADS_OUTPUT_ROOT", str(tmp_path))
         monkeypatch.setattr(
-            fetch_ad_library, "QuotaBudget",
+            fetch_ad_library,
+            "QuotaBudget",
             lambda **kwargs: pytest.fail("internal artifact initialized quota"),
         )
         with pytest.raises(SystemExit) as exit_status:

@@ -474,7 +474,9 @@ def test_build_canonical_artifact_normalizes_observations_and_binds_lifecycle():
     assert lifecycle["retention"]["mode"] == "unassigned"
     assert lifecycle["retention"]["delete_after"] is None
     assert lifecycle["encryption"] == {
-        "at_rest": "unknown", "in_transit": "unknown", "evidence_refs": []
+        "at_rest": "unknown",
+        "in_transit": "unknown",
+        "evidence_refs": [],
     }
     assert lifecycle["deletion"]["status"] == "pending"
     assert lifecycle["deletion"]["verification_required"] is True

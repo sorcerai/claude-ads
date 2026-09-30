@@ -41,7 +41,9 @@ def test_setup_profile_generation_and_contract_validation():
     lifecycle = profile["data_lifecycle"]
     assert lifecycle["schema_version"] == "2.0.0"
     assert lifecycle["encryption"] == {
-        "at_rest": "unknown", "in_transit": "unknown", "evidence_refs": []
+        "at_rest": "unknown",
+        "in_transit": "unknown",
+        "evidence_refs": [],
     }
     assert lifecycle["deletion"]["status"] == "pending"
     assert lifecycle["deletion"]["scheduler_receipt_locator"] is None
@@ -123,7 +125,9 @@ def test_setup_refuses_leaf_and_parent_symlinks(tmp_path):
     linked_parent = tmp_path / "alias"
     linked_parent.symlink_to(outside, target_is_directory=True)
     with pytest.raises(SetupError, match="persistence"):
-        generate_setup_profile(privacy_class="public", output_path=linked_parent / "setup.json")
+        generate_setup_profile(
+            privacy_class="public", output_path=linked_parent / "setup.json"
+        )
     assert not (outside / "setup.json").exists()
 
     with pytest.raises(SetupError, match="persistence"):
@@ -134,7 +138,9 @@ def test_setup_refuses_leaf_and_parent_symlinks(tmp_path):
 
 
 @pytest.mark.skipif(os.name != "posix", reason="POSIX atomic replacement boundary")
-def test_setup_postreplacement_interrupt_preserves_complete_result(tmp_path, monkeypatch):
+def test_setup_postreplacement_interrupt_preserves_complete_result(
+    tmp_path, monkeypatch
+):
     output = tmp_path / "setup.json"
     output.write_bytes(b"prior-private-content")
     original_replace = os.replace
@@ -146,7 +152,9 @@ def test_setup_postreplacement_interrupt_preserves_complete_result(tmp_path, mon
     monkeypatch.setattr(os, "replace", replacing_then_interrupt)
     with pytest.raises(KeyboardInterrupt):
         generate_setup_profile(privacy_class="public", output_path=output)
-    validate_workflow_contract("setup-profile", json.loads(output.read_text(encoding="utf-8")))
+    validate_workflow_contract(
+        "setup-profile", json.loads(output.read_text(encoding="utf-8"))
+    )
 
 
 @pytest.mark.skipif(os.name != "posix", reason="POSIX replacement verification")
@@ -174,7 +182,9 @@ def test_setup_reports_uncertain_postreplacement_verification_without_private_de
     with pytest.raises(SetupError, match="uncertain|may have occurred") as failure:
         generate_setup_profile(privacy_class="public", output_path=output)
     assert "fixture-private-verification-detail" not in str(failure.value)
-    validate_workflow_contract("setup-profile", json.loads(output.read_text(encoding="utf-8")))
+    validate_workflow_contract(
+        "setup-profile", json.loads(output.read_text(encoding="utf-8"))
+    )
 
 
 def test_setup_profile_rejects_unsupported_platform():
