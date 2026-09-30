@@ -628,6 +628,59 @@ def _check_private_directory(file_descriptor: int, label: str) -> os.stat_result
     return info
 
 
+def _open_posix_root(root_path: Path, *, create: bool) -> tuple[int, list[int]]:
+    """Open every component of an absolute root beneath a held ``/`` fd."""
+
+    opened: list[int] = []
+    try:
+        parent_fd = os.open(os.sep, _directory_flags())
+        opened.append(parent_fd)
+        parts = root_path.parts
+        if not parts or parts[0] != os.sep:
+            raise ReportRenderError("report root must be an absolute path")
+        for part in parts[1:]:
+            created = False
+            try:
+                entry = os.stat(part, dir_fd=parent_fd, follow_symlinks=False)
+            except FileNotFoundError:
+                if not create:
+                    raise ReportRenderError("report root namespace is missing")
+                try:
+                    os.mkdir(part, mode=0o700, dir_fd=parent_fd)
+                except FileExistsError:
+                    pass
+                else:
+                    os.fsync(parent_fd)
+                    created = True
+                entry = os.stat(part, dir_fd=parent_fd, follow_symlinks=False)
+            if stat.S_ISLNK(entry.st_mode):
+                raise ReportRenderError("report root must not contain symlinks")
+            if not stat.S_ISDIR(entry.st_mode):
+                raise ReportRenderError("report root must be a directory")
+            child_fd = os.open(part, _directory_flags(), dir_fd=parent_fd)
+            opened.append(child_fd)
+            if created:
+                _check_private_directory(child_fd, "root parent")
+            parent_fd = child_fd
+        return parent_fd, opened
+    except BaseException as primary_error:
+        close_errors: list[BaseException] = []
+        for file_descriptor in reversed(opened):
+            try:
+                os.close(file_descriptor)
+            except BaseException as close_error:
+                close_errors.append(close_error)
+        if close_errors:
+            details = "; ".join(str(error) for error in close_errors)
+            close_context = f"root descriptor cleanup failed: {details}"
+            if isinstance(primary_error, Exception):
+                raise ReportRenderError(
+                    f"{primary_error}; {close_context}"
+                ) from primary_error
+            primary_error.add_note(close_context)
+        raise
+
+
 def _open_posix_parent(root_fd: int, parts: tuple[str, ...]) -> tuple[int, list[int]]:
     parent_fd = root_fd
     opened = [root_fd]
@@ -687,8 +740,8 @@ def _verify_posix_namespace(
     verification_error: BaseException | None = None
     close_errors: list[BaseException] = []
     try:
-        fresh_root_fd = os.open(root_path, _directory_flags())
-        fresh_fds.append(fresh_root_fd)
+        fresh_root_fd, root_walk_fds = _open_posix_root(root_path, create=False)
+        fresh_fds.extend(root_walk_fds)
         fresh_root = _check_private_directory(fresh_root_fd, "root")
         if (fresh_root.st_dev, fresh_root.st_ino) != (
             held_root.st_dev,
@@ -776,11 +829,8 @@ def _atomic_write_posix(
         root_path = Path(root).absolute()
     except (OSError, RuntimeError) as exc:
         raise ReportRenderError(f"report root normalization failed: {exc}") from exc
-    try:
-        root_path.mkdir(parents=True, exist_ok=True, mode=0o700)
-    except OSError as exc:
-        raise ReportRenderError(f"report root creation failed: {exc}") from exc
 
+    root_walk_fds: list[int] = []
     root_fd = None
     parent_fd = None
     opened_parent_fds: list[int] = []
@@ -788,7 +838,6 @@ def _atomic_write_posix(
     temporary_owned = False
     replace_called = False
     replace_returned = False
-    temporary_absence_verified = False
     replacement_committed = False
     outcome_unknown = False
     primary_error: BaseException | None = None
@@ -813,7 +862,7 @@ def _atomic_write_posix(
         return normalized
 
     try:
-        root_fd = os.open(root_path, _directory_flags())
+        root_fd, root_walk_fds = _open_posix_root(root_path, create=True)
         held_root = _check_private_directory(root_fd, "root")
         parent_fd, opened_parent_fds = _open_posix_parent(
             root_fd, tuple(relative.parts[:-1])
@@ -902,8 +951,7 @@ def _atomic_write_posix(
         try:
             os.stat(temporary_name, dir_fd=parent_fd, follow_symlinks=False)
         except FileNotFoundError:
-            temporary_absence_verified = True
-            replacement_committed = temporary_absence_verified
+            replacement_committed = True
             temporary_owned = False
         except OSError as exc:
             outcome_unknown = True
@@ -1014,6 +1062,11 @@ def _atomic_write_posix(
         primary_error = normalize_error(exc)
     finally:
         for file_descriptor in reversed(opened_parent_fds):
+            try:
+                os.close(file_descriptor)
+            except BaseException as exc:
+                close_errors.append(exc)
+        for file_descriptor in reversed(root_walk_fds[:-1]):
             try:
                 os.close(file_descriptor)
             except BaseException as exc:
@@ -1257,9 +1310,9 @@ def _validate_windows_acl(path: Path, label: str) -> None:
     owner_sid = snapshot.get("owner_sid")
     current_sid = snapshot.get("current_sid")
     access = snapshot.get("access")
-    if not isinstance(owner_sid, str) or not owner_sid:
+    if not isinstance(owner_sid, str) or not owner_sid.strip():
         raise ReportRenderError(f"report {label} owner is unverifiable")
-    if not isinstance(current_sid, str) or not current_sid:
+    if not isinstance(current_sid, str) or not current_sid.strip():
         raise ReportRenderError(f"report {label} current user is unverifiable")
     owner_folded = owner_sid.casefold()
     current_folded = current_sid.casefold()
@@ -1281,9 +1334,11 @@ def _validate_windows_acl(path: Path, label: str) -> None:
         rights = entry.get("rights")
         if (
             not isinstance(sid, str)
-            or not sid
+            or not sid.strip()
             or not isinstance(access_type, str)
+            or not access_type.strip()
             or not isinstance(rights, str)
+            or not rights.strip()
         ):
             raise ReportRenderError(f"report {label} DACL is unverifiable")
         sid_folded = sid.casefold()
@@ -1304,7 +1359,6 @@ def _validate_windows_acl(path: Path, label: str) -> None:
         if (
             effective_sid_folded != current_folded
             and effective_sid_folded.upper() not in _WINDOWS_TRUSTED_SIDS
-            and any(token in rights_folded for token in _WINDOWS_MUTATING_RIGHTS)
         ):
             raise ReportRenderError(f"report {label} DACL is permissive")
 
@@ -1403,13 +1457,13 @@ def _atomic_write_windows(
     temporary_owned = True
     replace_called = False
     replace_returned = False
-    temporary_absence_verified = False
     replacement_committed = False
     outcome_unknown = False
     primary_error: BaseException | None = None
     stage_error: BaseException | None = None
     try:
         try:
+            _protect_windows_path(temporary_path)
             data = memoryview(expected)
             written = 0
             while written < len(data):
@@ -1439,7 +1493,6 @@ def _atomic_write_windows(
         if stage_error is not None:
             raise stage_error
 
-        _protect_windows_path(temporary_path)
         _validate_windows_tree(root_path, relative)
         replace_called = True
         try:
@@ -1456,8 +1509,7 @@ def _atomic_write_windows(
         try:
             temporary_path.lstat()
         except FileNotFoundError:
-            temporary_absence_verified = True
-            replacement_committed = temporary_absence_verified
+            replacement_committed = True
             temporary_owned = False
         except BaseException as exc:
             outcome_unknown = True

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import os
+import json
 import uuid
 from datetime import datetime, timedelta, timezone
 from os import PathLike
@@ -10,6 +10,8 @@ from pathlib import Path
 from typing import Any, Sequence
 
 from .contracts import PLATFORMS
+from .lifecycle import make_pending_lifecycle
+from .reporting import ReportRenderError, atomic_write_report
 from .workflow_contracts import WorkflowContractError, validate_workflow_contract
 
 
@@ -53,6 +55,7 @@ def generate_setup_profile(
     if privacy_class not in {"public", "internal", "confidential", "restricted"}:
         raise SetupError(f"invalid privacy_class: {privacy_class}")
 
+
     if mutation_authority not in {"none", "draft-only", "approved-plan-required"}:
         raise SetupError(f"invalid mutation_authority: {mutation_authority}")
 
@@ -66,40 +69,16 @@ def generate_setup_profile(
     resolved_run_id = run_id or f"setup-{normalized_platform}-{now.strftime('%Y%m%d')}-{uuid.uuid4().hex[:8]}"
     lifecycle_id = f"lifecycle-{resolved_run_id}"
 
-    data_lifecycle: dict[str, Any] = {
-        "schema_version": "1.0.0",
-        "lifecycle_id": lifecycle_id,
-        "classification": privacy_class,
-        "retention": {
-            "minimum_seconds": 0,
-            "mode": "operator-defined",
-            "delete_after": delete_after_iso,
-            "purpose": f"Setup profile and data governance for {client_name} on {normalized_platform}",
-            "exception_reason": None,
-        },
-        "encryption": {
-            "at_rest": "verified",
-            "in_transit": "verified",
-            "evidence_refs": ["operator-attestation:local-filesystem-encryption"],
-        },
-        "access": {
-            "owner": owner,
-            "authorized_roles": ["operator"],
-            "access_log_locator": None,
-        },
-        "deletion": {
-            "status": "scheduled",
-            "method": "Secure file overwrite and deletion",
-            "verification_required": True,
-            "verification_artifact_locator": None,
-        },
-        "incident": {
-            "owner": owner,
-            "reporting_channel": reporting_channel,
-            "status": "not-triggered",
-            "record_locator": None,
-        },
-    }
+    purpose = f"Setup profile and data governance for {client_name} on {normalized_platform}"
+    data_lifecycle = make_pending_lifecycle(
+        lifecycle_id=lifecycle_id,
+        classification=privacy_class,
+        delete_after=delete_after_iso,
+        purpose=purpose,
+        owner=owner,
+        authorized_roles=["operator"],
+        reporting_channel=reporting_channel,
+    )
 
     source_id = f"{normalized_platform}-data-source-001"
     data_sources = [
@@ -112,7 +91,7 @@ def generate_setup_profile(
     ]
 
     profile: dict[str, Any] = {
-        "schema_version": "1.0.0",
+        "schema_version": "2.0.0",
         "artifact_type": "setup-profile",
         "run_id": resolved_run_id,
         "created_at": now_iso,
@@ -149,24 +128,20 @@ def generate_setup_profile(
         validate_workflow_contract("setup-profile", profile)
     except WorkflowContractError as exc:
         raise SetupError(f"generated setup profile is invalid: {exc}") from exc
+    if output_path is not None and privacy_class != "public":
+        raise SetupError(
+            "non-public setup persistence requires independently verified "
+            "encryption and deletion scheduler receipt"
+        )
 
     if output_path is not None:
         target = Path(output_path)
-        target.parent.mkdir(parents=True, exist_ok=True)
-        # Write atomically with mode 0600
-        flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
-        if hasattr(os, "O_NOFOLLOW"):
-            flags |= os.O_NOFOLLOW
-        import json
         payload_bytes = (json.dumps(profile, indent=2, sort_keys=True) + "\n").encode("utf-8")
-        fd = os.open(target, flags, 0o600)
         try:
-            with os.fdopen(fd, "wb") as handle:
-                handle.write(payload_bytes)
-                handle.flush()
-                os.fsync(handle.fileno())
-        except Exception:
-            target.unlink(missing_ok=True)
-            raise
+            atomic_write_report(target.parent, target.name, payload_bytes)
+        except ReportRenderError:
+            raise SetupError(
+                "setup profile persistence outcome is uncertain; inspect destination"
+            ) from None
 
     return profile

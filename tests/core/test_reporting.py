@@ -484,9 +484,10 @@ def _secure_windows_acl() -> dict:
     }
 
 
-def test_windows_acl_rejects_permissive_entries_before_write(monkeypatch, tmp_path):
+@pytest.mark.parametrize("rights", ["FullControl", "Read", "ReadAndExecute"])
+def test_windows_acl_rejects_permissive_entries_before_write(monkeypatch, tmp_path, rights):
     acl = _secure_windows_acl()
-    acl["access"].append({"sid": "S-1-1-0", "type": "Allow", "rights": "FullControl"})
+    acl["access"].append({"sid": "S-1-1-0", "type": "Allow", "rights": rights})
     monkeypatch.setattr(reporting, "_windows_acl_snapshot", lambda _path: acl)
     with pytest.raises(ReportRenderError, match="permissive"):
         reporting._validate_windows_acl(tmp_path / "reports", "root")
@@ -544,6 +545,36 @@ def test_windows_atomic_report_write_round_trips_acl_with_spaces_quotes_and_unic
         assert snapshot["owner_sid"] in {current_sid, "S-1-5-18", "S-1-5-32-544"}
         assert snapshot["access"]
         assert all(entry["sid"] == current_sid for entry in snapshot["access"])
+
+
+@pytest.mark.skipif(os.name != "nt", reason="native Windows staging ACL")
+def test_windows_staging_file_is_owner_only_before_payload_write(tmp_path, monkeypatch):
+    stage = {}
+    original_mkstemp = reporting.tempfile.mkstemp
+    original_write = os.write
+    checked = False
+
+    def capture_temporary(*args, **kwargs):
+        descriptor, name = original_mkstemp(*args, **kwargs)
+        stage.update(descriptor=descriptor, path=Path(name))
+        return descriptor, name
+
+    def check_before_write(descriptor, data):
+        nonlocal checked
+        if descriptor == stage.get("descriptor"):
+            acl = reporting._windows_acl_snapshot(stage["path"])
+            current_sid = acl["current_sid"]
+            assert acl["access"] and all(
+                entry["type"] == "Allow" and entry["sid"] == current_sid
+                for entry in acl["access"]
+            )
+            checked = True
+        return original_write(descriptor, data)
+
+    monkeypatch.setattr(reporting.tempfile, "mkstemp", capture_temporary)
+    monkeypatch.setattr(reporting.os, "write", check_before_write)
+    output = atomic_write_report(tmp_path / "reports", "report.md", b"private\n")
+    assert checked and output.read_bytes() == b"private\n"
 
 
 def test_windows_atomic_write_applies_current_user_acl_on_non_windows(

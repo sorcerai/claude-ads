@@ -19,6 +19,7 @@ from .adapters import (
 )
 from .contracts import ContractError, PLATFORMS, validate_contract
 from .control_registry import RegistryError, load_control_registry
+from .lifecycle import make_pending_lifecycle
 from .reporting import (
     ReportRenderError,
     atomic_write_report,
@@ -173,6 +174,16 @@ def run_audit(
     client_name: str | None = None,
 ) -> dict[str, Any]:
     """Execute the end-to-end reference audit journey."""
+    if not isinstance(privacy_class, str) or privacy_class not in {
+        "public", "internal", "confidential", "restricted"
+    }:
+        raise AuditError("invalid privacy_class")
+    if privacy_class != "public":
+        raise AuditError(
+            "non-public audit persistence requires independently verified "
+            "encryption and deletion scheduler receipt"
+        )
+
     normalized_platform = platform.strip().lower()
     if normalized_platform not in PLATFORMS:
         raise AuditError(f"unsupported platform: {platform}")
@@ -266,46 +277,22 @@ def run_audit(
 
     lifecycle_id = f"lifecycle-{resolved_run_id}"
     delete_after_iso = (now + timedelta(days=30)).strftime("%Y-%m-%dT%H:%M:%SZ")
-    data_lifecycle: dict[str, Any] = {
-        "schema_version": "1.0.0",
-        "lifecycle_id": lifecycle_id,
-        "classification": privacy_class,
-        "retention": {
-            "minimum_seconds": 0,
-            "mode": "operator-defined",
-            "delete_after": delete_after_iso,
-            "purpose": f"Audit execution and report generation for {normalized_platform}",
-            "exception_reason": None,
-        },
-        "encryption": {
-            "at_rest": "verified",
-            "in_transit": "verified",
-            "evidence_refs": ["operator-attestation:local-filesystem-encryption"],
-        },
-        "access": {
-            "owner": owner,
-            "authorized_roles": ["operator"],
-            "access_log_locator": None,
-        },
-        "deletion": {
-            "status": "scheduled",
-            "method": "Secure file overwrite and deletion",
-            "verification_required": True,
-            "verification_artifact_locator": None,
-        },
-        "incident": {
-            "owner": owner,
-            "reporting_channel": "security@operator",
-            "status": "not-triggered",
-            "record_locator": None,
-        },
-    }
+    purpose = f"Audit execution and report generation for {normalized_platform}"
+    data_lifecycle = make_pending_lifecycle(
+        lifecycle_id=lifecycle_id,
+        classification=privacy_class,
+        delete_after=delete_after_iso,
+        purpose=purpose,
+        owner=owner,
+        authorized_roles=["operator"],
+        reporting_channel="security@operator",
+    )
 
     # If scoring is insufficient_evidence (e.g. disabled profile), completeness cannot be complete
     completeness = "partial" if scoring["status"] == "insufficient_evidence" else "complete"
 
     run_manifest: dict[str, Any] = {
-        "schema_version": "1.0.0",
+        "schema_version": "2.0.0",
         "run_id": resolved_run_id,
         "started_at": now_iso,
         "scopes": ["audit", normalized_platform],
@@ -328,7 +315,7 @@ def run_audit(
     ]
 
     bundle: dict[str, Any] = {
-        "schema_version": "2.0.0",
+        "schema_version": "3.0.0",
         "run_manifest": run_manifest,
         "account_snapshot": snapshot,
         "control_definitions": control_definitions,
@@ -349,13 +336,6 @@ def run_audit(
         raise AuditError(f"assembled report bundle failed registry scoring validation: {exc}") from exc
 
     root = Path(output_dir if output_dir is not None else _default_report_root())
-    if not root.exists():
-        root.mkdir(parents=True, exist_ok=True, mode=0o700)
-    if os.name != "nt":
-        try:
-            os.chmod(root, 0o700)
-        except OSError:
-            pass
 
     bundle_destination = f"{resolved_run_id}/bundle.json"
     bundle_bytes = (json.dumps(bundle, indent=2, sort_keys=True) + "\n").encode("utf-8")
