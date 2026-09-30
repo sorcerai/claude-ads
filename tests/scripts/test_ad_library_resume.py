@@ -475,11 +475,59 @@ def test_resume_rejects_changed_effective_page_size(tmp_path, monkeypatch):
         _call_queue(monkeypatch, checkpoint, [], resume=True, limit=100)
 
 
+def test_cli_queue_page_cap_exits_nonzero_with_checkpoint_and_partial_data(
+    tmp_path, monkeypatch, capsys
+):
+    checkpoint = tmp_path / "checkpoint.json"
+    calls = []
+
+    def transport(*args, **kwargs):
+        calls.append(kwargs)
+        return Response(
+            _page(_ad("ad-1"), next_url=f"{fetch_ad_library.ENDPOINT}?after=cursor-2")
+        )
+
+    monkeypatch.setattr(fetch_ad_library, "guarded_request", transport)
+    monkeypatch.setattr(
+        fetch_ad_library, "QuotaBudget", lambda **kwargs: RecordingBudget()
+    )
+    monkeypatch.setenv("META_AD_LIBRARY_TOKEN", "fixture")
+    monkeypatch.setenv("CLAUDE_ADS_OUTPUT_ROOT", str(tmp_path))
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "fetch_ad_library.py",
+            "--countries",
+            "DE",
+            "--search-page-ids",
+            "page-1,page-2",
+            "--checkpoint",
+            str(checkpoint),
+            "--max-pages",
+            "1",
+        ],
+    )
+    with pytest.raises(SystemExit) as exit_info:
+        fetch_ad_library.main()
+    assert exit_info.value.code != 0
+    result = json.loads(capsys.readouterr().out)
+    assert result["status"] == "paginated"
+    assert [entry["status"] for entry in result["advertisers"]] == [
+        "paginated",
+        "queued",
+    ]
+    assert result["advertisers"][0]["artifact"]["observations"]
+    assert len(calls) == 1
+    persisted = json.loads(checkpoint.read_text(encoding="utf-8"))
+    assert persisted["advertisers"] == result["advertisers"]
+
+
 def test_cli_corrupt_checkpoint_is_sanitized_error_without_dispatch(
     tmp_path, monkeypatch, capsys
 ):
     checkpoint = tmp_path / "checkpoint.json"
-    checkpoint.write_text("invalid-json")
+    checkpoint.write_text("invalid-json access_token=fixture-secret")
     monkeypatch.setenv("META_AD_LIBRARY_TOKEN", "fixture")
     monkeypatch.setenv("CLAUDE_ADS_OUTPUT_ROOT", str(tmp_path))
     monkeypatch.setattr(
@@ -504,7 +552,7 @@ def test_cli_corrupt_checkpoint_is_sanitized_error_without_dispatch(
     with pytest.raises(SystemExit) as caught:
         fetch_ad_library.main()
     assert caught.value.code == 1
-    assert "Error:" in capsys.readouterr().err
+    assert "fixture-secret" not in capsys.readouterr().err
 
 
 def test_checkpoint_creation_rechecks_existence_after_lock(tmp_path, monkeypatch):
@@ -524,6 +572,7 @@ def test_checkpoint_creation_rechecks_existence_after_lock(tmp_path, monkeypatch
 def test_final_page_quota_stop_defers_remaining_advertisers(tmp_path, monkeypatch):
     from ad_library_quota import QuotaBudget
 
+    checkpoint = tmp_path / "checkpoint.json"
     calls = []
 
     def transport(*args, **kwargs):
@@ -537,15 +586,132 @@ def test_final_page_quota_stop_defers_remaining_advertisers(tmp_path, monkeypatc
         token="fixture",
         countries=["DE"],
         search_page_ids="page-1,page-2",
-        checkpoint_path=tmp_path / "checkpoint.json",
+        checkpoint_path=checkpoint,
         quota_budget=QuotaBudget(tmp_path / "quota.json", clock=lambda: 1000),
     )
     assert len(calls) == 1
     assert [entry["status"] for entry in result["advertisers"]] == [
-        "quota-deferred",
+        "exhausted",
         "queued",
     ]
     assert result["status"] == "quota-deferred"
+    persisted = json.loads(checkpoint.read_text(encoding="utf-8"))
+    first = persisted["advertisers"][0]
+    assert first == result["advertisers"][0]
+    assert first["status"] == "exhausted"
+    assert first["next_cursor"] is None
+    assert first["artifact"]["observation_count"] == 1
+    assert first["quota_stop_reason"] is not None
+
+    resume_calls = []
+
+    def resume_transport(*args, **kwargs):
+        assert kwargs["params"]["search_page_ids"] == "page-2"
+        resume_calls.append(kwargs)
+        return Response(_page(_ad("ad-2", page_id="page-2")))
+
+    monkeypatch.setattr(fetch_ad_library, "guarded_request", resume_transport)
+    resumed = fetch_ad_library.collect_advertiser_queue(
+        token="fixture",
+        countries=["DE"],
+        search_page_ids="page-1,page-2",
+        checkpoint_path=checkpoint,
+        resume=True,
+        quota_budget=RecordingBudget(),
+    )
+    assert len(resume_calls) == 1
+    assert [entry["status"] for entry in resumed["advertisers"]] == [
+        "exhausted",
+        "exhausted",
+    ]
+    assert resumed["status"] == "exhausted"
+
+
+@pytest.mark.parametrize(
+    ("usage_header", "expected_reason"),
+    [
+        (None, "usage-unavailable"),
+        ("not-json", "usage-invalid"),
+        ('{"call_count": 100}', "usage-threshold"),
+    ],
+    ids=["absent", "malformed", "high"],
+)
+def test_terminal_page_is_exhausted_under_any_usage_signal(
+    tmp_path, monkeypatch, usage_header, expected_reason
+):
+    from ad_library_quota import QuotaBudget
+
+    headers = {"X-App-Usage": usage_header} if usage_header else {}
+    monkeypatch.setattr(
+        fetch_ad_library,
+        "guarded_request",
+        lambda *args, **kwargs: Response(_page(_ad("ad-1")), headers=headers),
+    )
+    result = fetch_ad_library.search_ad_library(
+        token="fixture",
+        countries=["DE"],
+        search_page_ids="page-1",
+        quota_budget=QuotaBudget(tmp_path / "quota.json", clock=lambda: 1000),
+    )
+    assert result["status"] == "exhausted"
+    assert [ad["id"] for ad in result["ads"]] == ["ad-1"]
+    assert result["next_cursor"] is None
+    assert result["quota_stop_reason"] == expected_reason
+    assert result["retry_at"] == 4600.0
+
+
+def test_cursor_page_with_quota_stop_stays_deferred_on_stored_cursor(
+    tmp_path, monkeypatch
+):
+    from ad_library_quota import QuotaBudget
+
+    next_url = f"{fetch_ad_library.ENDPOINT}?after=cursor-9"
+    monkeypatch.setattr(
+        fetch_ad_library,
+        "guarded_request",
+        lambda *args, **kwargs: Response(
+            _page(_ad("ad-1"), next_url=next_url),
+            headers={"X-App-Usage": '{"call_count": 100}'},
+        ),
+    )
+    result = fetch_ad_library.search_ad_library(
+        token="fixture",
+        countries=["DE"],
+        search_page_ids="page-1",
+        quota_budget=QuotaBudget(tmp_path / "quota.json", clock=lambda: 1000),
+    )
+    assert result["status"] == "quota-deferred"
+    assert result["next_cursor"] == "cursor-9"
+    assert result["quota_stop_reason"] == "usage-threshold"
+    assert result["retry_at"] == 4600.0
+    assert [ad["id"] for ad in result["ads"]] == ["ad-1"]
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        ["not-an-object"],
+        {"data": "not-a-list"},
+        {"data": [_ad("ad-1"), "invalid-row"]},
+        {"data": [_ad("ad-1")], "paging": "not-a-dict"},
+    ],
+    ids=["non-object", "non-list-data", "invalid-ad-row", "invalid-paging"],
+)
+def test_malformed_payload_stays_failed_not_terminal(monkeypatch, payload):
+    monkeypatch.setattr(
+        fetch_ad_library,
+        "guarded_request",
+        lambda *args, **kwargs: Response(payload),
+    )
+    result = fetch_ad_library.search_ad_library(
+        token="fixture",
+        countries=["DE"],
+        search_page_ids="page-1",
+        quota_budget=RecordingBudget(),
+    )
+    assert result["status"] == "failed"
+    assert result["next_cursor"] is None
+    assert result["quota_stop_reason"] is None
 
 
 @pytest.mark.parametrize("status_code,error_code", [(401, 1), (400, 190)])

@@ -411,11 +411,15 @@ def search_ad_library(
                     (f"{result['warning']}; " if result.get("warning") else "")
                     + "Usage throttle threshold reached; quota budget requested a stop before further pagination."
                 )
-                result["status"] = "quota-deferred"
-                return result
-            elif next_cursor is None:
+            if next_cursor is None:
+                # A complete final page is terminal even when the quota budget
+                # asked for a stop on the same response; the stop still defers
+                # any later queued advertiser at the queue level.
                 result["status"] = "exhausted"
                 url = None
+            elif observation.get("stop_reason"):
+                result["status"] = "quota-deferred"
+                return result
             else:
                 url = ENDPOINT
                 page_params = dict(params)
@@ -1039,7 +1043,7 @@ def _main():
             _atomic_write_json(output_path, result)
         else:
             print(payload)
-        if result["status"] in {"failed", "quota-deferred"}:
+        if result["status"] != "exhausted":
             sys.exit(1)
         return
 
@@ -1078,6 +1082,7 @@ def _main():
         print(payload)
     if result.get("error"):
         print(f"Error: {result['error']}", file=sys.stderr)
+    if result.get("status") != "exhausted":
         sys.exit(1)
 
 
