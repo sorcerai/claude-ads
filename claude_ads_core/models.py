@@ -94,9 +94,7 @@ class RunManifest(TypedDict):
     sources: list[str]
     privacy_class: Literal["public", "internal", "confidential", "restricted"]
     data_lifecycle: dict[str, Any]
-    worker_status: dict[
-        str, Literal["pending", "running", "completed", "failed", "skipped"]
-    ]
+    worker_status: dict[str, Literal["pending", "running", "completed", "failed", "skipped"]]
     completeness: Literal["complete", "partial", "failed"]
 
 
@@ -143,9 +141,7 @@ class Finding(TypedDict):
     status: Literal["pass", "fail", "unknown", "not_applicable"]
     evidence: list[EvidenceRecord]
     confidence: Literal["high", "medium", "low", "none"]
-    source_classification: Literal[
-        "evidence_based", "practitioner", "contested", "folklore"
-    ]
+    source_classification: Literal["evidence_based", "practitioner", "contested", "folklore"]
     observation: str
     diagnosis: str
     recommendation: str
@@ -168,7 +164,6 @@ class ScoringOutput(TypedDict):
     evidence_coverage: float
     status: Literal["normal", "provisional", "insufficient_evidence"]
     categories: list[CategoryScoreOutput]
-
 
 class ReportBundle(TypedDict):
     schema_version: Literal["2.0.0", "3.0.0"]

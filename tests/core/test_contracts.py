@@ -6,12 +6,7 @@ from pathlib import Path
 from typing import Any, get_args, get_type_hints
 
 import pytest
-from claude_ads_core.contracts import (
-    CONTRACT_NAMES,
-    ContractError,
-    schema_path,
-    validate_contract,
-)
+from claude_ads_core.contracts import CONTRACT_NAMES, ContractError, schema_path, validate_contract
 from claude_ads_core.lifecycle import make_pending_lifecycle
 import claude_ads_core as package
 from claude_ads_core import models as contract_models
@@ -36,9 +31,7 @@ V2_SCHEMA_DIR = Path(__file__).parents[2] / "claude_ads_core" / "schemas" / "v2"
 
 
 def v2_schema(name: str) -> dict:
-    return json.loads(
-        (V2_SCHEMA_DIR / f"{name}.schema.json").read_text(encoding="utf-8")
-    )
+    return json.loads((V2_SCHEMA_DIR / f"{name}.schema.json").read_text(encoding="utf-8"))
 
 
 def data_lifecycle(classification: str = "confidential") -> dict:
@@ -49,38 +42,18 @@ def data_lifecycle(classification: str = "confidential") -> dict:
         "retention": {
             "minimum_seconds": 0,
             "mode": "operator-defined",
-            "delete_after": "2026-07-12T16:00:00Z"
-            if classification != "public"
-            else None,
+            "delete_after": "2026-07-12T16:00:00Z" if classification != "public" else None,
             "purpose": "Complete and verify the sanitized test run",
             "exception_reason": None,
         },
         "encryption": {
             "at_rest": "verified" if classification != "public" else "not-applicable",
-            "in_transit": "verified"
-            if classification != "public"
-            else "not-applicable",
-            "evidence_refs": ["operator-attestation:test-encryption"]
-            if classification != "public"
-            else [],
+            "in_transit": "verified" if classification != "public" else "not-applicable",
+            "evidence_refs": ["operator-attestation:test-encryption"] if classification != "public" else [],
         },
-        "access": {
-            "owner": "test-owner",
-            "authorized_roles": ["test-operator"],
-            "access_log_locator": None,
-        },
-        "deletion": {
-            "status": "scheduled",
-            "method": "Operator-defined deletion",
-            "verification_required": True,
-            "verification_artifact_locator": None,
-        },
-        "incident": {
-            "owner": "test-owner",
-            "reporting_channel": "Private security channel",
-            "status": "not-triggered",
-            "record_locator": None,
-        },
+        "access": {"owner": "test-owner", "authorized_roles": ["test-operator"], "access_log_locator": None},
+        "deletion": {"status": "scheduled", "method": "Operator-defined deletion", "verification_required": True, "verification_artifact_locator": None},
+        "incident": {"owner": "test-owner", "reporting_channel": "Private security channel", "status": "not-triggered", "record_locator": None},
     }
 
 
@@ -114,25 +87,10 @@ def account_snapshot() -> dict:
         "currency": "USD",
         "measurement_context": measurement_context(),
         "spend": 250.5,
-        "campaigns": [
-            {
-                "campaign_id": "campaign-1",
-                "name": "Campaign",
-                "status": "enabled",
-                "spend": 100.0,
-            }
-        ],
-        "creatives": [
-            {
-                "creative_id": "creative-1",
-                "campaign_id": "campaign-1",
-                "name": "Creative",
-            }
-        ],
+        "campaigns": [{"campaign_id": "campaign-1", "name": "Campaign", "status": "enabled", "spend": 100.0}],
+        "creatives": [{"creative_id": "creative-1", "campaign_id": "campaign-1", "name": "Creative"}],
         "conversions": [{"action": "purchase", "count": 1.0}],
-        "budgets": [
-            {"campaign_id": "campaign-1", "date": "2026-06-30", "amount": 150.0}
-        ],
+        "budgets": [{"campaign_id": "campaign-1", "date": "2026-06-30", "amount": 150.0}],
     }
 
 
@@ -284,6 +242,8 @@ def legacy_report_bundle() -> dict:
     return payload
 
 
+
+
 def test_named_contract_types_are_public_interfaces():
     assert {
         item.__name__
@@ -332,9 +292,7 @@ def test_v1_payloads_for_v2_contracts_are_rejected(name: str, payload: dict):
     ("name", "payload"),
     [("run-manifest", v2_run_manifest()), ("report-bundle", v3_report_bundle())],
 )
-def test_current_manifest_and_bundle_accept_truthful_lifecycle(
-    name: str, payload: dict
-):
+def test_current_manifest_and_bundle_accept_truthful_lifecycle(name: str, payload: dict):
     validate_contract(name, payload)
 
 
@@ -364,9 +322,7 @@ def test_report_bundle_rejects_mixed_and_unsupported_versions(
         validate_contract("report-bundle", payload)
 
 
-@pytest.mark.parametrize(
-    "name", ("data-lifecycle", "setup-profile", "run-manifest", "report-bundle")
-)
+@pytest.mark.parametrize("name", ("data-lifecycle", "setup-profile", "run-manifest", "report-bundle"))
 def test_current_portable_schema_accepts_truthful_lifecycle_lineage_and_rejects_legacy_pair(
     name: str, repo_root: Path
 ):
@@ -376,13 +332,9 @@ def test_current_portable_schema_accepts_truthful_lifecycle_lineage_and_rejects_
     registry = referencing.Registry()
     for resource_path in schemas.rglob("*.schema.json"):
         resource = json.loads(resource_path.read_text(encoding="utf-8"))
-        registry = registry.with_resource(
-            resource["$id"], referencing.Resource.from_contents(resource)
-        )
+        registry = registry.with_resource(resource["$id"], referencing.Resource.from_contents(resource))
     setup = json.loads(
-        (repo_root / "tests/fixtures/workflows/valid-artifacts.json").read_text(
-            encoding="utf-8"
-        )
+        (repo_root / "tests/fixtures/workflows/valid-artifacts.json").read_text(encoding="utf-8")
     )["setup-profile"]
     old_setup_lifecycle = setup["data_lifecycle"]
     setup["schema_version"] = "2.0.0"
@@ -442,9 +394,7 @@ def test_installed_package_resource_set_contains_all_versioned_schemas():
 
     package_schemas = resources.files(package).joinpath("schemas")
     source_schemas = Path(__file__).parents[2] / "claude_ads_core" / "schemas"
-    expected = sorted(
-        path.relative_to(source_schemas) for path in source_schemas.rglob("*.json")
-    )
+    expected = sorted(path.relative_to(source_schemas) for path in source_schemas.rglob("*.json"))
     assert expected
     for relative in expected:
         resource = package_schemas.joinpath(*relative.parts)
@@ -460,7 +410,6 @@ def test_all_packaged_schemas_are_valid_json_and_versioned():
         assert schema["$id"] == (
             f"urn:ai-marketing-hub:claude-ads:schema:core:{version}:{name}.schema.json"
         )
-
 
 def test_every_cross_file_schema_reference_is_absolute_and_registered(repo_root: Path):
     schema_roots = (
@@ -506,7 +455,6 @@ def test_snapshot_rejects_reversed_window():
     with pytest.raises(ContractError, match="on or after"):
         validate_contract("account-snapshot", payload)
 
-
 def test_snapshot_rejects_uppercase_platform_without_normalizing():
     payload = account_snapshot()
     payload["account"]["platform"] = "Google"
@@ -544,29 +492,22 @@ def test_complete_report_requires_completed_worker_for_each_adapter_platform():
     )
 
 
+
 def test_snapshot_rejects_non_finite_spend():
     payload = account_snapshot()
     payload["spend"] = float("nan")
     with pytest.raises(ContractError, match="finite"):
         validate_contract("account-snapshot", payload)
-
-
 @pytest.mark.parametrize(
     ("collection", "row", "message"),
     [
         ("campaigns", {"campaign_id": ""}, "campaign_id"),
         ("creatives", {"creative_id": "", "campaign_id": "campaign-1"}, "creative_id"),
         ("conversions", {"action": "", "count": 1}, "action"),
-        (
-            "budgets",
-            {"campaign_id": "", "date": "2026-06-30", "amount": 1},
-            "campaign_id",
-        ),
+        ("budgets", {"campaign_id": "", "date": "2026-06-30", "amount": 1}, "campaign_id"),
     ],
 )
-def test_snapshot_rejects_empty_row_ids_and_text(
-    collection: str, row: dict, message: str
-):
+def test_snapshot_rejects_empty_row_ids_and_text(collection: str, row: dict, message: str):
     payload = account_snapshot()
     payload[collection] = [row]
     with pytest.raises(ContractError, match=message):
@@ -577,24 +518,9 @@ def test_snapshot_rejects_empty_row_ids_and_text(
     ("collection", "row"),
     [
         ("campaigns", {"campaign_id": "campaign-1", "unexpected": "x"}),
-        (
-            "creatives",
-            {
-                "creative_id": "creative-1",
-                "campaign_id": "campaign-1",
-                "unexpected": "x",
-            },
-        ),
+        ("creatives", {"creative_id": "creative-1", "campaign_id": "campaign-1", "unexpected": "x"}),
         ("conversions", {"action": "purchase", "count": 1, "unexpected": "x"}),
-        (
-            "budgets",
-            {
-                "campaign_id": "campaign-1",
-                "date": "2026-06-30",
-                "amount": 1,
-                "unexpected": "x",
-            },
-        ),
+        ("budgets", {"campaign_id": "campaign-1", "date": "2026-06-30", "amount": 1, "unexpected": "x"}),
     ],
 )
 def test_snapshot_rejects_extra_row_keys(collection: str, row: dict):
@@ -612,10 +538,7 @@ def test_snapshot_rejects_extra_row_keys(collection: str, row: dict):
         ("conversions", {"action": "purchase", "count": -1}),
         ("conversions", {"action": "purchase", "count": float("inf")}),
         ("budgets", {"campaign_id": "campaign-1", "date": "2026-06-30", "amount": -1}),
-        (
-            "budgets",
-            {"campaign_id": "campaign-1", "date": "2026-06-30", "amount": True},
-        ),
+        ("budgets", {"campaign_id": "campaign-1", "date": "2026-06-30", "amount": True}),
     ],
 )
 def test_snapshot_rejects_invalid_row_numeric_values(collection: str, row: dict):
@@ -646,37 +569,22 @@ def test_snapshot_accepts_conversion_with_count_and_status():
     payload["conversions"] = [{"action": "purchase", "count": 1, "status": "active"}]
     validate_contract("account-snapshot", payload)
 
-
 def test_snapshot_accepts_generic_native_and_sanitized_fixture_rows():
     payload = account_snapshot()
     validate_contract("account-snapshot", payload)
 
-    payload["campaigns"] = [
-        {
-            "campaign_id": "campaign-native",
-            "name": "Native",
-            "status": "paused",
-            "spend": 0,
-        }
-    ]
-    payload["creatives"] = [
-        {"creative_id": "creative-native", "campaign_id": "campaign-native"}
-    ]
+    payload["campaigns"] = [{"campaign_id": "campaign-native", "name": "Native", "status": "paused", "spend": 0}]
+    payload["creatives"] = [{"creative_id": "creative-native", "campaign_id": "campaign-native"}]
     payload["conversions"] = [{"action": "purchase", "count": 0}]
-    payload["budgets"] = [
-        {"campaign_id": "campaign-native", "date": "2026-06-30", "amount": 0}
-    ]
+    payload["budgets"] = [{"campaign_id": "campaign-native", "date": "2026-06-30", "amount": 0}]
     validate_contract("account-snapshot", payload)
 
-    payload["campaigns"] = [
-        {"campaign_id": "campaign-001", "policy_status": "eligible"}
-    ]
+    payload["campaigns"] = [{"campaign_id": "campaign-001", "policy_status": "eligible"}]
     payload["creatives"] = []
-    payload["conversions"] = [
-        {"action": "primary_conversion_action", "status": "inactive"}
-    ]
+    payload["conversions"] = [{"action": "primary_conversion_action", "status": "inactive"}]
     payload["budgets"] = []
     validate_contract("account-snapshot", payload)
+
 
 
 def test_snapshot_requires_measurement_context_and_exact_context_keys():
@@ -715,7 +623,7 @@ def test_snapshot_requires_measurement_context_and_exact_context_keys():
         ("unsupported_fields", ["campaign_name", "account_name"]),
         ("unsupported_fields", ["account_name", "account_name"]),
         ("unsupported_fields", ["unknown_field"]),
-    ],
+    ]
 )
 def test_snapshot_rejects_invalid_measurement_context_values(field: str, value: Any):
     payload = account_snapshot()
@@ -823,6 +731,7 @@ def test_finding_rejects_legacy_and_arbitrary_top_level_keys():
             validate_contract("finding", payload)
 
 
+
 def test_finding_requires_locator_or_valid_sha256():
     payload = finding()
     record = payload["evidence"][0]
@@ -833,7 +742,6 @@ def test_finding_requires_locator_or_valid_sha256():
 
     record["sha256"] = "a" * 64
     validate_contract("finding", payload)
-
 
 def test_finding_allows_empty_report_grain_and_nullable_optional_fields():
     payload = finding()
@@ -866,7 +774,6 @@ def test_snapshot_rejects_unavailable_field_with_wrong_missing_fields_state():
     with pytest.raises(ContractError, match="missing_fields"):
         validate_contract("account-snapshot", payload)
 
-
 def test_manifest_requires_timezone_aware_started_at():
     payload = run_manifest()
     payload["started_at"] = "2026-07-11T16:00:00"
@@ -883,7 +790,7 @@ def test_manifest_requires_matching_data_lifecycle_classification():
 
 @pytest.mark.parametrize("invalid", [0.5, 0.0, True, False, "0", None, -1])
 def test_run_manifest_embedded_lifecycle_requires_strict_nonnegative_integer_retention(
-    invalid,
+    invalid
 ):
     payload = run_manifest()
     payload["data_lifecycle"]["retention"]["minimum_seconds"] = invalid
@@ -918,12 +825,8 @@ def test_finding_schema_engine_requires_evidence_for_pass_or_fail():
     assert validator.is_valid(payload)
 
 
-@pytest.mark.parametrize(
-    "classification", ["evidence_based", "practitioner", "contested", "folklore"]
-)
-def test_finding_accepts_source_classification_independently_of_confidence(
-    classification: str,
-):
+@pytest.mark.parametrize("classification", ["evidence_based", "practitioner", "contested", "folklore"])
+def test_finding_accepts_source_classification_independently_of_confidence(classification: str):
     payload = finding()
     payload["source_classification"] = classification
     payload["confidence"] = "low"
@@ -950,13 +853,9 @@ def test_finding_rejects_score_contribution():
     with pytest.raises(ContractError, match="fields"):
         validate_contract("finding", payload)
 
-
 def test_v2_account_snapshot_schema_has_exact_contract_shape():
     schema = v2_schema("account-snapshot")
-    assert (
-        schema["$id"]
-        == "urn:ai-marketing-hub:claude-ads:schema:core:v2:account-snapshot.schema.json"
-    )
+    assert schema["$id"] == "urn:ai-marketing-hub:claude-ads:schema:core:v2:account-snapshot.schema.json"
     assert schema["$schema"] == "https://json-schema.org/draft/2020-12/schema"
     assert schema["properties"]["schema_version"] == {"const": "2.0.0"}
     assert schema["required"] == [
@@ -1027,13 +926,7 @@ def test_v2_account_snapshot_schema_has_exact_contract_shape():
     campaign = schema["properties"]["campaigns"]["items"]
     assert campaign["additionalProperties"] is False
     assert campaign["required"] == ["campaign_id"]
-    assert set(campaign["properties"]) == {
-        "campaign_id",
-        "name",
-        "status",
-        "policy_status",
-        "spend",
-    }
+    assert set(campaign["properties"]) == {"campaign_id", "name", "status", "policy_status", "spend"}
     assert campaign["properties"]["campaign_id"] == {"type": "string", "minLength": 1}
     for field in ("name", "status", "policy_status"):
         assert campaign["properties"][field] == {"type": "string", "minLength": 1}
@@ -1063,10 +956,7 @@ def test_v2_account_snapshot_schema_has_exact_contract_shape():
 
 def test_v2_finding_schema_has_exact_evidence_record_shape():
     schema = v2_schema("finding")
-    assert (
-        schema["$id"]
-        == "urn:ai-marketing-hub:claude-ads:schema:core:v2:finding.schema.json"
-    )
+    assert schema["$id"] == "urn:ai-marketing-hub:claude-ads:schema:core:v2:finding.schema.json"
     assert schema["properties"]["schema_version"] == {"const": "2.0.0"}
     assert schema["additionalProperties"] is False
     assert schema["required"] == [
@@ -1117,10 +1007,7 @@ def test_v2_finding_schema_has_exact_evidence_record_shape():
         "type": ["string", "null"],
         "pattern": "^[0-9a-f]{64}$",
     }
-    assert record["properties"]["observed_at"] == {
-        "type": "string",
-        "format": "date-time",
-    }
+    assert record["properties"]["observed_at"] == {"type": "string", "format": "date-time"}
     assert "minItems" not in record["properties"]["report_grain"]
     assert record["properties"]["report_grain"]["uniqueItems"] is True
     constraints = record["allOf"]
@@ -1182,13 +1069,7 @@ def test_report_bundle_schema_requires_exact_category_score_fields():
 
 @pytest.mark.parametrize(
     "field",
-    [
-        "applicable_controls",
-        "known_controls",
-        "passed_controls",
-        "failed_controls",
-        "unknown_controls",
-    ],
+    ["applicable_controls", "known_controls", "passed_controls", "failed_controls", "unknown_controls"],
 )
 def test_report_rejects_category_missing_diagnostic_count(field: str):
     payload = report_bundle()
@@ -1262,35 +1143,26 @@ def test_report_requires_numeric_health_score_for_categories_with_known_controls
 
 def test_v2_report_bundle_mixes_v1_and_v2_references_and_gates_complete_runs():
     schema = v2_schema("report-bundle")
-    assert (
-        schema["$id"]
-        == "urn:ai-marketing-hub:claude-ads:schema:core:v2:report-bundle.schema.json"
-    )
+    assert schema["$id"] == "urn:ai-marketing-hub:claude-ads:schema:core:v2:report-bundle.schema.json"
     assert schema["properties"]["schema_version"] == {"const": "2.0.0"}
     properties = schema["properties"]
     assert properties["run_manifest"]["$ref"].endswith(":v1:run-manifest.schema.json")
-    assert properties["control_definitions"]["items"]["$ref"].endswith(
-        ":v1:control-definition.schema.json"
-    )
-    assert properties["account_snapshot"]["$ref"].endswith(
-        ":v2:account-snapshot.schema.json"
-    )
+    assert properties["control_definitions"]["items"]["$ref"].endswith(":v1:control-definition.schema.json")
+    assert properties["account_snapshot"]["$ref"].endswith(":v2:account-snapshot.schema.json")
     assert properties["findings"]["items"]["$ref"].endswith(":v2:finding.schema.json")
 
     condition = schema["allOf"][0]
-    assert condition["if"]["properties"]["run_manifest"]["properties"][
-        "completeness"
-    ] == {"const": "complete"}
+    assert condition["if"]["properties"]["run_manifest"]["properties"]["completeness"] == {
+        "const": "complete"
+    }
     then = condition["then"]["properties"]
     assert then["control_definitions"]["minItems"] == 1
     assert then["findings"]["minItems"] == 1
     assert then["run_manifest"]["properties"]["worker_status"]["minProperties"] == 1
-    assert then["run_manifest"]["properties"]["worker_status"][
-        "additionalProperties"
-    ] == {"const": "completed"}
-    assert then["scoring"]["properties"]["status"]["not"] == {
-        "const": "insufficient_evidence"
+    assert then["run_manifest"]["properties"]["worker_status"]["additionalProperties"] == {
+        "const": "completed"
     }
+    assert then["scoring"]["properties"]["status"]["not"] == {"const": "insufficient_evidence"}
 
 
 def test_public_typed_dict_field_contracts():
@@ -1364,9 +1236,7 @@ def test_public_typed_dict_field_contracts():
     }
     assert get_args(get_type_hints(AccountSnapshot)["schema_version"]) == ("2.0.0",)
     assert get_args(get_type_hints(Finding)["schema_version"]) == ("2.0.0",)
-    assert (
-        get_type_hints(contract_models.EvidenceRecord)["redacted_value"] == Any | None
-    )
+    assert get_type_hints(contract_models.EvidenceRecord)["redacted_value"] == Any | None
     assert get_args(get_type_hints(ControlDefinition)["schema_version"]) == ("1.0.0",)
     assert set(get_type_hints(RunManifest)) == {
         "schema_version",
@@ -1394,17 +1264,13 @@ def test_public_typed_dict_field_contracts():
         "stability",
     }
     assert get_type_hints(Finding)["evidence"] == list[contract_models.EvidenceRecord]
-    assert (
-        get_type_hints(AccountSnapshot)["measurement_context"]
-        is contract_models.MeasurementContext
-    )
+    assert get_type_hints(AccountSnapshot)["measurement_context"] is contract_models.MeasurementContext
 
     snapshot = get_type_hints(AccountSnapshot)
     assert snapshot["campaigns"] == list[CampaignRow]
     assert snapshot["creatives"] == list[CreativeRow]
     assert snapshot["conversions"] == list[ConversionRow]
     assert snapshot["budgets"] == list[BudgetRow]
-
 
 def test_category_score_output_typed_dict_exposes_exact_fields():
     category = get_type_hints(CategoryScoreOutput)
@@ -1432,10 +1298,7 @@ def test_category_score_output_typed_dict_exposes_exact_fields():
     ):
         assert category[field] is int
     assert get_type_hints(ReportBundle)["scoring"] is contract_models.ScoringOutput
-    assert (
-        get_type_hints(contract_models.ScoringOutput)["categories"]
-        == list[CategoryScoreOutput]
-    )
+    assert get_type_hints(contract_models.ScoringOutput)["categories"] == list[CategoryScoreOutput]
 
 
 def test_report_bundle_recursively_validates_nested_contracts():
@@ -1455,9 +1318,7 @@ def test_report_bundle_recursively_validates_nested_contracts():
         ("scoring", {**report_bundle()["scoring"], "status": "insufficient_evidence"}),
     ],
 )
-def test_complete_report_rejects_incomplete_or_insufficient_state(
-    field: str, value: dict | list
-):
+def test_complete_report_rejects_incomplete_or_insufficient_state(field: str, value: dict | list):
     payload = report_bundle()
     payload[field] = value
     with pytest.raises(ContractError):

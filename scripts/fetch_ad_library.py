@@ -568,9 +568,7 @@ def _load_checkpoint(path: Path) -> dict[str, Any]:
                 version not in {"1.0.0", "2.0.0"}
                 or lifecycle.get("schema_version") != version
             ):
-                raise ValueError(
-                    "corrupt checkpoint: artifact lifecycle version mismatch"
-                )
+                raise ValueError("corrupt checkpoint: artifact lifecycle version mismatch")
             try:
                 validate_workflow_contract("data-lifecycle", lifecycle)
             except (TypeError, ValueError):
@@ -803,9 +801,7 @@ def collect_advertiser_queue(
     if resume:
         state = _load_checkpoint(path)
         if state["filters"].get("privacy_class") != "public":
-            raise ValueError(
-                "non-public Ad Library persistence requires verified controls"
-            )
+            raise ValueError("non-public Ad Library persistence requires verified controls")
         if kwargs.get("run_id") is None:
             kwargs["run_id"] = state["filters"]["run_id"]
     with _checkpoint_lock(path):

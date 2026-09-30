@@ -485,9 +485,7 @@ def _secure_windows_acl() -> dict:
 
 
 @pytest.mark.parametrize("rights", ["FullControl", "Read", "ReadAndExecute"])
-def test_windows_acl_rejects_permissive_entries_before_write(
-    monkeypatch, tmp_path, rights
-):
+def test_windows_acl_rejects_permissive_entries_before_write(monkeypatch, tmp_path, rights):
     acl = _secure_windows_acl()
     acl["access"].append({"sid": "S-1-1-0", "type": "Allow", "rights": rights})
     monkeypatch.setattr(reporting, "_windows_acl_snapshot", lambda _path: acl)
@@ -503,9 +501,7 @@ def test_windows_acl_rejects_common_user_read_on_private_paths(
     acl = _secure_windows_acl()
     acl["access"].append(
         {
-            "sid": sid,
-            "type": "Allow",
-            "rights": "ReadAndExecute",
+            "sid": sid, "type": "Allow", "rights": "ReadAndExecute",
             "inherited": True,
         }
     )
@@ -520,9 +516,7 @@ def test_windows_home_accepts_only_inherited_read_only_common_user_acl(
 ):
     acl = _secure_windows_acl()
     entry = {
-        "sid": sid,
-        "type": "Allow",
-        "rights": "ReadAndExecute",
+        "sid": sid, "type": "Allow", "rights": "ReadAndExecute",
         "inherited": True,
     }
     acl["access"].append(entry)
@@ -812,9 +806,7 @@ def test_windows_writer_refuses_common_user_read_on_output_root_before_mutation(
     acl = _secure_windows_acl()
     acl["access"].append(
         {
-            "sid": sid,
-            "type": "Allow",
-            "rights": "ReadAndExecute",
+            "sid": sid, "type": "Allow", "rights": "ReadAndExecute",
             "inherited": True,
         }
     )
@@ -835,9 +827,7 @@ def test_windows_writer_checks_home_as_private_root_before_direct_output(
     acl = _secure_windows_acl()
     acl["access"].append(
         {
-            "sid": sid,
-            "type": "Allow",
-            "rights": "ReadAndExecute",
+            "sid": sid, "type": "Allow", "rights": "ReadAndExecute",
             "inherited": True,
         }
     )
@@ -855,9 +845,7 @@ def test_windows_secure_home_can_be_report_root(monkeypatch, tmp_path):
     monkeypatch.setattr(
         reporting, "_windows_acl_snapshot", lambda _path: _secure_windows_acl()
     )
-    assert (
-        reporting._validate_windows_tree(home, Path("report.md")) == home / "report.md"
-    )
+    assert reporting._validate_windows_tree(home, Path("report.md")) == home / "report.md"
 
 
 def test_windows_acl_resolves_owner_rights_to_object_owner(monkeypatch, tmp_path):

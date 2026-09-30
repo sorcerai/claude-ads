@@ -123,9 +123,7 @@ def _evaluate_google_findings(
     for control_id, finding_text, diag_text, rec_text in (
         (
             "G01",
-            f"Campaign observed: {snapshot['campaigns'][0].get('name', 'N/A')}."
-            if snapshot.get("campaigns")
-            else "No campaigns observed.",
+            f"Campaign observed: {snapshot['campaigns'][0].get('name', 'N/A')}." if snapshot.get("campaigns") else "No campaigns observed.",
             "Campaign naming convention requires documented naming policy and current source support.",
             "Establish consistent naming structure across campaign types.",
         ),
@@ -143,9 +141,7 @@ def _evaluate_google_findings(
         ),
     ):
         if control_id in entries:
-            referenced_sources.update(
-                entries[control_id].control_definition.get("source_ids", [])
-            )
+            referenced_sources.update(entries[control_id].control_definition.get("source_ids", []))
             findings.append(
                 {
                     "schema_version": "2.0.0",
@@ -179,10 +175,7 @@ def run_audit(
 ) -> dict[str, Any]:
     """Execute the end-to-end reference audit journey."""
     if not isinstance(privacy_class, str) or privacy_class not in {
-        "public",
-        "internal",
-        "confidential",
-        "restricted",
+        "public", "internal", "confidential", "restricted"
     }:
         raise AuditError("invalid privacy_class")
     if privacy_class != "public":
@@ -204,10 +197,7 @@ def run_audit(
 
     now = datetime.now(timezone.utc)
     now_iso = now.strftime("%Y-%m-%dT%H:%M:%SZ")
-    resolved_run_id = (
-        run_id
-        or f"audit-{normalized_platform}-{now.strftime('%Y%m%d')}-{uuid.uuid4().hex[:8]}"
-    )
+    resolved_run_id = run_id or f"audit-{normalized_platform}-{now.strftime('%Y%m%d')}-{uuid.uuid4().hex[:8]}"
 
     try:
         raw_bytes = target_path.read_bytes()
@@ -253,18 +243,14 @@ def run_audit(
     try:
         validate_contract("account-snapshot", snapshot)
     except ContractError as exc:
-        raise AuditError(
-            f"normalized snapshot contract validation failed: {exc}"
-        ) from exc
+        raise AuditError(f"normalized snapshot contract validation failed: {exc}") from exc
 
     # Ensure canonical SHA-256 is bound to measurement_context source_ids
     if canonical_source_id not in snapshot["measurement_context"]["source_ids"]:
         snapshot["measurement_context"]["source_ids"].append(canonical_source_id)
 
     registry = load_control_registry(registry_root)
-    entries = {
-        entry.control_id: entry for entry in registry.entries_for(normalized_platform)
-    }
+    entries = {entry.control_id: entry for entry in registry.entries_for(normalized_platform)}
 
     findings, referenced_sources = _evaluate_google_findings(
         snapshot=snapshot,
@@ -302,9 +288,7 @@ def run_audit(
     )
 
     # If scoring is insufficient_evidence (e.g. disabled profile), completeness cannot be complete
-    completeness = (
-        "partial" if scoring["status"] == "insufficient_evidence" else "complete"
-    )
+    completeness = "partial" if scoring["status"] == "insufficient_evidence" else "complete"
 
     run_manifest: dict[str, Any] = {
         "schema_version": "2.0.0",
@@ -343,16 +327,12 @@ def run_audit(
     try:
         validate_contract("report-bundle", bundle)
     except ContractError as exc:
-        raise AuditError(
-            f"assembled report bundle failed contract validation: {exc}"
-        ) from exc
+        raise AuditError(f"assembled report bundle failed contract validation: {exc}") from exc
 
     try:
         registry.validate_report_scoring(bundle)
     except RegistryError as exc:
-        raise AuditError(
-            f"assembled report bundle failed registry scoring validation: {exc}"
-        ) from exc
+        raise AuditError(f"assembled report bundle failed registry scoring validation: {exc}") from exc
 
     root = Path(output_dir if output_dir is not None else _default_report_root())
 

@@ -10,11 +10,7 @@ import pytest
 
 from claude_ads_core.contracts import CONTRACT_NAMES, ContractError, validate_contract
 from claude_ads_core.lifecycle import make_pending_lifecycle
-from claude_ads_core.orchestration import (
-    OrchestrationError,
-    OrchestrationStore,
-    evaluate_artifact_gate,
-)
+from claude_ads_core.orchestration import OrchestrationError, OrchestrationStore, evaluate_artifact_gate
 
 
 @pytest.fixture()
@@ -43,6 +39,8 @@ def _set_path(payload: dict, path: tuple[str | int, ...], value) -> None:
     target[path[-1]] = value
 
 
+
+
 def test_all_workflow_fixtures_validate(workflow_fixtures):
     for fixture_name, payload in workflow_fixtures.items():
         contract = _contract_name(fixture_name)
@@ -58,9 +56,7 @@ def portable_workflow_schemas(repo_root):
     registry = referencing.Registry()
     for path in schemas.rglob("*.schema.json"):
         schema = json.loads(path.read_text(encoding="utf-8"))
-        registry = registry.with_resource(
-            schema["$id"], referencing.Resource.from_contents(schema)
-        )
+        registry = registry.with_resource(schema["$id"], referencing.Resource.from_contents(schema))
     return jsonschema, registry, schemas
 
 
@@ -72,18 +68,14 @@ def test_historical_workflow_schemas_reject_unknown_and_missing_fields(
         contract = _contract_name(fixture_name)
         major = payload["schema_version"].split(".", 1)[0]
         schema = json.loads(
-            (schemas / f"v{major}" / f"{contract}.schema.json").read_text(
-                encoding="utf-8"
-            )
+            (schemas / f"v{major}" / f"{contract}.schema.json").read_text(encoding="utf-8")
         )
         validator = jsonschema.Draft202012Validator(schema, registry=registry)
         validator.validate(payload)
         unexpected = {**payload, "unreviewed_extension": "fixture"}
         with pytest.raises(jsonschema.ValidationError):
             validator.validate(unexpected)
-        missing_version = {
-            key: value for key, value in payload.items() if key != "schema_version"
-        }
+        missing_version = {key: value for key, value in payload.items() if key != "schema_version"}
         with pytest.raises(jsonschema.ValidationError):
             validator.validate(missing_version)
 
@@ -94,9 +86,7 @@ def test_historical_portable_workflow_integer_boundaries(
 ):
     jsonschema, registry, schemas = portable_workflow_schemas
     contract = _contract_name(fixture_name)
-    schema = json.loads(
-        (schemas / "v1" / f"{contract}.schema.json").read_text(encoding="utf-8")
-    )
+    schema = json.loads((schemas / "v1" / f"{contract}.schema.json").read_text(encoding="utf-8"))
     validator = jsonschema.Draft202012Validator(schema, registry=registry)
     for value in (True, False, minimum + 0.5, minimum - 1):
         payload = copy.deepcopy(workflow_fixtures[fixture_name])
@@ -105,11 +95,10 @@ def test_historical_portable_workflow_integer_boundaries(
             validator.validate(payload)
 
 
+
+
 @pytest.mark.parametrize(("fixture_name", "path", "minimum"), INTEGER_SCHEMA_FIELDS)
-@pytest.mark.parametrize(
-    "invalid_kind",
-    ("bool-true", "bool-false", "fraction", "float", "string", "null", "below-minimum"),
-)
+@pytest.mark.parametrize("invalid_kind", ("bool-true", "bool-false", "fraction", "float", "string", "null", "below-minimum"))
 def test_every_schema_integer_field_rejects_non_integer_or_below_minimum(
     workflow_fixtures, fixture_name, path, minimum, invalid_kind
 ):
@@ -179,20 +168,10 @@ def test_schema_number_fields_still_accept_fractional_values(workflow_fixtures):
 @pytest.mark.parametrize(
     "fixture_name",
     [
-        "data-lifecycle",
-        "setup-profile",
-        "brand-profile",
-        "media-plan",
-        "creative-brief",
-        "generation-manifest",
-        "monitoring-bundle",
-        "experiment-setup",
-        "experiment-readout",
-        "mutation-plan",
-        "orchestration-run",
-        "orchestration-task",
-        "orchestration-result",
-        "orchestration-gate",
+        "data-lifecycle", "setup-profile", "brand-profile", "media-plan", "creative-brief",
+        "generation-manifest", "monitoring-bundle", "experiment-setup",
+        "experiment-readout", "mutation-plan", "orchestration-run",
+        "orchestration-task", "orchestration-result", "orchestration-gate",
     ],
 )
 def test_contracts_reject_unknown_fields(workflow_fixtures, fixture_name):
@@ -245,9 +224,7 @@ def test_monitoring_bundle_cannot_hide_missing_inputs(workflow_fixtures):
         validate_contract("monitoring-bundle", bundle)
 
 
-def test_non_public_lifecycle_requires_encryption_and_deletion_deadline(
-    workflow_fixtures,
-):
+def test_non_public_lifecycle_requires_encryption_and_deletion_deadline(workflow_fixtures):
     lifecycle = copy.deepcopy(workflow_fixtures["data-lifecycle"])
     lifecycle["encryption"]["at_rest"] = "not-applicable"
     with pytest.raises(ContractError, match="verified at-rest and in-transit"):
@@ -259,9 +236,7 @@ def test_non_public_lifecycle_requires_encryption_and_deletion_deadline(
         validate_contract("data-lifecycle", lifecycle)
 
 
-def test_v2_lifecycle_discloses_unknown_controls_without_inventing_retention(
-    workflow_fixtures,
-):
+def test_v2_lifecycle_discloses_unknown_controls_without_inventing_retention(workflow_fixtures):
     lifecycle = copy.deepcopy(workflow_fixtures["data-lifecycle"])
     lifecycle["schema_version"] = "2.0.0"
     lifecycle["retention"]["mode"] = "unassigned"
@@ -279,19 +254,12 @@ def test_v2_lifecycle_discloses_unknown_controls_without_inventing_retention(
 
 @pytest.mark.parametrize(
     ("status", "locator"),
-    (
-        ("scheduled", "scheduler_receipt_locator"),
-        ("verified", "verification_artifact_locator"),
-    ),
+    (("scheduled", "scheduler_receipt_locator"), ("verified", "verification_artifact_locator")),
 )
 def test_v2_lifecycle_requires_status_receipts(workflow_fixtures, status, locator):
     lifecycle = copy.deepcopy(workflow_fixtures["data-lifecycle"])
     lifecycle["schema_version"] = "2.0.0"
-    lifecycle["encryption"] = {
-        "at_rest": "unknown",
-        "in_transit": "unknown",
-        "evidence_refs": [],
-    }
+    lifecycle["encryption"] = {"at_rest": "unknown", "in_transit": "unknown", "evidence_refs": []}
     lifecycle["deletion"]["status"] = status
     lifecycle["deletion"]["scheduler_receipt_locator"] = None
     lifecycle["deletion"][locator] = None
@@ -302,11 +270,7 @@ def test_v2_lifecycle_requires_status_receipts(workflow_fixtures, status, locato
 def test_v2_lifecycle_requires_verification(workflow_fixtures):
     lifecycle = copy.deepcopy(workflow_fixtures["data-lifecycle"])
     lifecycle["schema_version"] = "2.0.0"
-    lifecycle["encryption"] = {
-        "at_rest": "unknown",
-        "in_transit": "unknown",
-        "evidence_refs": [],
-    }
+    lifecycle["encryption"] = {"at_rest": "unknown", "in_transit": "unknown", "evidence_refs": []}
     lifecycle["deletion"]["status"] = "pending"
     lifecycle["deletion"]["scheduler_receipt_locator"] = None
     lifecycle["deletion"]["verification_required"] = False
@@ -314,18 +278,12 @@ def test_v2_lifecycle_requires_verification(workflow_fixtures):
         validate_contract("data-lifecycle", lifecycle)
 
 
-def test_v2_lifecycle_rejects_unassigned_deadline_and_unknown_version(
-    workflow_fixtures,
-):
+def test_v2_lifecycle_rejects_unassigned_deadline_and_unknown_version(workflow_fixtures):
     lifecycle = copy.deepcopy(workflow_fixtures["data-lifecycle"])
     lifecycle["schema_version"] = "2.0.0"
     lifecycle["retention"]["mode"] = "unassigned"
     lifecycle["retention"]["delete_after"] = None
-    lifecycle["encryption"] = {
-        "at_rest": "unknown",
-        "in_transit": "unknown",
-        "evidence_refs": [],
-    }
+    lifecycle["encryption"] = {"at_rest": "unknown", "in_transit": "unknown", "evidence_refs": []}
     lifecycle["deletion"]["status"] = "pending"
     lifecycle["deletion"]["scheduler_receipt_locator"] = None
     invalid_deadline = copy.deepcopy(lifecycle)
@@ -354,11 +312,7 @@ def test_make_pending_lifecycle_is_truthful_when_retention_is_unassigned():
     )
     assert pending["retention"]["mode"] == "unassigned"
     assert pending["retention"]["delete_after"] is None
-    assert pending["encryption"] == {
-        "at_rest": "unknown",
-        "in_transit": "unknown",
-        "evidence_refs": [],
-    }
+    assert pending["encryption"] == {"at_rest": "unknown", "in_transit": "unknown", "evidence_refs": []}
     assert pending["deletion"]["status"] == "pending"
     validate_contract("data-lifecycle", pending)
 
@@ -411,12 +365,8 @@ def v2_lifecycle_validator(repo_root):
     jsonschema = pytest.importorskip("jsonschema")
     referencing = pytest.importorskip("referencing")
     schemas = repo_root / "claude_ads_core" / "schemas"
-    lifecycle_schema = json.loads(
-        (schemas / "v2" / "data-lifecycle.schema.json").read_text()
-    )
-    common_schema = json.loads(
-        (schemas / "v1" / "workflow-common.schema.json").read_text()
-    )
+    lifecycle_schema = json.loads((schemas / "v2" / "data-lifecycle.schema.json").read_text())
+    common_schema = json.loads((schemas / "v1" / "workflow-common.schema.json").read_text())
     registry = referencing.Registry().with_resource(
         common_schema["$id"], referencing.Resource.from_contents(common_schema)
     )
@@ -426,9 +376,7 @@ def v2_lifecycle_validator(repo_root):
     )
 
 
-def test_v2_json_schema_rejects_unsubstantiated_verified_encryption(
-    v2_lifecycle_validator,
-):
+def test_v2_json_schema_rejects_unsubstantiated_verified_encryption(v2_lifecycle_validator):
     validator, validation_error = v2_lifecycle_validator
     pending = make_pending_lifecycle(
         lifecycle_id="lifecycle-unverified",
@@ -588,9 +536,7 @@ def v2_setup_profile(workflow_fixtures):
     return profile
 
 
-def test_setup_profile_versions_require_matching_lifecycle(
-    workflow_fixtures, v2_setup_profile
-):
+def test_setup_profile_versions_require_matching_lifecycle(workflow_fixtures, v2_setup_profile):
     v1_setup = workflow_fixtures["setup-profile"]
     validate_contract("setup-profile", v1_setup)
     validate_contract("setup-profile", v2_setup_profile)
@@ -601,9 +547,7 @@ def test_setup_profile_versions_require_matching_lifecycle(
         with pytest.raises(ContractError):
             validate_contract("setup-profile", {**outer, "data_lifecycle": nested})
     with pytest.raises(ContractError):
-        validate_contract(
-            "setup-profile", {**v2_setup_profile, "schema_version": "3.0.0"}
-        )
+        validate_contract("setup-profile", {**v2_setup_profile, "schema_version": "3.0.0"})
     brand = copy.deepcopy(workflow_fixtures["brand-profile"])
     brand["data_lifecycle"] = v2_setup_profile["data_lifecycle"]
     with pytest.raises(ContractError):
@@ -616,34 +560,21 @@ def test_v2_setup_profile_portable_schema_pairs_v2_lifecycle(
     jsonschema = pytest.importorskip("jsonschema")
     referencing = pytest.importorskip("referencing")
     schemas = repo_root / "claude_ads_core" / "schemas"
-    setup_schema = json.loads(
-        (schemas / "v2" / "setup-profile.schema.json").read_text()
-    )
-    common_schema = json.loads(
-        (schemas / "v1" / "workflow-common.schema.json").read_text()
-    )
-    lifecycle_schema = json.loads(
-        (schemas / "v2" / "data-lifecycle.schema.json").read_text()
-    )
+    setup_schema = json.loads((schemas / "v2" / "setup-profile.schema.json").read_text())
+    common_schema = json.loads((schemas / "v1" / "workflow-common.schema.json").read_text())
+    lifecycle_schema = json.loads((schemas / "v2" / "data-lifecycle.schema.json").read_text())
     registry = referencing.Registry()
     for schema in (common_schema, lifecycle_schema):
-        registry = registry.with_resource(
-            schema["$id"], referencing.Resource.from_contents(schema)
-        )
+        registry = registry.with_resource(schema["$id"], referencing.Resource.from_contents(schema))
     validator = jsonschema.Draft202012Validator(setup_schema, registry=registry)
     validator.validate(v2_setup_profile)
     with pytest.raises(jsonschema.ValidationError):
         validator.validate(
-            {
-                **v2_setup_profile,
-                "data_lifecycle": workflow_fixtures["setup-profile"]["data_lifecycle"],
-            }
+            {**v2_setup_profile, "data_lifecycle": workflow_fixtures["setup-profile"]["data_lifecycle"]}
         )
 
 
-def test_store_is_append_only_and_result_reruns_require_supersedes(
-    tmp_path, workflow_fixtures
-):
+def test_store_is_append_only_and_result_reruns_require_supersedes(tmp_path, workflow_fixtures):
     store = OrchestrationStore(tmp_path / "orchestration")
     run = workflow_fixtures["orchestration-run"]
     task = workflow_fixtures["orchestration-task"]
@@ -663,9 +594,7 @@ def test_store_is_append_only_and_result_reruns_require_supersedes(
         store.write("result", repeated)
 
 
-def test_supersedes_uses_real_instants_not_timestamp_text_order(
-    tmp_path, workflow_fixtures
-):
+def test_supersedes_uses_real_instants_not_timestamp_text_order(tmp_path, workflow_fixtures):
     store = OrchestrationStore(tmp_path / "orchestration")
     first = copy.deepcopy(workflow_fixtures["orchestration-result"])
     first["created_at"] = "2026-07-11T11:00:00+02:00"
@@ -684,17 +613,13 @@ def test_supersedes_uses_real_instants_not_timestamp_text_order(
         store.write("result", branch)
 
 
-def test_store_rejects_symlinked_root_and_intermediate_directory(
-    tmp_path, workflow_fixtures
-):
+def test_store_rejects_symlinked_root_and_intermediate_directory(tmp_path, workflow_fixtures):
     real = tmp_path / "real"
     real.mkdir()
     linked_root = tmp_path / "linked"
     linked_root.symlink_to(real, target_is_directory=True)
     with pytest.raises(OrchestrationError, match="contains a symlink"):
-        OrchestrationStore(linked_root).write(
-            "run", workflow_fixtures["orchestration-run"]
-        )
+        OrchestrationStore(linked_root).write("run", workflow_fixtures["orchestration-run"])
 
     root = tmp_path / "root"
     root.mkdir()
@@ -708,25 +633,15 @@ def test_artifact_only_gate_passes_and_fails_from_latest_packets(workflow_fixtur
     task = workflow_fixtures["orchestration-task"]
     result = workflow_fixtures["orchestration-result"]
     passing = evaluate_artifact_gate(
-        run,
-        [task],
-        [result],
-        gate_id="planning-gate-generated",
-        stage="planning",
-        required_task_ids=["build-plan"],
-        evaluated_at="2026-07-11T10:12:00Z",
+        run, [task], [result], gate_id="planning-gate-generated", stage="planning",
+        required_task_ids=["build-plan"], evaluated_at="2026-07-11T10:12:00Z",
     )
     assert passing["decision"] == "pass"
     assert passing["evaluated_result_ids"] == ["build-plan-result-one"]
 
     failing = evaluate_artifact_gate(
-        run,
-        [task],
-        [],
-        gate_id="planning-gate-missing",
-        stage="planning",
-        required_task_ids=["build-plan"],
-        evaluated_at="2026-07-11T10:12:00Z",
+        run, [task], [], gate_id="planning-gate-missing", stage="planning",
+        required_task_ids=["build-plan"], evaluated_at="2026-07-11T10:12:00Z",
     )
     assert failing["decision"] == "fail"
     assert "required result packet is missing" in failing["blockers"][0]
@@ -739,11 +654,6 @@ def test_artifact_gate_rejects_cross_run_or_role_mismatch(workflow_fixtures):
     result["role"] = "different-role"
     with pytest.raises(OrchestrationError, match="declared task and role"):
         evaluate_artifact_gate(
-            run,
-            [task],
-            [result],
-            gate_id="bad-gate",
-            stage="planning",
-            required_task_ids=["build-plan"],
-            evaluated_at="2026-07-11T10:12:00Z",
+            run, [task], [result], gate_id="bad-gate", stage="planning",
+            required_task_ids=["build-plan"], evaluated_at="2026-07-11T10:12:00Z",
         )
