@@ -198,12 +198,15 @@ midnight; an explicitly conflicting ID is rejected. The page cap bounds the
 whole invocation, continuing the current advertiser before starting the next.
 It is not an archive completeness claim. The result exposes an overall `status`
 and each advertiser's `exhausted`, `paginated`, `queued`, `quota-deferred`, or
-`failed` state. Intentional page-cap completion exits zero with `paginated`;
-failure or quota deferral exits nonzero. Exhausted resumes make no requests.
-Cursor loops, authentication failures, and other non-retryable API errors remain
-terminal across resume. Inspect and correct the cause before starting a new
-checkpoint; do not repeatedly resume or overwrite the failed checkpoint.
-Quota deferrals remain resumable after the recovery deadline.
+`failed` state. Only a complete `exhausted` result exits zero; page-capped,
+failed, and quota-deferred outputs retain their observations and exit nonzero.
+An accepted last page is `exhausted` even when that response signals a quota
+stop; the checkpoint keeps the quota reason and defers any later advertisers.
+Exhausted resumes make no requests. Cursor loops, authentication failures, and
+other non-retryable API errors remain terminal across resume. Inspect and
+correct the cause before starting a new checkpoint; do not repeatedly resume
+or overwrite the failed checkpoint. Quota deferrals remain resumable after the
+recovery deadline.
 
 Checkpoints store deduplicated normalized observations, compact per-page
 provenance receipts, and opaque cursors, not raw API responses or token-bearing
