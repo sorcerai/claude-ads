@@ -52,7 +52,6 @@ _SENSITIVE_KEY_RE = re.compile(
     r"password|passwd|authorization|cookie|set[_-]?cookie|email|phone)([_-]|$)"
 )
 _CONTROL_CHARS_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
-
 _STATUS_LABELS = {
     "normal": "Normal",
     "provisional": "Provisional",
@@ -628,6 +627,59 @@ def _check_private_directory(file_descriptor: int, label: str) -> os.stat_result
     return info
 
 
+def _open_posix_root(root_path: Path, *, create: bool) -> tuple[int, list[int]]:
+    """Open every component of an absolute root beneath a held ``/`` fd."""
+
+    opened: list[int] = []
+    try:
+        parent_fd = os.open(os.sep, _directory_flags())
+        opened.append(parent_fd)
+        parts = root_path.parts
+        if not parts or parts[0] != os.sep:
+            raise ReportRenderError("report root must be an absolute path")
+        for part in parts[1:]:
+            created = False
+            try:
+                entry = os.stat(part, dir_fd=parent_fd, follow_symlinks=False)
+            except FileNotFoundError:
+                if not create:
+                    raise ReportRenderError("report root namespace is missing")
+                try:
+                    os.mkdir(part, mode=0o700, dir_fd=parent_fd)
+                except FileExistsError:
+                    pass
+                else:
+                    os.fsync(parent_fd)
+                    created = True
+                entry = os.stat(part, dir_fd=parent_fd, follow_symlinks=False)
+            if stat.S_ISLNK(entry.st_mode):
+                raise ReportRenderError("report root must not contain symlinks")
+            if not stat.S_ISDIR(entry.st_mode):
+                raise ReportRenderError("report root must be a directory")
+            child_fd = os.open(part, _directory_flags(), dir_fd=parent_fd)
+            opened.append(child_fd)
+            if created:
+                _check_private_directory(child_fd, "root parent")
+            parent_fd = child_fd
+        return parent_fd, opened
+    except BaseException as primary_error:
+        close_errors: list[BaseException] = []
+        for file_descriptor in reversed(opened):
+            try:
+                os.close(file_descriptor)
+            except BaseException as close_error:
+                close_errors.append(close_error)
+        if close_errors:
+            details = "; ".join(str(error) for error in close_errors)
+            close_context = f"root descriptor cleanup failed: {details}"
+            if isinstance(primary_error, Exception):
+                raise ReportRenderError(
+                    f"{primary_error}; {close_context}"
+                ) from primary_error
+            primary_error.add_note(close_context)
+        raise
+
+
 def _open_posix_parent(root_fd: int, parts: tuple[str, ...]) -> tuple[int, list[int]]:
     parent_fd = root_fd
     opened = [root_fd]
@@ -687,8 +739,8 @@ def _verify_posix_namespace(
     verification_error: BaseException | None = None
     close_errors: list[BaseException] = []
     try:
-        fresh_root_fd = os.open(root_path, _directory_flags())
-        fresh_fds.append(fresh_root_fd)
+        fresh_root_fd, root_walk_fds = _open_posix_root(root_path, create=False)
+        fresh_fds.extend(root_walk_fds)
         fresh_root = _check_private_directory(fresh_root_fd, "root")
         if (fresh_root.st_dev, fresh_root.st_ino) != (
             held_root.st_dev,
@@ -776,11 +828,8 @@ def _atomic_write_posix(
         root_path = Path(root).absolute()
     except (OSError, RuntimeError) as exc:
         raise ReportRenderError(f"report root normalization failed: {exc}") from exc
-    try:
-        root_path.mkdir(parents=True, exist_ok=True, mode=0o700)
-    except OSError as exc:
-        raise ReportRenderError(f"report root creation failed: {exc}") from exc
 
+    root_walk_fds: list[int] = []
     root_fd = None
     parent_fd = None
     opened_parent_fds: list[int] = []
@@ -788,7 +837,6 @@ def _atomic_write_posix(
     temporary_owned = False
     replace_called = False
     replace_returned = False
-    temporary_absence_verified = False
     replacement_committed = False
     outcome_unknown = False
     primary_error: BaseException | None = None
@@ -813,7 +861,7 @@ def _atomic_write_posix(
         return normalized
 
     try:
-        root_fd = os.open(root_path, _directory_flags())
+        root_fd, root_walk_fds = _open_posix_root(root_path, create=True)
         held_root = _check_private_directory(root_fd, "root")
         parent_fd, opened_parent_fds = _open_posix_parent(
             root_fd, tuple(relative.parts[:-1])
@@ -902,8 +950,7 @@ def _atomic_write_posix(
         try:
             os.stat(temporary_name, dir_fd=parent_fd, follow_symlinks=False)
         except FileNotFoundError:
-            temporary_absence_verified = True
-            replacement_committed = temporary_absence_verified
+            replacement_committed = True
             temporary_owned = False
         except OSError as exc:
             outcome_unknown = True
@@ -981,7 +1028,12 @@ def _atomic_write_posix(
                 raise verification_error
             os.fsync(parent_fd)
             _verify_posix_namespace(
-                root_path, relative, held_root, held_parent, held_leaf, expected
+                root_path,
+                relative,
+                held_root,
+                held_parent,
+                held_leaf,
+                expected,
             )
         except BaseException as exc:
             if isinstance(exc, Exception):
@@ -1014,6 +1066,11 @@ def _atomic_write_posix(
         primary_error = normalize_error(exc)
     finally:
         for file_descriptor in reversed(opened_parent_fds):
+            try:
+                os.close(file_descriptor)
+            except BaseException as exc:
+                close_errors.append(exc)
+        for file_descriptor in reversed(root_walk_fds[:-1]):
             try:
                 os.close(file_descriptor)
             except BaseException as exc:
@@ -1073,21 +1130,48 @@ _WINDOWS_TRUSTED_SIDS = frozenset(
         "S-1-5-32-544",  # Built-in Administrators
     }
 )
-_WINDOWS_OWNER_RIGHTS_SID = "s-1-3-4"
-_WINDOWS_MUTATING_RIGHTS = (
-    "fullcontrol",
-    "modify",
-    "write",
-    "writedata",
-    "appenddata",
-    "createfiles",
-    "createdirectories",
-    "delete",
-    "changepermissions",
-    "takeownership",
-    "writeattributes",
-    "writeextendedattributes",
+_WINDOWS_HOME_READ_ONLY_SIDS = frozenset(
+    {
+        # Hosted profiles may inherit these read-only entries on the home
+        # ancestor. They are never trusted on report directories or files.
+        "S-1-5-32-545",  # Built-in Users
+        "S-1-5-11",  # Authenticated Users
+    }
 )
+_WINDOWS_OWNER_RIGHTS_SID = "s-1-3-4"
+_WINDOWS_RIGHTS_BITS = {
+    "readdata": 0x00000001,
+    "listdirectory": 0x00000001,
+    "writedata": 0x00000002,
+    "createfiles": 0x00000002,
+    "appenddata": 0x00000004,
+    "createdirectories": 0x00000004,
+    "readextendedattributes": 0x00000008,
+    "writeextendedattributes": 0x00000010,
+    "executefile": 0x00000020,
+    "traverse": 0x00000020,
+    "deletesubdirectoriesandfiles": 0x00000040,
+    "readattributes": 0x00000080,
+    "writeattributes": 0x00000100,
+    "delete": 0x00010000,
+    "readpermissions": 0x00020000,
+    "changepermissions": 0x00040000,
+    "takeownership": 0x00080000,
+    "synchronize": 0x00100000,
+    "read": 0x00120089,
+    "readandexecute": 0x001200A9,
+    "write": 0x00000116,
+    "modify": 0x001301BF,
+    "fullcontrol": 0x001F01FF,
+}
+_WINDOWS_READ_MASK = 0x001200A9
+_WINDOWS_WRITE_MASK = 0x00040116
+_WINDOWS_DELETE_MASK = 0x00010040
+_WINDOWS_TRAVERSE_MASK = 0x00000020
+_WINDOWS_SYNCHRONIZE_MASK = 0x00100000
+_WINDOWS_TRAVERSE_ONLY_MASK = _WINDOWS_TRAVERSE_MASK | _WINDOWS_SYNCHRONIZE_MASK
+_WINDOWS_DATA_READ_MASK = _WINDOWS_READ_MASK & ~_WINDOWS_TRAVERSE_ONLY_MASK
+_WINDOWS_CONTROL_MASK = 0x000C0000
 
 _WINDOWS_ACL_PATH_ENV = "CLAUDE_ADS_ACL_PATH"
 
@@ -1135,6 +1219,8 @@ $access = @($acl.GetAccessRules($true, $true, [Security.Principal.SecurityIdenti
         type = [string]$_.AccessControlType
         rights = [string]$_.FileSystemRights
         inherited = [bool]$_.IsInherited
+        inheritance_flags = [string]$_.InheritanceFlags
+        propagation_flags = [string]$_.PropagationFlags
     }
 })
 [pscustomobject]@{
@@ -1229,11 +1315,10 @@ def _run_windows_acl_script(
 def _windows_acl_snapshot(path: Path) -> Mapping[str, Any]:
     try:
         result = _run_windows_acl_script(_WINDOWS_ACL_QUERY, path)
-    except (OSError, UnicodeError, subprocess.SubprocessError) as exc:
-        raise ReportRenderError(f"report Windows ACL query failed: {exc}") from exc
+    except (OSError, UnicodeError, subprocess.SubprocessError):
+        raise ReportRenderError("report Windows ACL query failed") from None
     if result.returncode != 0:
-        detail = result.stderr.strip() or "unknown error"
-        raise ReportRenderError(f"report Windows ACL query failed: {detail}")
+        raise ReportRenderError("report Windows ACL query failed")
     try:
         snapshot = json.loads(result.stdout)
     except (TypeError, ValueError, UnicodeError) as exc:
@@ -1252,14 +1337,140 @@ def _windows_acl_snapshot(path: Path) -> Mapping[str, Any]:
     return normalized
 
 
+def _windows_home_acl_diagnostic(
+    entry: Mapping[str, Any], current_sid: str, owner_sid: str
+) -> str:
+    """Return safe, enum-like evidence for an effective home ACE rejection."""
+    sid = entry.get("sid")
+    if not isinstance(sid, str):
+        sid = ""
+    sid_folded = sid.casefold()
+    if sid_folded == current_sid.casefold():
+        category = "current"
+    elif sid_folded == owner_sid.casefold():
+        category = "owner"
+    elif sid_folded == _WINDOWS_OWNER_RIGHTS_SID:
+        category = "owner"
+    elif sid_folded.upper() in _WINDOWS_TRUSTED_SIDS:
+        category = "trusted"
+    elif sid_folded.upper() in _WINDOWS_HOME_READ_ONLY_SIDS:
+        category = "common_users"
+    elif sid_folded.startswith("s-1-5-32-"):
+        category = "builtin32"
+    elif sid_folded.startswith("s-1-5-21-"):
+        category = "account21"
+    elif sid_folded.startswith("s-1-15-2-"):
+        category = "app15"
+    elif sid_folded.startswith("s-1-5-80-"):
+        category = "service80"
+    elif sid_folded.startswith("s-1-3-"):
+        category = "creator3"
+    else:
+        category = "other-known" if sid_folded.startswith("s-") else "other-unknown"
+
+    access_type = entry.get("type")
+    access_kind = (
+        access_type.casefold()
+        if isinstance(access_type, str) and access_type.casefold() in {"allow", "deny"}
+        else "unknown"
+    )
+    mask = _windows_rights_mask(entry.get("rights"))
+    if mask is None:
+        rights_kind = "unsupported"
+        mask_text = "unknown"
+        rights_detail = "read=unknown; write=unknown; delete=unknown; traverse=unknown; synchronize=unknown; control=unknown"
+    else:
+        mask_text = f"0x{mask:08X}"
+        has_read = bool(mask & _WINDOWS_DATA_READ_MASK)
+        has_write = bool(mask & _WINDOWS_WRITE_MASK)
+        has_delete = bool(mask & _WINDOWS_DELETE_MASK)
+        has_traverse = bool(mask & _WINDOWS_TRAVERSE_MASK)
+        has_sync = bool(mask & _WINDOWS_SYNCHRONIZE_MASK)
+        has_control = bool(mask & _WINDOWS_CONTROL_MASK)
+        mutating = has_write or has_delete or has_control
+        rights_kind = (
+            "mixed"
+            if mutating and has_read
+            else "mutating"
+            if mutating
+            else "read_only"
+            if has_read
+            else "other"
+        )
+        rights_detail = (
+            f"read={'yes' if has_read else 'no'}; write={'yes' if has_write else 'no'}; "
+            f"delete={'yes' if has_delete else 'no'}; traverse={'yes' if has_traverse else 'no'}; "
+            f"synchronize={'yes' if has_sync else 'no'}; control={'yes' if has_control else 'no'}"
+        )
+
+    inherited = entry.get("inherited")
+    inherited_kind = (
+        "true" if inherited is True else "false" if inherited is False else "unknown"
+    )
+
+    def flag_class(value: Any) -> str:
+        if not isinstance(value, str) or not value.strip():
+            return "none"
+        folded = value.casefold()
+        if folded == "none":
+            return "none"
+        if "inheritonly" in folded:
+            return "inherit_only"
+        if "containerinherit" in folded and "objectinherit" in folded:
+            return "container_and_object"
+        if "containerinherit" in folded:
+            return "container"
+        if "objectinherit" in folded:
+            return "object"
+        return "other"
+
+    return (
+        " (ace_category="
+        f"{category}; access_kind={access_kind}; rights_kind={rights_kind}; "
+        f"rights_mask={mask_text}; rights={rights_detail}; "
+        f"inherited={inherited_kind}; "
+        f"inheritance={flag_class(entry.get('inheritance_flags'))}; "
+        f"propagation={flag_class(entry.get('propagation_flags'))})"
+    )
+
+
+def _windows_rights_mask(value: Any) -> int | None:
+    """Decode PowerShell FileSystemRights as a bounded unsigned mask."""
+    if not isinstance(value, str) or not value.strip():
+        return None
+    text = value.strip()
+    try:
+        mask = int(text, 10)
+    except ValueError:
+        mask = 0
+        for token in text.replace(" ", "").casefold().split(","):
+            bit = _WINDOWS_RIGHTS_BITS.get(token)
+            if bit is None:
+                return None
+            mask |= bit
+    return mask if 0 <= mask <= 0xFFFFFFFF else None
+
+
+def _windows_rights_is_read_only(value: Any) -> bool:
+    mask = _windows_rights_mask(value)
+    if mask is None:
+        return False
+    return bool(mask & _WINDOWS_READ_MASK) and not bool(mask & ~_WINDOWS_READ_MASK)
+
+
+def _windows_rights_is_traverse_only(value: Any) -> bool:
+    mask = _windows_rights_mask(value)
+    return bool(mask) and not bool(mask & ~_WINDOWS_TRAVERSE_ONLY_MASK)
+
+
 def _validate_windows_acl(path: Path, label: str) -> None:
     snapshot = _windows_acl_snapshot(path)
     owner_sid = snapshot.get("owner_sid")
     current_sid = snapshot.get("current_sid")
     access = snapshot.get("access")
-    if not isinstance(owner_sid, str) or not owner_sid:
+    if not isinstance(owner_sid, str) or not owner_sid.strip():
         raise ReportRenderError(f"report {label} owner is unverifiable")
-    if not isinstance(current_sid, str) or not current_sid:
+    if not isinstance(current_sid, str) or not current_sid.strip():
         raise ReportRenderError(f"report {label} current user is unverifiable")
     owner_folded = owner_sid.casefold()
     current_folded = current_sid.casefold()
@@ -1273,6 +1484,17 @@ def _validate_windows_acl(path: Path, label: str) -> None:
     if not isinstance(access, list) or not access:
         raise ReportRenderError(f"report {label} DACL is unprotected or unverifiable")
 
+    # Hosted Windows runners can expose the profile's read-only Users or
+    # Authenticated Users ACE as an explicit rule rather than an inherited one.
+    # Keep that compatibility exception scoped to the actual home directory;
+    # report roots, parents, and outputs remain private before any write.
+    try:
+        is_actual_home = (
+            label == "home" and path.resolve(strict=False) == Path.home().resolve()
+        )
+    except (OSError, RuntimeError):
+        is_actual_home = False
+
     for entry in access:
         if not isinstance(entry, Mapping):
             raise ReportRenderError(f"report {label} DACL is unverifiable")
@@ -1281,19 +1503,28 @@ def _validate_windows_acl(path: Path, label: str) -> None:
         rights = entry.get("rights")
         if (
             not isinstance(sid, str)
-            or not sid
+            or not sid.strip()
             or not isinstance(access_type, str)
+            or not access_type.strip()
             or not isinstance(rights, str)
+            or not rights.strip()
         ):
             raise ReportRenderError(f"report {label} DACL is unverifiable")
+        # An inherit-only ACE applies to descendants, not to this object. The
+        # native query includes PropagationFlags so these placeholders cannot
+        # be mistaken for effective permissions on the home directory.
+        if "inheritonly" in str(entry.get("propagation_flags", "")).casefold():
+            continue
         sid_folded = sid.casefold()
         effective_sid_folded = (
             owner_folded if sid_folded == _WINDOWS_OWNER_RIGHTS_SID else sid_folded
         )
-        rights_folded = rights.casefold()
         if access_type.casefold() == "deny":
-            if effective_sid_folded == current_folded and any(
-                token in rights_folded for token in _WINDOWS_MUTATING_RIGHTS
+            denied_mask = _windows_rights_mask(rights)
+            if denied_mask is None:
+                raise ReportRenderError(f"report {label} DACL is unverifiable")
+            if effective_sid_folded == current_folded and denied_mask & (
+                _WINDOWS_WRITE_MASK | _WINDOWS_DELETE_MASK | _WINDOWS_CONTROL_MASK
             ):
                 raise ReportRenderError(
                     f"report {label} DACL denies current-user access"
@@ -1304,38 +1535,50 @@ def _validate_windows_acl(path: Path, label: str) -> None:
         if (
             effective_sid_folded != current_folded
             and effective_sid_folded.upper() not in _WINDOWS_TRUSTED_SIDS
-            and any(token in rights_folded for token in _WINDOWS_MUTATING_RIGHTS)
         ):
-            raise ReportRenderError(f"report {label} DACL is permissive")
+            actual_home_compatibility = is_actual_home and (
+                _windows_rights_is_traverse_only(rights)
+                or (
+                    effective_sid_folded.upper() in _WINDOWS_HOME_READ_ONLY_SIDS
+                    and _windows_rights_is_read_only(rights)
+                )
+            )
+            if not actual_home_compatibility:
+                detail = (
+                    _windows_home_acl_diagnostic(entry, current_sid, owner_sid)
+                    if is_actual_home
+                    else ""
+                )
+                raise ReportRenderError(f"report {label} DACL is permissive{detail}")
 
 
 def _protect_windows_path(path: Path) -> None:
     try:
         result = _run_windows_acl_script(_WINDOWS_ACL_APPLY, path)
-    except (OSError, UnicodeError, subprocess.SubprocessError) as exc:
-        raise ReportRenderError(f"report Windows ACL protection failed: {exc}") from exc
+    except (OSError, UnicodeError, subprocess.SubprocessError):
+        raise ReportRenderError("report Windows ACL protection failed") from None
     if result.returncode != 0:
-        detail = result.stderr.strip() or "unknown error"
-        raise ReportRenderError(f"report Windows ACL protection failed: {detail}")
+        raise ReportRenderError("report Windows ACL protection failed")
     _validate_windows_acl(path, "output")
 
 
 def _validate_windows_tree(root_path: Path, destination: Path) -> Path:
     try:
         home = Path.home().resolve()
-    except (OSError, RuntimeError) as exc:
-        raise ReportRenderError(f"report home normalization failed: {exc}") from exc
+    except (OSError, RuntimeError):
+        raise ReportRenderError("report home normalization failed") from None
     _validate_windows_acl(home, "home")
     try:
         root_path.resolve(strict=False).relative_to(home)
-        root_path.relative_to(home)
+        relative_root = root_path.relative_to(home)
     except (OSError, ValueError) as exc:
         raise ReportRenderError(
             "report root must be beneath the current user's home"
         ) from exc
 
     current = home
-    relative_root = root_path.relative_to(home)
+    if not relative_root.parts:
+        _validate_windows_acl(home, "root")
     for part in relative_root.parts:
         current = current / part
         if current.exists() or current.is_symlink():
@@ -1384,32 +1627,32 @@ def _atomic_write_windows(
     relative = _validate_report_destination(destination)
     try:
         root_path = Path(root).expanduser().absolute()
-    except (OSError, RuntimeError) as exc:
-        raise ReportRenderError(f"report root normalization failed: {exc}") from exc
+    except (OSError, RuntimeError):
+        raise ReportRenderError("report root normalization failed") from None
     try:
         output_path = _validate_windows_tree(root_path, relative)
     except ReportRenderError:
         raise
-    except OSError as exc:
-        raise ReportRenderError(f"report output path validation failed: {exc}") from exc
+    except OSError:
+        raise ReportRenderError("report output path validation failed") from None
     try:
         file_descriptor, temporary_name = tempfile.mkstemp(
             prefix=f".{output_path.name}.", dir=output_path.parent
         )
-    except OSError as exc:
-        raise ReportRenderError(f"report output temporary file failed: {exc}") from exc
+    except OSError:
+        raise ReportRenderError("report output temporary file failed") from None
 
     temporary_path = Path(temporary_name)
     temporary_owned = True
     replace_called = False
     replace_returned = False
-    temporary_absence_verified = False
     replacement_committed = False
     outcome_unknown = False
     primary_error: BaseException | None = None
     stage_error: BaseException | None = None
     try:
         try:
+            _protect_windows_path(temporary_path)
             data = memoryview(expected)
             written = 0
             while written < len(data):
@@ -1426,45 +1669,42 @@ def _atomic_write_windows(
             except BaseException as exc:
                 if stage_error is None:
                     stage_error = (
-                        ReportRenderError(f"report output close failed: {exc}")
+                        ReportRenderError("report output close failed")
                         if isinstance(exc, Exception)
                         else exc
                     )
                 elif isinstance(stage_error, Exception):
                     stage_error = ReportRenderError(
-                        f"{stage_error}; report output close failed: {exc}"
+                        "report output operation and close failed"
                     )
                 else:
-                    stage_error.add_note(f"report output close failed: {exc}")
+                    stage_error.add_note("report output close failed")
         if stage_error is not None:
             raise stage_error
 
-        _protect_windows_path(temporary_path)
         _validate_windows_tree(root_path, relative)
         replace_called = True
         try:
             os.replace(temporary_path, output_path)
             replace_returned = True
-        except OSError as exc:
-            raise ReportRenderError(f"report output replacement failed: {exc}") from exc
+        except OSError:
+            raise ReportRenderError("report output replacement failed") from None
         except BaseException as exc:
             outcome_unknown = True
             exc.add_note("report output replacement outcome is unknown")
             raise
-        _protect_windows_path(output_path)
 
         try:
             temporary_path.lstat()
         except FileNotFoundError:
-            temporary_absence_verified = True
-            replacement_committed = temporary_absence_verified
+            replacement_committed = True
             temporary_owned = False
         except BaseException as exc:
             outcome_unknown = True
             if isinstance(exc, Exception):
                 raise ReportRenderError(
-                    f"report output replacement outcome is unknown: {exc}"
-                ) from exc
+                    "report output replacement outcome is unknown"
+                ) from None
             exc.add_note("report output replacement outcome is unknown")
             raise
         else:
@@ -1476,7 +1716,7 @@ def _atomic_write_windows(
             except BaseException as exc:
                 if isinstance(exc, Exception):
                     raise ReportRenderError(
-                        f"{no_op_error}; temporary cleanup failed: {exc}"
+                        f"{no_op_error}; temporary cleanup failed"
                     ) from no_op_error
                 exc.add_note(str(no_op_error))
                 raise
@@ -1484,13 +1724,21 @@ def _atomic_write_windows(
             raise no_op_error
 
         try:
+            _protect_windows_path(output_path)
+        except Exception:
+            raise ReportRenderError(
+                "report output replacement occurred but ACL protection failed; "
+                "inspect destination"
+            ) from None
+
+        try:
             with output_path.open("rb") as stream:
                 actual = stream.read()
         except BaseException as exc:
             if isinstance(exc, Exception):
                 raise ReportRenderError(
-                    f"report output replacement occurred but verification failed: {exc}"
-                ) from exc
+                    "report output replacement occurred but verification failed"
+                ) from None
             exc.add_note(
                 "report output replacement occurred before verification interruption"
             )
@@ -1509,18 +1757,17 @@ def _atomic_write_windows(
         ):
             try:
                 temporary_path.unlink(missing_ok=True)
-                temporary_owned = False
             except BaseException as cleanup_error:
                 if isinstance(exc, Exception):
                     exc = ReportRenderError(
-                        f"{exc}; temporary cleanup failed: {cleanup_error}"
+                        "report output operation and temporary cleanup failed"
                     )
                 else:
                     exc.add_note(f"temporary cleanup failed: {cleanup_error}")
         if isinstance(exc, ReportRenderError):
             primary_error = exc
         elif isinstance(exc, Exception):
-            primary_error = ReportRenderError(f"report output operation failed: {exc}")
+            primary_error = ReportRenderError("report output operation failed")
         else:
             primary_error = exc
     if primary_error is not None:
@@ -1535,7 +1782,9 @@ def _reporting_platform_name() -> str:
 
 
 def atomic_write_report(
-    root: str | Path, destination: str | Path, content: str | bytes
+    root: str | Path,
+    destination: str | Path,
+    content: str | bytes,
 ) -> Path:
     """Atomically write report content beneath a safe root."""
 
@@ -1561,5 +1810,7 @@ def write_report_bundle(
 
     _validate_report_destination(destination)
     return atomic_write_report(
-        root, destination, render_report(bundle, output_format, registry=registry)
+        root,
+        destination,
+        render_report(bundle, output_format, registry=registry),
     )

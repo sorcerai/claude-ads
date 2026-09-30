@@ -34,8 +34,8 @@ def _default_report_root(platform_name: str | None = None) -> str:
     if platform_name == "nt":
         try:
             return str(Path.home() / ".claude-ads" / "runs")
-        except (OSError, RuntimeError) as exc:
-            raise ReportRenderError(f"report root home normalization failed: {exc}") from exc
+        except (OSError, RuntimeError):
+            raise ReportRenderError("report root home normalization failed") from None
     return ".claude-ads/runs"
 
 def _read_json(path: str) -> Any:
@@ -187,14 +187,29 @@ def main(argv: Sequence[str] | None = None) -> int:
                 }
             )
         elif args.command in {"render", "report"}:
-            bundle = load_contract("report-bundle", args.path)
-            registry = load_control_registry(args.registry_root)
+            try:
+                bundle = load_contract("report-bundle", args.path)
+            except (ContractError, OSError):
+                raise ReportRenderError("report input loading failed") from None
+            try:
+                registry = load_control_registry(args.registry_root)
+            except (RegistryError, OSError):
+                raise ReportRenderError("control registry loading failed") from None
             extension = {"markdown": "md", "html": "html", "pdf": "pdf"}[args.format]
             destination = args.output if args.output is not None else f"{bundle['run_manifest']['run_id']}/report.{extension}"
             root = args.root if args.root is not None else _default_report_root()
-            output_path = write_report_bundle(
-                bundle, args.format, root, destination, registry=registry
-            )
+            try:
+                output_path = write_report_bundle(
+                    bundle, args.format, root, destination, registry=registry
+                )
+            except ReportRenderError as exc:
+                if str(exc).startswith("report output replacement occurred"):
+                    message = "report replacement occurred but validation failed; inspect destination"
+                elif str(exc).startswith("report output replacement outcome is unknown"):
+                    message = "report replacement outcome is unknown; inspect destination"
+                else:
+                    message = "report rendering or persistence failed; inspect destination"
+                raise ReportRenderError(message) from None
             _emit(
                 {
                     "format": args.format,
@@ -220,15 +235,19 @@ def main(argv: Sequence[str] | None = None) -> int:
             _emit({"run_id": args.run_id, "slices": len(tasks), "tasks": tasks})
         elif args.command == "ingest-export":
             use_native = args.native or args.format == "native"
-            if use_native:
-                context_dict = dict(item.split("=", 1) for item in args.context if "=" in item)
-                if Path(args.path).suffix.lower() == ".json":
-                    adapter = NativeJSONExportAdapter(args.platform, context=context_dict)
+            try:
+                if use_native:
+                    context_dict = dict(item.split("=", 1) for item in args.context if "=" in item)
+                    if Path(args.path).suffix.lower() == ".json":
+                        adapter = NativeJSONExportAdapter(args.platform, context=context_dict)
+                    else:
+                        adapter = NativeCSVExportAdapter(args.platform, context=context_dict)
+                    snapshot = adapter.read_snapshot(args.path)
                 else:
-                    adapter = NativeCSVExportAdapter(args.platform, context=context_dict)
-                _emit(adapter.read_snapshot(args.path))
-            else:
-                _emit(GenericCSVExportAdapter(args.platform).read_snapshot(args.path))
+                    snapshot = GenericCSVExportAdapter(args.platform).read_snapshot(args.path)
+            except (AdapterError, ContractError, OSError, ValueError):
+                raise AdapterError("export ingestion failed") from None
+            _emit(snapshot)
         elif args.command == "doctor":
             result = run_doctor(root=args.root, registry_root=args.registry_root)
             if args.format == "text":

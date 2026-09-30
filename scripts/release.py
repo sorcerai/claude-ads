@@ -117,7 +117,7 @@ ZIP_TIMESTAMP = (1980, 1, 1, 0, 0, 0)
 # document; keeping it in executable verifier code makes self-consistent
 # archive/manifest/SBOM/checksum forgery fail closed.
 EXPECTED_DEPENDENCY_INVENTORY_SHA256 = (
-    "026d45be2ec1973f5639dd0c7422fdad81c5e293007cf7b2e8fc2d09f0f88673"
+    "c527652c2b2758637b3f7b08c74b74654dc52af831e75f80d8977d187714ca91"
 )
 EXPECTED_THIRD_PARTY_NOTICES_SHA256 = (
     "b90c38b4cce60c06c0090be31ee721d3482640923d9ff6f3c711c047317746d0"
