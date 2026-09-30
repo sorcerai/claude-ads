@@ -1165,7 +1165,7 @@ _WINDOWS_RIGHTS_BITS = {
     "modify": 0x001301BF,
     "fullcontrol": 0x001F01FF,
 }
-_WINDOWS_READ_MASK = 0x00020000 | 0x000001A9
+_WINDOWS_READ_MASK = 0x001200A9
 _WINDOWS_WRITE_MASK = 0x00040016
 _WINDOWS_DELETE_MASK = 0x00010040
 _WINDOWS_TRAVERSE_MASK = 0x00000020
@@ -1455,9 +1455,7 @@ def _windows_rights_is_read_only(value: Any) -> bool:
     mask = _windows_rights_mask(value)
     if mask is None:
         return False
-    return bool(mask & _WINDOWS_READ_MASK) and not bool(
-        mask & (_WINDOWS_WRITE_MASK | _WINDOWS_DELETE_MASK | _WINDOWS_CONTROL_MASK)
-    )
+    return bool(mask & _WINDOWS_READ_MASK) and not bool(mask & ~_WINDOWS_READ_MASK)
 
 
 def _validate_windows_acl(path: Path, label: str) -> None:

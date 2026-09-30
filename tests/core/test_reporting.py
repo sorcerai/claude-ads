@@ -557,6 +557,27 @@ def test_windows_actual_home_accepts_explicit_read_only_common_user_acl(
         reporting._validate_windows_acl(home, "home")
 
 
+def test_windows_actual_home_rejects_write_attributes_in_read_mask(
+    monkeypatch, tmp_path
+):
+    home = tmp_path / "home"
+    home.mkdir()
+    acl = _secure_windows_acl()
+    acl["access"].append(
+        {
+            "sid": "S-1-5-32-545",
+            "type": "Allow",
+            "rights": "131497",
+            "inherited": False,
+        }
+    )
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: home))
+    monkeypatch.setattr(reporting, "_windows_acl_snapshot", lambda _path: acl)
+
+    with pytest.raises(ReportRenderError, match="permissive"):
+        reporting._validate_windows_acl(home, "home")
+
+
 def test_windows_actual_home_rejection_reports_sanitized_ace_classification(
     monkeypatch, tmp_path
 ):
