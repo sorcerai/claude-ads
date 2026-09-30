@@ -488,7 +488,9 @@ def test_cli_queue_page_cap_exits_nonzero_with_checkpoint_and_partial_data(
         )
 
     monkeypatch.setattr(fetch_ad_library, "guarded_request", transport)
-    monkeypatch.setattr(fetch_ad_library, "QuotaBudget", lambda **kwargs: RecordingBudget())
+    monkeypatch.setattr(
+        fetch_ad_library, "QuotaBudget", lambda **kwargs: RecordingBudget()
+    )
     monkeypatch.setenv("META_AD_LIBRARY_TOKEN", "fixture")
     monkeypatch.setenv("CLAUDE_ADS_OUTPUT_ROOT", str(tmp_path))
     monkeypatch.setattr(
@@ -496,10 +498,14 @@ def test_cli_queue_page_cap_exits_nonzero_with_checkpoint_and_partial_data(
         "argv",
         [
             "fetch_ad_library.py",
-            "--countries", "DE",
-            "--search-page-ids", "page-1,page-2",
-            "--checkpoint", str(checkpoint),
-            "--max-pages", "1",
+            "--countries",
+            "DE",
+            "--search-page-ids",
+            "page-1,page-2",
+            "--checkpoint",
+            str(checkpoint),
+            "--max-pages",
+            "1",
         ],
     )
     with pytest.raises(SystemExit) as exit_info:
@@ -507,7 +513,10 @@ def test_cli_queue_page_cap_exits_nonzero_with_checkpoint_and_partial_data(
     assert exit_info.value.code != 0
     result = json.loads(capsys.readouterr().out)
     assert result["status"] == "paginated"
-    assert [entry["status"] for entry in result["advertisers"]] == ["paginated", "queued"]
+    assert [entry["status"] for entry in result["advertisers"]] == [
+        "paginated",
+        "queued",
+    ]
     assert result["advertisers"][0]["artifact"]["observations"]
     assert len(calls) == 1
     persisted = json.loads(checkpoint.read_text(encoding="utf-8"))
@@ -651,7 +660,9 @@ def test_terminal_page_is_exhausted_under_any_usage_signal(
     assert result["retry_at"] == 4600.0
 
 
-def test_cursor_page_with_quota_stop_stays_deferred_on_stored_cursor(tmp_path, monkeypatch):
+def test_cursor_page_with_quota_stop_stays_deferred_on_stored_cursor(
+    tmp_path, monkeypatch
+):
     from ad_library_quota import QuotaBudget
 
     next_url = f"{fetch_ad_library.ENDPOINT}?after=cursor-9"

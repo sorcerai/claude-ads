@@ -537,12 +537,22 @@ def test_cli_nonqueue_exit_tracks_complete_collection(
     )
     response = _Response(payload)
     response.headers = {"X-App-Usage": json.dumps({"call_count": usage_count})}
-    monkeypatch.setattr(fetch_ad_library, "guarded_request", lambda *args, **kwargs: response)
+    monkeypatch.setattr(
+        fetch_ad_library, "guarded_request", lambda *args, **kwargs: response
+    )
     monkeypatch.setenv("META_AD_LIBRARY_TOKEN", "fixture")
     monkeypatch.setattr(
         sys,
         "argv",
-        ["fetch_ad_library.py", "--countries", "DE", "--search-terms", "coffee", "--max-pages", "1"],
+        [
+            "fetch_ad_library.py",
+            "--countries",
+            "DE",
+            "--search-terms",
+            "coffee",
+            "--max-pages",
+            "1",
+        ],
     )
     if expected_status == "exhausted":
         fetch_ad_library.main()
@@ -567,7 +577,15 @@ def test_cli_nonqueue_failure_retains_partial_observations(monkeypatch, capsys):
     monkeypatch.setattr(
         sys,
         "argv",
-        ["fetch_ad_library.py", "--countries", "DE", "--search-terms", "coffee", "--max-pages", "2"],
+        [
+            "fetch_ad_library.py",
+            "--countries",
+            "DE",
+            "--search-terms",
+            "coffee",
+            "--max-pages",
+            "2",
+        ],
     )
     with pytest.raises(SystemExit) as exit_info:
         fetch_ad_library.main()
