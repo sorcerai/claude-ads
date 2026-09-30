@@ -557,6 +557,40 @@ def test_windows_actual_home_accepts_explicit_read_only_common_user_acl(
         reporting._validate_windows_acl(home, "home")
 
 
+def test_windows_actual_home_rejection_reports_sanitized_ace_classification(
+    monkeypatch, tmp_path
+):
+    home = tmp_path / "home with private details"
+    home.mkdir()
+    raw_sid = "S-1-5-21-secret-user"
+    acl = _secure_windows_acl()
+    acl["access"].append(
+        {
+            "sid": raw_sid,
+            "type": "Allow",
+            "rights": "ReadAndExecute, Write",
+            "inherited": False,
+            "inheritance_flags": "ContainerInherit, ObjectInherit",
+            "propagation_flags": "None",
+        }
+    )
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: home))
+    monkeypatch.setattr(reporting, "_windows_acl_snapshot", lambda _path: acl)
+
+    with pytest.raises(ReportRenderError) as error:
+        reporting._validate_windows_acl(home, "home")
+
+    message = str(error.value)
+    assert "ace_category=other" in message
+    assert "access_kind=allow" in message
+    assert "rights_kind=mixed" in message
+    assert "inherited=false" in message
+    assert "inheritance=container_and_object" in message
+    assert "propagation=none" in message
+    assert raw_sid not in message
+    assert str(home) not in message
+
+
 def test_windows_home_ignores_only_non_effective_inherit_only_acl(
     monkeypatch, tmp_path
 ):
@@ -594,8 +628,9 @@ def test_windows_explicit_home_read_is_rejected_for_report_root(
     )
     monkeypatch.setattr(Path, "home", classmethod(lambda cls: home))
     monkeypatch.setattr(reporting, "_windows_acl_snapshot", lambda _path: acl)
-    with pytest.raises(ReportRenderError, match="permissive"):
+    with pytest.raises(ReportRenderError, match="permissive") as error:
         reporting._validate_windows_acl(home, "root")
+    assert "ace_category" not in str(error.value)
 
 
 @pytest.mark.parametrize("sid", ["S-1-5-32-545", "S-1-5-11"])

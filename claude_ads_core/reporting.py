@@ -1320,6 +1320,80 @@ def _windows_acl_snapshot(path: Path) -> Mapping[str, Any]:
     return normalized
 
 
+def _windows_home_acl_diagnostic(
+    entry: Mapping[str, Any], current_sid: str, owner_sid: str
+) -> str:
+    """Return safe, enum-like evidence for an effective home ACE rejection."""
+    sid = entry.get("sid")
+    if not isinstance(sid, str):
+        sid = ""
+    sid_folded = sid.casefold()
+    if sid_folded == current_sid.casefold():
+        category = "current"
+    elif sid_folded == owner_sid.casefold():
+        category = "owner"
+    elif sid_folded == _WINDOWS_OWNER_RIGHTS_SID:
+        category = "owner"
+    elif sid_folded.upper() in _WINDOWS_TRUSTED_SIDS:
+        category = "trusted"
+    elif sid_folded.upper() in _WINDOWS_HOME_READ_ONLY_SIDS:
+        category = "common_users"
+    elif sid_folded == "s-1-3-0":
+        category = "creator_owner"
+    else:
+        category = "other"
+
+    access_type = entry.get("type")
+    access_kind = (
+        access_type.casefold()
+        if isinstance(access_type, str)
+        and access_type.casefold() in {"allow", "deny"}
+        else "unknown"
+    )
+    rights = entry.get("rights")
+    rights_folded = rights.casefold() if isinstance(rights, str) else ""
+    has_mutating = any(token in rights_folded for token in _WINDOWS_MUTATING_RIGHTS)
+    has_read = any(
+        token in rights_folded
+        for token in ("read", "readandexecute", "listdirectory", "readattributes")
+    )
+    if has_mutating and has_read:
+        rights_kind = "mixed"
+    elif has_mutating:
+        rights_kind = "mutating"
+    elif has_read:
+        rights_kind = "read_only"
+    else:
+        rights_kind = "other"
+
+    inherited = entry.get("inherited")
+    inherited_kind = "true" if inherited is True else "false" if inherited is False else "unknown"
+
+    def flag_class(value: Any) -> str:
+        if not isinstance(value, str) or not value.strip():
+            return "none"
+        folded = value.casefold()
+        if folded == "none":
+            return "none"
+        if "inheritonly" in folded:
+            return "inherit_only"
+        if "containerinherit" in folded and "objectinherit" in folded:
+            return "container_and_object"
+        if "containerinherit" in folded:
+            return "container"
+        if "objectinherit" in folded:
+            return "object"
+        return "other"
+
+    return (
+        " (ace_category="
+        f"{category}; access_kind={access_kind}; rights_kind={rights_kind}; "
+        f"inherited={inherited_kind}; "
+        f"inheritance={flag_class(entry.get('inheritance_flags'))}; "
+        f"propagation={flag_class(entry.get('propagation_flags'))})"
+    )
+
+
 def _validate_windows_acl(path: Path, label: str) -> None:
     snapshot = _windows_acl_snapshot(path)
     owner_sid = snapshot.get("owner_sid")
@@ -1397,7 +1471,14 @@ def _validate_windows_acl(path: Path, label: str) -> None:
                 or effective_sid_folded.upper() not in _WINDOWS_HOME_READ_ONLY_SIDS
                 or any(token in rights_folded for token in _WINDOWS_MUTATING_RIGHTS)
             ):
-                raise ReportRenderError(f"report {label} DACL is permissive")
+                detail = (
+                    _windows_home_acl_diagnostic(entry, current_sid, owner_sid)
+                    if is_actual_home
+                    else ""
+                )
+                raise ReportRenderError(
+                    f"report {label} DACL is permissive{detail}"
+                )
 
 
 def _protect_windows_path(path: Path) -> None:
