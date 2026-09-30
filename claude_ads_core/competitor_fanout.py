@@ -165,15 +165,22 @@ def plan_slices(
             )
         competitor_slugs[slug] = competitor
 
+    total_slices = len(sources) * len(competitor_slugs) * len(dedup_countries)
+    if total_slices > MAX_TOTAL_SLICES:
+        raise ValueError(
+            f"total planned slices exceed maximum budget ({total_slices} > {MAX_TOTAL_SLICES})"
+        )
+
     tasks: list[dict[str, Any]] = []
     for source in sources:
         profile = SOURCES[source]
-        for competitor in dedup_competitors:
+        source_slug = slugify(source)
+        for competitor_slug, competitor in competitor_slugs.items():
             for country in dedup_countries:
-                task_id = f"{run_id}.{slugify(source)}.{slugify(competitor)}.{country.upper()}"
+                task_id = f"{run_id}.{source_slug}.{competitor_slug}.{country}"
                 scope = [
                     f"Competitor: {competitor}",
-                    f"Country: {country.upper()}",
+                    f"Country: {country}",
                     f"Source: {profile['label']}",
                 ]
                 recovery = [
@@ -206,7 +213,7 @@ def plan_slices(
                         "role": "research-worker",
                         "objective": (
                             f"Collect observable paid-ad evidence for {competitor} in "
-                            f"{country.upper()} from {profile['label']}."
+                            f"{country} from {profile['label']}."
                         ),
                         "scope": scope,
                         "exclusions": [
@@ -234,10 +241,6 @@ def plan_slices(
                         "status": "queued",
                     }
                 )
-    if len(tasks) > MAX_TOTAL_SLICES:
-        raise ValueError(
-            f"total planned slices exceed maximum budget ({len(tasks)} > {MAX_TOTAL_SLICES})"
-        )
     if len({task["task_id"] for task in tasks}) != len(tasks) or len({
         task["output_contract"]["destination"] for task in tasks
     }) != len(tasks):
@@ -277,38 +280,53 @@ POLITICAL_ONLY_FIELDS = (
 PROVENANCE = ("ad-library-api", "operator-supplied")
 
 
-# Snapshot locators are persisted downstream. Remove every credential query
-# field after percent-decoding its name; fragments are not needed to retrieve
-# a snapshot and may themselves carry credentials. This is locator sanitation,
-# not network authorization: outbound requests still need the SSRF boundary.
-_SNAPSHOT_CREDENTIAL_KEYS = frozenset({
-    "access_token", "refresh_token", "token", "api_key", "apikey",
-    "authorization", "auth", "key", "secret", "client_secret",
-    "password", "passwd", "code", "signature",
-})
+# Snapshot locators are persisted downstream. Strip recognized credentials,
+# then accept only known public query fields: an unknown name could hide a
+# credential and must not be recorded. Fragments may also carry credentials.
+# This is locator sanitation, not network authorization or an SSRF boundary.
+_SNAPSHOT_CREDENTIAL_KEYS = frozenset({"key", "code"})
+_SNAPSHOT_CREDENTIAL_SUFFIXES = (
+    "token", "secret", "secretkey", "signature", "sig", "credential",
+    "credentials", "password", "passwd", "apikey", "accesskey", "keyid",
+    "privatekey", "authorization", "auth", "assertion", "verifier",
+)
+_SNAPSHOT_PUBLIC_QUERY_KEYS = frozenset({"id", "tag", "blank"})
+_INVALID_PERCENT_ESCAPE = re.compile(r"%(?![0-9A-Fa-f]{2})")
+_SNAPSHOT_QUERY_NAME = re.compile(r"[A-Za-z0-9_-]+")
+_SNAPSHOT_PUBLIC_VALUE = re.compile(r"[A-Za-z0-9._~-]*")
 
 
-def _strip_snapshot_credential(url: Any) -> Any:
+def _is_snapshot_credential(normalized_key: str) -> bool:
+    return (
+        normalized_key in _SNAPSHOT_CREDENTIAL_KEYS
+        or normalized_key.replace("_", "").endswith(_SNAPSHOT_CREDENTIAL_SUFFIXES)
+    )
+
+
+def _strip_snapshot_credential(url: Any) -> str | None:
     """Remove explicit locator credentials without echoing malformed input.
 
-    Missing/non-string values retain the existing normalizer behavior. Query
-    names are decoded once; ambiguous nested encoding and raw semicolon
+    Missing locators stay absent; non-string values fail closed. Query names
+    are decoded once; ambiguous nested encoding and raw semicolon
     separators are rejected rather than passed to a different URL parser.
     """
-    if not isinstance(url, str):
-        return url
+    if url is None:
+        return None
     try:
         if (
-            not url
+            not isinstance(url, str)
+            or not url
             or len(url) > 8192
             or "\\" in url
-            or any(ord(char) < 32 or ord(char) == 127 for char in url)
+            or any(char.isspace() or ord(char) < 32 or ord(char) == 127 for char in url)
+            or _INVALID_PERCENT_ESCAPE.search(url) is not None
         ):
             raise ValueError
         parsed = urlsplit(url)
         if (
             parsed.scheme not in {"http", "https"}
             or not parsed.hostname
+            or "%" in parsed.hostname
             or parsed.username is not None
             or parsed.password is not None
             or ";" in parsed.query
@@ -317,12 +335,22 @@ def _strip_snapshot_credential(url: Any) -> Any:
         # Accessing port validates malformed and out-of-range port syntax.
         _ = parsed.port
         pairs = parse_qsl(parsed.query, keep_blank_values=True, max_num_fields=128)
-        if any("%" in key for key, _ in pairs):
-            raise ValueError
-        safe_pairs = [
-            (key, value) for key, value in pairs
-            if key.lower().replace("-", "_") not in _SNAPSHOT_CREDENTIAL_KEYS
-        ]
+        # Decoded public values are scalar identifiers, not arbitrary encoded
+        # documents; escaped JSON, XML, whitespace and nested URLs fail closed.
+        safe_pairs = []
+        for key, value in pairs:
+            if _SNAPSHOT_QUERY_NAME.fullmatch(key) is None:
+                raise ValueError
+            normalized_key = key.casefold().replace("-", "_")
+            if _is_snapshot_credential(normalized_key):
+                continue
+            if (
+                normalized_key not in _SNAPSHOT_PUBLIC_QUERY_KEYS
+                or _SNAPSHOT_PUBLIC_VALUE.fullmatch(value) is None
+                or (normalized_key == "blank" and value)
+            ):
+                raise ValueError
+            safe_pairs.append((key, value))
         return urlunsplit((parsed.scheme, parsed.netloc, parsed.path, urlencode(safe_pairs), ""))
     except ValueError:
         raise ValueError("snapshot URL is invalid or contains ambiguous credentials") from None
@@ -401,9 +429,11 @@ def normalize_archived_ads(
         advertiser_page_id = (
             ad.get("page_id") or ad.get("advertiser_page_id") or ad.get("advertiser_id")
         )
-        snapshot_raw = (
-            ad.get("ad_snapshot_url") or ad.get("snapshot_url") or ad.get("source_url")
-        )
+        snapshot_raw = ad.get("ad_snapshot_url")
+        if snapshot_raw is None:
+            snapshot_raw = ad.get("snapshot_url")
+        if snapshot_raw is None:
+            snapshot_raw = ad.get("source_url")
         snapshot_url = _strip_snapshot_credential(snapshot_raw)
 
         publisher_platforms = list(

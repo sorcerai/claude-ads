@@ -30,6 +30,16 @@ def _normalize(url):
         "api_key=fixture-a&id=1",
         "authorization=fixture-a&id=1",
         "id=1&access_token&access_token=fixture-b",
+        "oauth_token=fixture-a&x-amz-security-token=fixture-b&id=1",
+        "id=1&%6fauth_token=fixture-a&X-Amz-Signature=fixture-b",
+        "id_token=fixture-a&session-token=fixture-b&id=1",
+        "x-goog-credential=fixture-a&x-goog-signature=fixture-b&id=1",
+        "service_api_key=fixture-a&id=1",
+        "id=1&sig=fixture-a",
+        "id=1&AWSAccessKeyId=fixture-a",
+        "id=1&accessToken=fixture-a&clientSecret=fixture-b",
+        "id=1&refreshToken=fixture-a&OAuthToken=fixture-b",
+        "id=1&IDToken=fixture-a&XAmzSignature=fixture-b",
     ],
 )
 def test_snapshot_query_removes_all_explicit_credentials(query):
@@ -38,12 +48,51 @@ def test_snapshot_query_removes_all_explicit_credentials(query):
     assert "fixture-a" not in result and "fixture-b" not in result
 
 
+@pytest.mark.parametrize(
+    "credential_name",
+    ["client_assertion", "clientAssertion", "code_verifier", "codeVerifier"],
+)
+def test_snapshot_drops_oauth_assertion_and_verifier_fields(credential_name):
+    result = _normalize(f"https://example.com/render_ad/?id=1&{credential_name}=fixture-secret")
+    assert result == "https://example.com/render_ad/?id=1"
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "id=1&state=%7B%22access_token%22%3A%22fixture-secret%22%7D",
+        "id=%7B%22access_token%22%3A%22fixture-secret%22%7D",
+        "id=%5Cu007b%5Cu0022access_token%5Cu0022%5Cu003a"
+        "%5Cu0022fixture-secret%5Cu0022%5Cu007d",
+        "id=%3Ctoken%3Efixture-secret%3C%2Ftoken%3E",
+        "id=%20fixture-secret",
+        "id=1&tag=a%0Ab",
+        "id=1&blank=fixture-secret",
+        "id=1&unrecognized_public_field=fixture-secret",
+    ],
+)
+def test_snapshot_rejects_nonallowlisted_or_structured_query_values(query):
+    with pytest.raises(ValueError) as failure:
+        _normalize(f"https://example.com/render_ad/?{query}")
+    assert "fixture-secret" not in str(failure.value)
+
+
 def test_snapshot_preserves_repeated_safe_fields_and_missing_locator():
     result = _normalize("https://example.com/render_ad/?id=1&tag=a&tag=b&blank=")
     assert parse_qsl(urlsplit(result).query, keep_blank_values=True) == [
         ("id", "1"), ("tag", "a"), ("tag", "b"), ("blank", "")
     ]
     assert _normalize(None) is None
+
+
+@pytest.mark.parametrize(
+    "locator",
+    ({"access_token": "fixture-secret"}, {}, ["fixture-secret"], [], 7, 0),
+)
+def test_snapshot_rejects_nonstring_locator_without_echoing_value(locator):
+    with pytest.raises(ValueError) as error:
+        _normalize(locator)
+    assert "fixture-secret" not in str(error.value)
 
 
 def test_snapshot_discards_fragment_credentials():
@@ -63,6 +112,15 @@ def test_snapshot_discards_fragment_credentials():
         "https://example.com/render_ad/?id=1\naccess_token=fixture-a",
         "https://example.com/render_ad/?id=1;access_token=fixture-a",
         "https://example.com/render_ad/?%2561ccess_token=fixture-a&id=1",
+        "https://exa mple.com/render_ad/?id=1",
+        "https://exa%20mple.com/render_ad/?id=1",
+        "https://example.com/render ad/?id=1",
+        "https://example.com/%ZZ?id=1",
+        "https://example.com/render_ad/?id=%ZZ",
+        "https://example.com/render_ad/?id=1#bad%ZQ",
+        "https://example.com/out?target=https%3A%2F%2Ffacebook.com%2Frender_ad%2F%3Faccess_token%3Dfixture-a",
+        "https://example.com/out?target=%2Frender_ad%2F%3Fsig%3Dfixture-a",
+        "https://example.com/out?target=https%253A%252F%252Ffacebook.com%252Frender_ad%252F%253Faccess_token%253Dfixture-a",
     ],
 )
 def test_invalid_snapshot_locator_fails_without_echoing_input(url):
@@ -70,6 +128,7 @@ def test_invalid_snapshot_locator_fails_without_echoing_input(url):
         _normalize(url)
     assert "fixture-password" not in str(error.value)
     assert "fixture-a" not in str(error.value)
+    assert "fixture-secret" not in str(error.value)
 
 
 def _plan(**overrides):

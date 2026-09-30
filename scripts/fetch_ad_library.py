@@ -2,10 +2,10 @@
 """
 Search the Meta Ad Library (`ads_archive`) for public ad creative.
 
-Scope is set by Meta, not by this script. Per the official reference, "Ads that
-did not reach any location in the EU will only return if they are about social
-issues, elections or politics." A commercial competitor search therefore returns
-rows only when `--countries` includes an EU member state.
+Scope is set by Meta, not by this script. Outside the EU, a commercial
+competitor search returns only ads that also reached the EU or UK, plus
+political and issue ads. Non-EU results are therefore real but partial rather
+than a complete picture of that market.
 
 Usage:
     python fetch_ad_library.py --search-terms "project management" --countries DE,FR
@@ -40,6 +40,7 @@ from url_utils import (
 # limit rather than absence of ads, so the rule has exactly one definition.
 from claude_ads_core.competitor_fanout import (
     meta_coverage_note as scope_warning,
+    _strip_snapshot_credential,
     normalize_archived_ads,
 )
 
@@ -556,6 +557,15 @@ def _load_checkpoint(path: Path) -> dict[str, Any]:
             )
         ):
             raise ValueError("corrupt checkpoint: raw artifact or invalid artifact")
+        if artifact is not None:
+            for observation in artifact["observations"]:
+                snapshot = observation.get("snapshot_url")
+                try:
+                    canonical = _strip_snapshot_credential(snapshot)
+                except ValueError:
+                    raise ValueError("corrupt checkpoint: unsafe snapshot URL") from None
+                if canonical != snapshot:
+                    raise ValueError("corrupt checkpoint: noncanonical snapshot URL")
     return value
 
 
@@ -599,6 +609,7 @@ def _collect_advertiser_queue_unlocked(
     search_page_ids: str,
     checkpoint_path: str | os.PathLike[str],
     resume: bool = False,
+    _inherit_checkpoint_metadata: bool = False,
     search_terms: str | None = None,
     search_type: str = "KEYWORD_UNORDERED",
     ad_active_status: str = "ALL",
@@ -613,13 +624,24 @@ def _collect_advertiser_queue_unlocked(
     pacing_delay: float = DEFAULT_PACING_DELAY,
     sleep=time.sleep,
     quota_budget: Any | None = None,
-    run_id: str = "run-ad-library",
+    run_id: str | None = "run-ad-library",
     client_id: str = "default-client",
     purpose: str = "competitor_analysis",
     privacy_class: str = "public",
 ) -> dict[str, Any]:
     """Collect page IDs sequentially, checkpointing normalized evidence per page."""
     path = Path(checkpoint_path).expanduser()
+    state = _load_checkpoint(path) if resume else None
+    if state is not None and run_id is None:
+        run_id = state["filters"]["run_id"]
+    if _inherit_checkpoint_metadata:
+        checkpoint_filters = state["filters"] if state is not None else {}
+        if client_id is None:
+            client_id = checkpoint_filters.get("client_id", "default-client")
+        if purpose is None:
+            purpose = checkpoint_filters.get("purpose", "competitor_analysis")
+        if privacy_class is None:
+            privacy_class = checkpoint_filters.get("privacy_class", "public")
     limit = min(_positive_int(limit), MAX_PAGE_LIMIT)
     max_pages = min(_positive_int(max_pages), MAX_PAGES_CEILING)
     page_ids = [item.strip() for item in search_page_ids.split(",") if item.strip()]
@@ -645,8 +667,7 @@ def _collect_advertiser_queue_unlocked(
         privacy_class=privacy_class,
     )
     fingerprint = _fingerprint(filters)
-    if resume:
-        state = _load_checkpoint(path)
+    if state is not None:
         if (
             state.get("fingerprint") != fingerprint
             or state.get("filters") != filters
@@ -768,17 +789,26 @@ def _collect_advertiser_queue_unlocked(
 
 
 def collect_advertiser_queue(
-    *, checkpoint_path: str | os.PathLike[str], resume: bool = False, **kwargs
+    *,
+    checkpoint_path: str | os.PathLike[str],
+    resume: bool = False,
+    _inherit_checkpoint_metadata: bool = False,
+    **kwargs,
 ):
+    if resume:
+        _inherit_checkpoint_metadata = True
+        for field in ("client_id", "purpose", "privacy_class"):
+            kwargs.setdefault(field, None)
     path = Path(checkpoint_path).expanduser()
     with _checkpoint_lock(path):
         if path.exists() and not resume:
             raise ValueError("checkpoint already exists; pass --resume to continue it")
-        if resume and kwargs.get("run_id") is None:
-            kwargs["run_id"] = _load_checkpoint(path)["filters"]["run_id"]
+        run_id = kwargs.pop("run_id", None if resume else "run-ad-library")
         return _collect_advertiser_queue_unlocked(
             checkpoint_path=path,
             resume=resume,
+            _inherit_checkpoint_metadata=_inherit_checkpoint_metadata,
+            run_id=run_id,
             **kwargs,
         )
 
@@ -988,24 +1018,6 @@ def _main():
     run_id = args.run_id or (
         None if args.resume else f"run-{date.today().strftime('%Y%m%d')}-ad-lib"
     )
-    checkpoint_filters = {}
-    if args.resume and checkpoint_path:
-        checkpoint_filters = _load_checkpoint(checkpoint_path)["filters"]
-    client_id = (
-        args.client_id
-        if args.client_id is not None
-        else checkpoint_filters.get("client_id", "default-client")
-    )
-    purpose = (
-        args.purpose
-        if args.purpose is not None
-        else checkpoint_filters.get("purpose", "competitor_analysis")
-    )
-    privacy_class = (
-        args.privacy_class
-        if args.privacy_class is not None
-        else checkpoint_filters.get("privacy_class", "public")
-    )
     quota_budget = QuotaBudget(hourly_limit=args.hourly_limit)
     fields = build_fields(args.include_political_fields, args.include_eu_fields)
 
@@ -1030,9 +1042,10 @@ def _main():
             max_pages=args.max_pages,
             quota_budget=quota_budget,
             run_id=run_id,
-            client_id=client_id,
-            purpose=purpose,
-            privacy_class=privacy_class,
+            client_id=args.client_id,
+            purpose=args.purpose,
+            privacy_class=args.privacy_class,
+            _inherit_checkpoint_metadata=True,
         )
         payload = json.dumps(result, indent=2, ensure_ascii=False)
         if output_path:
@@ -1063,9 +1076,9 @@ def _main():
     canonical_artifact = build_canonical_artifact(
         result,
         run_id=run_id,
-        client_id=client_id,
-        purpose=purpose,
-        privacy_class=privacy_class,
+        client_id=args.client_id if args.client_id is not None else "default-client",
+        purpose=args.purpose if args.purpose is not None else "competitor_analysis",
+        privacy_class=args.privacy_class if args.privacy_class is not None else "public",
     )
     payload = json.dumps(canonical_artifact, indent=2, ensure_ascii=False)
     if output_path:

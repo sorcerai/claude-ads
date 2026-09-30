@@ -72,6 +72,20 @@ Three sanctioned routes remain:
 Both normalized routes produce one observation shape, so clustering and
 reporting never branch on origin, only on attestation quality.
 
+Normalized `snapshot_url` values retain only HTTP(S) locators. Recognized
+credential query fields and fragments are removed; only public query fields
+`id`, `tag`, and `blank` with ASCII scalar identifier values are retained
+(`blank` must be empty). Unknown query names, structured or nested values,
+malformed URLs, and non-string locators fail closed before storage. This
+deliberately rejects otherwise usable URLs with unrecognized parameters
+rather than risking a persisted secret. Do not place credentials in source
+URLs or treat a normalized locator as authorization to fetch ad media.
+
+Legacy checkpoints are checked on resume. A noncanonical stored snapshot URL
+stops the resume without rewriting the checkpoint or emitting another artifact.
+Recreate an unsafe checkpoint from authorized evidence rather than printing its
+raw URL to diagnose it.
+
 ## No creative media from the API
 
 The archive returns text only (CLM-0216). There is no image or video field, and
@@ -128,6 +142,9 @@ slices are independent by construction and reruns keep stable task IDs. Meta
 slices carry their coverage limit in scope. Google Ads Transparency packets state
 that operator capture is required because this repository has no approved
 automated client.
+Task IDs and destinations include the source, competitor, and country. Distinct
+competitor names that normalize to the same identifier are rejected rather
+than silently sharing a writer's output.
 
 Dispatch `agents/research-worker.md` for the automated Meta and paid-SERP packets.
 The paid SERP source uses `mcp__search-ops__find_serp_competitors` with
