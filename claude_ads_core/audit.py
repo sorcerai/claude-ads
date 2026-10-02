@@ -56,6 +56,9 @@ def _evaluate_google_findings(
         g42_entry = entries["G42"]
         definition = g42_entry.control_definition
         referenced_sources.update(definition.get("source_ids", []))
+        # Reference exports expose metrics, not verified conversion-action
+        # configuration. Even a positive count or an "active" text label cannot
+        # establish current tracking health or primary-goal settings.
         if conversions:
             primary_action = conversions[0].get("action", "conversions_defined")
             evidence = {
@@ -78,13 +81,13 @@ def _evaluate_google_findings(
                 {
                     "schema_version": "2.0.0",
                     "control_id": "G42",
-                    "status": "pass",
+                    "status": "unknown",
                     "evidence": [evidence],
-                    "confidence": "high",
+                    "confidence": "low",
                     "source_classification": "evidence_based",
-                    "observation": f"Active conversion action defined in account snapshot: {primary_action}.",
-                    "diagnosis": "Conversion tracking action is defined and active in the ingested export.",
-                    "recommendation": "Maintain verified conversion actions and confirm regular attribution health.",
+                    "observation": f"Conversion metric label observed in account snapshot: {primary_action}.",
+                    "diagnosis": "Campaign conversion metrics do not verify conversion-action configuration or active tracking.",
+                    "recommendation": "Provide conversion-action configuration and tracking diagnostics, including action IDs, status, and primary-goal settings, before evaluating tracking health.",
                 }
             )
         else:
@@ -96,9 +99,9 @@ def _evaluate_google_findings(
                     "evidence": [],
                     "confidence": "low",
                     "source_classification": "practitioner",
-                    "observation": "No conversion actions were found in the account export.",
+                    "observation": "No conversion observations were supplied in the account export.",
                     "diagnosis": "Cannot verify conversion tracking status from supplied data.",
-                    "recommendation": "Configure primary conversion action in Google Ads.",
+                    "recommendation": "Provide conversion-action configuration and tracking diagnostics; missing export data does not establish missing or broken tracking.",
                 }
             )
 
