@@ -114,23 +114,23 @@
     "pip cross-target resolution used both manylinux_2_27_x86_64 and manylinux2014_x86_64 selectors so target-compatible Pillow manylinux_2_27 and Playwright manylinux1 wheels are both considered; selected target artifacts remain exact and require native CI confirmation."
   ],
   "platform_policy": "Exact lowest-common lock with target-selected PyPI wheels",
-  "resolved_at": "2026-09-08T20:55:03Z",
+  "resolved_at": "2026-10-01T01:02:22Z",
   "resolver": "pip / PyPI",
   "schema_version": "1.0.0",
-  "source_date_epoch": 1788900903,
+  "source_date_epoch": 1790816542,
   "source_environment": {
     "implementation_name": "cpython",
-    "implementation_version": "3.14.6",
+    "implementation_version": "3.12.8",
     "os_name": "posix",
     "platform_machine": "arm64",
     "platform_python_implementation": "CPython",
     "platform_release": "25.5.0",
     "platform_system": "Darwin",
     "platform_version": "Darwin Kernel Version 25.5.0: Mon Apr 27 20:41:12 PDT 2026; root:xnu-12377.121.6~2/RELEASE_ARM64_T6050",
-    "python_full_version": "3.14.6",
-    "python_version": "3.14",
+    "python_full_version": "3.12.8",
+    "python_version": "3.12",
     "sys_platform": "darwin"
   },
-  "source_pip_version": "26.1.2",
-  "source_report_sha256": "0d0bd0cb291057772e2d7f0d8dc82b3d21ac37b01aa41dc96fa1c38f6d17019a"
+  "source_pip_version": "26.2.1",
+  "source_report_sha256": "b8d4dd6c4a756769aee119042803df4e0c0286b0362fe816e0677450d4553ea5"
 }

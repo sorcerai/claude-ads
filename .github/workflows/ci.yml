@@ -78,6 +78,15 @@ jobs:
           python-version: "3.12"
           cache: pip
 
+      - name: Install and verify WeasyPrint 70 native PDF libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y libpango-1.0-0 libpangoft2-1.0-0 libharfbuzz0b libharfbuzz-subset0 pango1.0-tools
+          pango-view --version
+          pango_version=$(dpkg-query -W -f='${Version}' libpango-1.0-0)
+          echo "Installed Pango: $pango_version"
+          dpkg --compare-versions "$pango_version" ge "1.44.0"
+
       - name: Install runtime and test dependencies
         run: |
           python -m pip install --no-deps -e .
@@ -85,7 +94,9 @@ jobs:
           python -m pip install --require-hashes --only-binary=:all: -r requirements-dev.lock
           python -m pip check
 
-      - name: Run full test suite
+      - name: Run full test suite with mandatory native PDF smoke
+        env:
+          CLAUDE_ADS_REQUIRE_PDF_SMOKE: "1"
         run: python -m pytest tests -v --tb=short
 
       - name: Audit dependencies for known vulnerabilities
