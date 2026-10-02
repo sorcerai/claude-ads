@@ -641,7 +641,8 @@ def _load_target_evidence(root: Path, target_id: str) -> tuple[dict[str, object]
         if (
             colorama is None
             or not isinstance(colorama.get("artifact"), dict)
-            or evidence["supplemental_report"] != {
+            or evidence["supplemental_report"]
+            != {
                 "source_report_sha256": (
                     "51a45ce89d8675e2e47279c9e8876e886e8b2f264aee83a2f6b78f9fa552c849"
                 ),
@@ -1405,7 +1406,8 @@ def _load_external_runtime_dependencies(root: Path) -> dict[str, object]:
         if (
             set(source) != {"id", "url", "publisher", "accessed_at"}
             or not str(source["url"]).startswith("https://")
-            or source["accessed_at"] != (
+            or source["accessed_at"]
+            != (
                 "2026-10-01"
                 if source["id"] == "weasyprint-70-install"
                 else "2026-07-11"
