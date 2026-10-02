@@ -4,6 +4,7 @@ import copy
 import json
 import os
 import stat
+import sys
 import tomllib
 import uuid
 from pathlib import Path
@@ -1371,10 +1372,19 @@ def test_real_pdf_render_smoke_when_runtime_dependencies_are_installed():
     try:
         import weasyprint  # noqa: F401
     except (ImportError, OSError) as exc:
+        if os.environ.get("CLAUDE_ADS_REQUIRE_PDF_SMOKE") == "1":
+            pytest.fail(f"native PDF dependencies unavailable: {exc}")
         pytest.skip(f"native PDF dependencies unavailable: {exc}")
     rendered = render_pdf(load_bundle(), registry=fixture_registry())
     assert rendered.startswith(b"%PDF-")
     assert len(rendered) > 1_000
+
+
+def test_required_pdf_smoke_rejects_missing_native_runtime(monkeypatch):
+    monkeypatch.setenv("CLAUDE_ADS_REQUIRE_PDF_SMOKE", "1")
+    monkeypatch.setitem(sys.modules, "weasyprint", None)
+    with pytest.raises(pytest.fail.Exception, match="native PDF dependencies"):
+        test_real_pdf_render_smoke_when_runtime_dependencies_are_installed()
 
 
 def test_cli_render_writes_validated_report_under_safe_root(tmp_path, capsys):

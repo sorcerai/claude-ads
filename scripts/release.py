@@ -117,16 +117,16 @@ ZIP_TIMESTAMP = (1980, 1, 1, 0, 0, 0)
 # document; keeping it in executable verifier code makes self-consistent
 # archive/manifest/SBOM/checksum forgery fail closed.
 EXPECTED_DEPENDENCY_INVENTORY_SHA256 = (
-    "026d45be2ec1973f5639dd0c7422fdad81c5e293007cf7b2e8fc2d09f0f88673"
+    "0c290bfd1096e2bb371bcd5c508962371ae38c474c4c4ad81a5ae7342ea4cd9d"
 )
 EXPECTED_THIRD_PARTY_NOTICES_SHA256 = (
-    "b90c38b4cce60c06c0090be31ee721d3482640923d9ff6f3c711c047317746d0"
+    "fc2a2953cd3d3bedca429d112fd3945eacb55b276fb540c346f645c92c7de51a"
 )
 EXPECTED_EXTERNAL_RUNTIME_DEPENDENCIES_SHA256 = (
-    "c5962746f3a49570c810525c5a8557a3884e64e3b764476ff18cb65741853bc2"
+    "5ab75fd457a7e1c6abcf096c5ab40662373691f5160e39f9a3d327b6b6aae3b7"
 )
-INVENTORY_RESOLVED_AT = "2026-09-08T20:55:03Z"
-INVENTORY_SOURCE_DATE_EPOCH = 1788900903
+INVENTORY_RESOLVED_AT = "2026-10-01T01:02:22Z"
+INVENTORY_SOURCE_DATE_EPOCH = 1790816542
 INVENTORY_PYTHON_REQUIRES = ">=3.11,<3.13"
 INVENTORY_POLICY = (
     "One exact lowest-common version set with target-specific wheel hashes for "
@@ -591,6 +591,20 @@ def _load_target_evidence(root: Path, target_id: str) -> tuple[dict[str, object]
         "platform_policy",
         "components",
     }
+    windows_development = target_id in {
+        "development-windows-cp311",
+        "development-windows-cp312",
+    }
+    if windows_development:
+        expected_fields.add("supplemental_report")
+    if (
+        isinstance(evidence, dict)
+        and windows_development
+        and "supplemental_report" not in evidence
+    ):
+        raise ReleaseError(
+            f"Windows colorama supplemental resolver evidence missing: {target_id}"
+        )
     if not isinstance(evidence, dict) or set(evidence) != expected_fields:
         raise ReleaseError(f"target resolver evidence fields mismatch: {target_id}")
     if (
@@ -613,6 +627,43 @@ def _load_target_evidence(root: Path, target_id: str) -> tuple[dict[str, object]
         or not isinstance(evidence.get("normalization_notes"), list)
     ):
         raise ReleaseError(f"target resolver evidence header mismatch: {target_id}")
+    if windows_development:
+        if not isinstance(evidence["components"], list):
+            raise ReleaseError(f"target resolver components mismatch: {target_id}")
+        colorama = next(
+            (
+                component
+                for component in evidence["components"]
+                if isinstance(component, dict) and component.get("name") == "colorama"
+            ),
+            None,
+        )
+        if (
+            colorama is None
+            or not isinstance(colorama.get("artifact"), dict)
+            or evidence["supplemental_report"]
+            != {
+                "source_report_sha256": (
+                    "51a45ce89d8675e2e47279c9e8876e886e8b2f264aee83a2f6b78f9fa552c849"
+                ),
+                "target": {
+                    "implementation": "cp",
+                    "python_version": "3.11" if target_id.endswith("cp311") else "3.12",
+                    "abi": "cp311" if target_id.endswith("cp311") else "cp312",
+                    "platform": "win_amd64",
+                    "require_hashes": True,
+                    "only_binary": ":all:",
+                },
+                "component": {
+                    "name": "colorama",
+                    "version": "0.4.6",
+                    "artifact": colorama["artifact"],
+                },
+            }
+        ):
+            raise ReleaseError(
+                f"Windows colorama supplemental resolver evidence mismatch: {target_id}"
+            )
     return evidence, _sha256(data)
 
 
@@ -1341,7 +1392,7 @@ def _load_external_runtime_dependencies(root: Path) -> dict[str, object]:
         "playwright-python-intro",
         "playwright-browsers",
         "playwright-ci",
-        "weasyprint-69-install",
+        "weasyprint-70-install",
         "cyclonedx-1.5-json",
     }
     if (
@@ -1355,7 +1406,12 @@ def _load_external_runtime_dependencies(root: Path) -> dict[str, object]:
         if (
             set(source) != {"id", "url", "publisher", "accessed_at"}
             or not str(source["url"]).startswith("https://")
-            or source["accessed_at"] != "2026-07-11"
+            or source["accessed_at"]
+            != (
+                "2026-10-01"
+                if source["id"] == "weasyprint-70-install"
+                else "2026-07-11"
+            )
             or not source["publisher"]
         ):
             raise ReleaseError("external runtime dependency source metadata mismatch")

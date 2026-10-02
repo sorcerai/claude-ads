@@ -90,6 +90,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   locks and twelve target evidence records for `cryptography` 50.0.1 and Pillow
   12.3.0 without advisory exceptions or source-build fallback.
 
+* **Audited dependency refresh**: raises the hash-locked runtime minimums to
+  `urllib3` 2.8.0 and `WeasyPrint` 70.0 to address the reported security
+  advisories. Regenerates all twelve supported-target resolution records,
+  publisher-wheel license evidence, and the versioned native-runtime source.
+  The PDF export path is smoke-tested with the new wheels; this does not
+  establish native-library availability on every supported host.
+
 * **Scoped breaking v2 schema migration**: `AccountSnapshot`, `Finding`, and `ReportBundle`
   now use v2.0.0 contracts. `AccountSnapshot` requires `MeasurementContext`, and
   `Finding` evidence uses required typed `EvidenceRecord` fields. A `complete` run

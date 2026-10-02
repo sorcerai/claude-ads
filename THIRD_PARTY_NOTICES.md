@@ -41,9 +41,9 @@ summary. In particular, Pyphen code offers GPL-2.0-or-later OR
 LGPL-2.1-or-later OR MPL-1.1 alternatives and its dictionaries have
 language-specific terms. The dependency inventory preserves the exact path,
 SHA-256, text, and artifact assignment for every license/notice-like file found
-across all 119 selected wheels. The webencodings 0.5.1 wheel contains no matching
-embedded path and is explicitly recorded as documentless rather than assigned
-invented notice text.
+across all 100 distinct selected wheel artifacts. The webencodings 0.5.1 wheel
+contains no matching embedded path and is explicitly recorded as documentless
+rather than assigned invented notice text.
 
 The release SBOM is generated from the checked-in, publisher-metadata-backed
 dependency inventory and validates every declared direct requirement and locked

@@ -122,26 +122,46 @@
   "evidence_class": "cross-target-pip-resolution-requiring-native-ci-confirmation",
   "evidence_id": "development-windows-cp311",
   "normalization_notes": [
-    "pip evaluates sys_platform markers from the macOS host; pytest colorama was therefore resolved in a separate explicit pip supplemental report for the win_amd64 target (development-windows-cp311-colorama-supplemental)."
+    "pip on the macOS source host evaluates sys_platform there; Windows colorama was separately resolved with the exact reviewed hash in a win_amd64 supplemental pip report (SHA-256 51a45ce89d8675e2e47279c9e8876e886e8b2f264aee83a2f6b78f9fa552c849)."
   ],
   "platform_policy": "Exact lowest-common lock with target-selected PyPI wheels",
-  "resolved_at": "2026-09-08T20:55:03Z",
+  "resolved_at": "2026-10-01T01:02:22Z",
   "resolver": "pip / PyPI",
   "schema_version": "1.0.0",
-  "source_date_epoch": 1788900903,
+  "source_date_epoch": 1790816542,
   "source_environment": {
     "implementation_name": "cpython",
-    "implementation_version": "3.14.6",
+    "implementation_version": "3.12.8",
     "os_name": "posix",
     "platform_machine": "arm64",
     "platform_python_implementation": "CPython",
     "platform_release": "25.5.0",
     "platform_system": "Darwin",
     "platform_version": "Darwin Kernel Version 25.5.0: Mon Apr 27 20:41:12 PDT 2026; root:xnu-12377.121.6~2/RELEASE_ARM64_T6050",
-    "python_full_version": "3.14.6",
-    "python_version": "3.14",
+    "python_full_version": "3.12.8",
+    "python_version": "3.12",
     "sys_platform": "darwin"
   },
-  "source_pip_version": "26.1.2",
-  "source_report_sha256": "de005288651ff9f95984bc7e01207fc0ce3db300942c388b7b7b4f7e2e379bd1"
+  "source_pip_version": "26.2.1",
+  "source_report_sha256": "7b7ffa55132a8b3fe18223bee2a0c007221de5bad564914c32ea00ec16921795",
+  "supplemental_report": {
+    "component": {
+      "artifact": {
+        "filename": "colorama-0.4.6-py2.py3-none-any.whl",
+        "sha256": "4f1d9991f5acc0ca119f9d443620b77f9d6b33703e51011c16baf57afb285fc6",
+        "url": "https://files.pythonhosted.org/packages/d1/d6/3965ed04c63042e047cb6a3e6ed1a63a35087b6a609aa3a15ed8ac56c221/colorama-0.4.6-py2.py3-none-any.whl"
+      },
+      "name": "colorama",
+      "version": "0.4.6"
+    },
+    "source_report_sha256": "51a45ce89d8675e2e47279c9e8876e886e8b2f264aee83a2f6b78f9fa552c849",
+    "target": {
+      "abi": "cp311",
+      "implementation": "cp",
+      "only_binary": ":all:",
+      "platform": "win_amd64",
+      "python_version": "3.11",
+      "require_hashes": true
+    }
+  }
 }
