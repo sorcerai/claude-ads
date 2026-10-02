@@ -13,7 +13,7 @@ import sys
 
 
 EXPECTED_INVENTORY_SHA256 = (
-    "0c290bfd1096e2bb371bcd5c508962371ae38c474c4c4ad81a5ae7342ea4cd9d"
+    "bab58175795bec42c5988ba85e11ed64716d01c12d7edc0aef68c60b167c62e5"
 )
 
 

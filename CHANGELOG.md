@@ -139,6 +139,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+* **Lifecycle defaults and private setup writes**: default v2 setup and public
+  audit emit unknown encryption, unassigned retention without a deadline, and
+  pending deletion without inventing verification. Explicit setup retention
+  remains operator-defined. Public-classified setup replaces a permissive file
+  atomically inside a validated private root; non-public persistence and
+  permissive output directories fail closed.
+
+* **Private audit/report/export errors**: CLI audit, render, and export-ingestion
+  failures now emit bounded stage descriptions rather than raw input paths,
+  registry errors, Windows ACL subprocess output, filesystem diagnostics, or
+  rejected export values. Render failures distinguish committed replacement from
+  unknown outcomes and direct operators to inspect the destination.
+
 * **Malformed Ad Library creative metadata**: rejects non-list text fields and
   non-string list entries before adding ads or advancing page/cursor state.
 * **Windows report ACL access**: uses native .NET ACL calls and literal path

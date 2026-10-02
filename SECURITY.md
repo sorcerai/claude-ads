@@ -85,13 +85,13 @@ repository/run-relative artifact locators.
 ## Data lifecycle
 
 Every persisted run and workflow artifact declares the versioned contract in
-`claude_ads_core/schemas/v1/data-lifecycle.schema.json`. The product policy is
-`control-plane/manifests/data-lifecycle-policy.json`. It records classification,
-an explicit zero-second product minimum plus an operator-defined purpose-bound
-deadline or exception, verified encryption evidence for non-public data, least-
-privilege roles, deletion and independent verification, and private incident
-handling. These are operational safeguards, not legal retention requirements or
-claims of compliance.
+`claude_ads_core/schemas/v2/data-lifecycle.schema.json`; historical v1 records
+remain valid under the strict v1 schema. The product policy is
+`control-plane/manifests/data-lifecycle-policy.json`. Current v2 records report
+unknown encryption, unassigned retention when no deadline is set, and pending
+deletion until verification. Non-public persistence is refused without
+independently authenticated encryption and deletion-scheduler proof. These are
+operational safeguards, not legal retention requirements or claims of compliance.
 
 Creative-generation JSON stores prompt SHA-256 values and the canonical redacted
 summary only. Screenshot and generation JSON store relative locators only. Raw

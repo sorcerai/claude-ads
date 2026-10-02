@@ -212,7 +212,9 @@ Checkpoints store deduplicated normalized observations, compact per-page
 provenance receipts, and opaque cursors, not raw API responses or token-bearing
 pagination URLs. Keep checkpoints outside published source, and do not reuse an
 existing checkpoint for a different query. Checkpoints and exports are written
-atomically. File and directory synchronization is used on supported POSIX
+atomically. The collector persists only public-classified checkpoints and
+artifacts; non-public persistence is refused before lock, network, or quota
+initialization. File and directory synchronization is used on supported POSIX
 filesystems; Windows does not offer the same directory-fsync durability guarantee.
 
 Every request attempt, including retries and failed calls, uses the shared

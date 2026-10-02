@@ -5,7 +5,7 @@ description: "Render Markdown, HTML, or PDF paid-advertising reports from a vali
 
 # Render Paid Media Reports
 
-1. Accept one validated `ReportBundle` v2.0.0 as the canonical source; never
+1. Accept one validated `ReportBundle` v3.0.0 as the canonical source; never
    loose worker prose or format-specific aggregates.
 2. Confirm run completeness, evidence coverage, privacy class, branding choice,
    requested audience, and output formats.

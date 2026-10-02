@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from claude_ads_core.contracts import validate_contract
 
 SCRIPTS_DIR = Path(__file__).resolve().parent.parent.parent / "scripts"
 sys.path.insert(0, str(SCRIPTS_DIR))
@@ -457,7 +458,7 @@ def test_build_canonical_artifact_normalizes_observations_and_binds_lifecycle():
         privacy_class="public",
     )
 
-    assert artifact["schema_version"] == "1.0.0"
+    assert artifact["schema_version"] == "2.0.0"
     assert artifact["artifact_type"] == "competitor-observations"
     assert artifact["run_id"] == "run-test-001"
     assert artifact["client_id"] == "client-test"
@@ -465,7 +466,18 @@ def test_build_canonical_artifact_normalizes_observations_and_binds_lifecycle():
     assert artifact["source_digest"].startswith("sha256:")
     assert artifact["query_digest"].startswith("sha256:")
     assert artifact["observation_count"] == 1
-    assert artifact["data_lifecycle"]["classification"] == "public"
+    lifecycle = artifact["data_lifecycle"]
+    validate_contract("data-lifecycle", lifecycle)
+    assert lifecycle["schema_version"] == "2.0.0"
+    assert lifecycle["classification"] == "public"
+    assert lifecycle["retention"]["mode"] == "unassigned"
+    assert lifecycle["retention"]["delete_after"] is None
+    assert lifecycle["encryption"] == {
+        "at_rest": "unknown", "in_transit": "unknown", "evidence_refs": []
+    }
+    assert lifecycle["deletion"]["status"] == "pending"
+    assert lifecycle["deletion"]["verification_required"] is True
+    assert lifecycle["deletion"]["scheduler_receipt_locator"] is None
 
     # Normalized observation checks
     obs = artifact["observations"][0]
@@ -474,6 +486,23 @@ def test_build_canonical_artifact_normalizes_observations_and_binds_lifecycle():
     assert obs["platform"] == "meta"
     assert obs["untrusted_creative"]["bodies"] == ["Grow your business"]
     assert obs["provenance"] == "ad-library-api"
+
+
+def test_internal_collector_artifact_in_memory_declares_missing_controls():
+    artifact = fetch_ad_library.build_canonical_artifact(
+        {"ads": []},
+        run_id="run-in-memory",
+        client_id="client-fixture",
+        purpose="review",
+        privacy_class="internal",
+    )
+    lifecycle = artifact["data_lifecycle"]
+    validate_contract("data-lifecycle", lifecycle)
+    assert lifecycle["classification"] == "internal"
+    assert lifecycle["encryption"]["at_rest"] == "unknown"
+    assert lifecycle["encryption"]["evidence_refs"] == []
+    assert lifecycle["deletion"]["status"] == "pending"
+    assert lifecycle["deletion"]["scheduler_receipt_locator"] is None
 
 
 def test_cli_main_persists_canonical_artifact_to_output(tmp_path, monkeypatch):
@@ -512,6 +541,8 @@ def test_cli_main_persists_canonical_artifact_to_output(tmp_path, monkeypatch):
     assert saved["artifact_type"] == "competitor-observations"
     assert saved["run_id"] == "run-persist-001"
     assert saved["client_id"] == "client-persist"
+    assert saved["schema_version"] == "2.0.0"
+    validate_contract("data-lifecycle", saved["data_lifecycle"])
     assert "data_lifecycle" in saved
     assert "observations" in saved
     assert isinstance(saved["observations"], list)
