@@ -468,6 +468,39 @@ def test_cli_resume_recovers_omitted_provenance(tmp_path, monkeypatch):
     assert len(calls) == 1
 
 
+def test_direct_resume_inherits_omitted_public_provenance_but_rejects_changes(
+    tmp_path, monkeypatch
+):
+    checkpoint = tmp_path / "checkpoint.json"
+    initial, _ = _call_queue(
+        monkeypatch,
+        checkpoint,
+        [Response(_page(_ad("ad-1")))],
+        run_id="run-custom",
+        client_id="client-custom",
+        purpose="approved-research",
+        privacy_class="public",
+    )
+    assert initial["status"] == "exhausted"
+
+    resumed, calls = _call_queue(monkeypatch, checkpoint, [], resume=True)
+    assert resumed["status"] == "exhausted" and calls == []
+    assert resumed["filters"]["run_id"] == "run-custom"
+    assert resumed["filters"]["client_id"] == "client-custom"
+    assert resumed["filters"]["purpose"] == "approved-research"
+    assert resumed["filters"]["privacy_class"] == "public"
+
+    for field, value in (
+        ("run_id", "another-run"),
+        ("client_id", "another-client"),
+        ("purpose", "another-purpose"),
+    ):
+        with pytest.raises(ValueError, match="checkpoint query mismatch"):
+            _call_queue(monkeypatch, checkpoint, [], resume=True, **{field: value})
+    with pytest.raises(ValueError):
+        _call_queue(monkeypatch, checkpoint, [], resume=True, privacy_class="internal")
+
+
 def test_resume_rejects_changed_effective_page_size(tmp_path, monkeypatch):
     checkpoint = tmp_path / "checkpoint.json"
     _call_queue(monkeypatch, checkpoint, [Response(_page(_ad("ad-1")))], limit=25)
@@ -505,6 +538,70 @@ def test_cli_corrupt_checkpoint_is_sanitized_error_without_dispatch(
         fetch_ad_library.main()
     assert caught.value.code == 1
     assert "Error:" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    "snapshot_url",
+    [
+        "https://example.com/render_ad/?id=1&access_token=fixture-secret",
+        (
+            "https://example.com/render_ad/?id="
+            "%5Cu007b%5Cu0022access_token%5Cu0022%5Cu003a"
+            "%5Cu0022fixture-secret%5Cu0022%5Cu007d"
+        ),
+    ],
+)
+@pytest.mark.parametrize("via_cli", [False, True])
+def test_legacy_checkpoint_cannot_reemit_credential_on_exhausted_resume(
+    tmp_path, monkeypatch, capsys, via_cli, snapshot_url
+):
+    checkpoint = tmp_path / "checkpoint.json"
+    _call_queue(monkeypatch, checkpoint, [Response(_page(_ad("ad-1")))])
+    state = json.loads(checkpoint.read_text(encoding="utf-8"))
+    assert state["advertisers"][0]["status"] == "exhausted"
+    state["advertisers"][0]["artifact"]["observations"][0]["snapshot_url"] = (
+        snapshot_url
+    )
+    checkpoint.write_text(json.dumps(state), encoding="utf-8")
+    previous_bytes = checkpoint.read_bytes()
+    monkeypatch.setattr(
+        fetch_ad_library,
+        "guarded_request",
+        lambda *args, **kwargs: pytest.fail(
+            "credential checkpoint dispatched a request"
+        ),
+    )
+
+    if via_cli:
+        output = tmp_path / "resumed.json"
+        monkeypatch.setenv("META_AD_LIBRARY_TOKEN", "fixture")
+        monkeypatch.setenv("CLAUDE_ADS_OUTPUT_ROOT", str(tmp_path))
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            [
+                "fetch_ad_library.py",
+                "--countries",
+                "DE",
+                "--search-page-ids",
+                "page-1",
+                "--checkpoint",
+                str(checkpoint),
+                "--resume",
+                "--output",
+                str(output),
+            ],
+        )
+        with pytest.raises(SystemExit) as exit_status:
+            fetch_ad_library.main()
+        assert exit_status.value.code == 1
+        assert not output.exists()
+        assert "fixture-secret" not in capsys.readouterr().err
+    else:
+        with pytest.raises(ValueError, match="checkpoint.*snapshot") as failure:
+            _call_queue(monkeypatch, checkpoint, [], resume=True)
+        assert "fixture-secret" not in str(failure.value)
+    assert checkpoint.read_bytes() == previous_bytes
 
 
 def test_checkpoint_creation_rechecks_existence_after_lock(tmp_path, monkeypatch):
