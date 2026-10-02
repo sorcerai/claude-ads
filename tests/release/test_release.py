@@ -358,6 +358,28 @@ def test_lock_target_hash_and_marker_parity_fail_closed(tmp_path: Path) -> None:
     assert parsed["colorama"]["marker"] == 'sys_platform == "win32"'
 
 
+def test_windows_colorama_requires_separate_resolver_proof(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    target_id = "development-windows-cp311"
+    source = (
+        RELEASE_SCRIPT.parents[1]
+        / "control-plane/dependency-evidence"
+        / f"{target_id}.json"
+    )
+    evidence = json.loads(source.read_bytes())
+    monkeypatch.setattr(release, "INVENTORY_RESOLVED_AT", evidence["resolved_at"])
+    monkeypatch.setattr(
+        release, "INVENTORY_SOURCE_DATE_EPOCH", evidence["source_date_epoch"]
+    )
+    evidence.pop("supplemental_report", None)
+    path = tmp_path / "control-plane/dependency-evidence" / f"{target_id}.json"
+    path.parent.mkdir(parents=True)
+    path.write_text(json.dumps(evidence), encoding="utf-8")
+    with pytest.raises(ReleaseError, match="supplemental"):
+        release._load_target_evidence(tmp_path, target_id)
+
+
 def test_notice_inventory_has_no_dangling_references_and_records_bundled_terms() -> (
     None
 ):

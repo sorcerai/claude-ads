@@ -451,11 +451,11 @@ def test_cli_resume_recovers_omitted_provenance(tmp_path, monkeypatch):
         "--checkpoint",
         str(checkpoint),
         "--client-id",
-        "client-private",
+        "client-public",
         "--purpose",
         "approved-research",
         "--privacy-class",
-        "confidential",
+        "public",
     ]
     monkeypatch.setattr(sys, "argv", initial_argv)
     fetch_ad_library.main()
@@ -468,6 +468,39 @@ def test_cli_resume_recovers_omitted_provenance(tmp_path, monkeypatch):
     assert len(calls) == 1
 
 
+def test_direct_resume_inherits_omitted_public_provenance_but_rejects_changes(
+    tmp_path, monkeypatch
+):
+    checkpoint = tmp_path / "checkpoint.json"
+    initial, _ = _call_queue(
+        monkeypatch,
+        checkpoint,
+        [Response(_page(_ad("ad-1")))],
+        run_id="run-custom",
+        client_id="client-custom",
+        purpose="approved-research",
+        privacy_class="public",
+    )
+    assert initial["status"] == "exhausted"
+
+    resumed, calls = _call_queue(monkeypatch, checkpoint, [], resume=True)
+    assert resumed["status"] == "exhausted" and calls == []
+    assert resumed["filters"]["run_id"] == "run-custom"
+    assert resumed["filters"]["client_id"] == "client-custom"
+    assert resumed["filters"]["purpose"] == "approved-research"
+    assert resumed["filters"]["privacy_class"] == "public"
+
+    for field, value in (
+        ("run_id", "another-run"),
+        ("client_id", "another-client"),
+        ("purpose", "another-purpose"),
+    ):
+        with pytest.raises(ValueError, match="checkpoint query mismatch"):
+            _call_queue(monkeypatch, checkpoint, [], resume=True, **{field: value})
+    with pytest.raises(ValueError):
+        _call_queue(monkeypatch, checkpoint, [], resume=True, privacy_class="internal")
+
+
 def test_resume_rejects_changed_effective_page_size(tmp_path, monkeypatch):
     checkpoint = tmp_path / "checkpoint.json"
     _call_queue(monkeypatch, checkpoint, [Response(_page(_ad("ad-1")))], limit=25)
@@ -475,11 +508,266 @@ def test_resume_rejects_changed_effective_page_size(tmp_path, monkeypatch):
         _call_queue(monkeypatch, checkpoint, [], resume=True, limit=100)
 
 
+def test_cli_queue_page_cap_exits_nonzero_with_checkpoint_and_partial_data(
+    tmp_path, monkeypatch, capsys
+):
+    checkpoint = tmp_path / "checkpoint.json"
+    calls = []
+
+    def transport(*args, **kwargs):
+        calls.append(kwargs)
+        return Response(
+            _page(_ad("ad-1"), next_url=f"{fetch_ad_library.ENDPOINT}?after=cursor-2")
+        )
+
+    monkeypatch.setattr(fetch_ad_library, "guarded_request", transport)
+    monkeypatch.setattr(
+        fetch_ad_library, "QuotaBudget", lambda **kwargs: RecordingBudget()
+    )
+    monkeypatch.setenv("META_AD_LIBRARY_TOKEN", "fixture")
+    monkeypatch.setenv("CLAUDE_ADS_OUTPUT_ROOT", str(tmp_path))
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "fetch_ad_library.py",
+            "--countries",
+            "DE",
+            "--search-page-ids",
+            "page-1,page-2",
+            "--checkpoint",
+            str(checkpoint),
+            "--max-pages",
+            "1",
+        ],
+    )
+    with pytest.raises(SystemExit) as exit_info:
+        fetch_ad_library.main()
+    assert exit_info.value.code != 0
+    result = json.loads(capsys.readouterr().out)
+    assert result["status"] == "paginated"
+    assert [entry["status"] for entry in result["advertisers"]] == [
+        "paginated",
+        "queued",
+    ]
+    assert result["advertisers"][0]["artifact"]["observations"]
+    assert len(calls) == 1
+    persisted = json.loads(checkpoint.read_text(encoding="utf-8"))
+    assert persisted["advertisers"] == result["advertisers"]
+
+
+@pytest.mark.parametrize("privacy_class", ["internal", "confidential", "restricted"])
+def test_nonpublic_queue_refuses_checkpoint_and_network_before_lock(
+    tmp_path, monkeypatch, privacy_class
+):
+    checkpoint = tmp_path / "absent" / "checkpoint.json"
+    monkeypatch.setattr(
+        fetch_ad_library,
+        "guarded_request",
+        lambda *args, **kwargs: pytest.fail("non-public queue dispatched network"),
+    )
+    with pytest.raises(ValueError, match="non-public"):
+        fetch_ad_library.collect_advertiser_queue(
+            token="fixture", countries=["DE"], search_page_ids="page-1",
+            checkpoint_path=checkpoint, privacy_class=privacy_class,
+            quota_budget=RecordingBudget(),
+        )
+    assert not checkpoint.parent.exists()
+
+
+def test_nonpublic_unlocked_queue_does_not_create_checkpoint(tmp_path, monkeypatch):
+    checkpoint = tmp_path / "absent" / "checkpoint.json"
+    monkeypatch.setattr(
+        fetch_ad_library,
+        "guarded_request",
+        lambda *args, **kwargs: pytest.fail("non-public queue dispatched network"),
+    )
+    with pytest.raises(ValueError, match="non-public"):
+        fetch_ad_library._collect_advertiser_queue_unlocked(
+            token="fixture", countries=["DE"], search_page_ids="page-1",
+            checkpoint_path=checkpoint, privacy_class="internal",
+            quota_budget=RecordingBudget(),
+        )
+    assert not checkpoint.parent.exists()
+
+
+@pytest.mark.parametrize("privacy_class", ["internal", "confidential", "restricted"])
+@pytest.mark.parametrize("with_output", [False, True])
+def test_cli_refuses_nonpublic_before_output_quota_or_network(
+    tmp_path, monkeypatch, capsys, privacy_class, with_output
+):
+    output = tmp_path / "absent" / "ads.json"
+    argv = [
+        "fetch_ad_library.py", "--countries", "DE", "--search-terms", "crm",
+        "--privacy-class", privacy_class,
+    ]
+    if with_output:
+        argv.extend(["--output", str(output)])
+    monkeypatch.setattr(sys, "argv", argv)
+    monkeypatch.setenv("META_AD_LIBRARY_TOKEN", "fixture")
+    monkeypatch.setenv("CLAUDE_ADS_OUTPUT_ROOT", str(tmp_path))
+    monkeypatch.setattr(
+        fetch_ad_library,
+        "QuotaBudget",
+        lambda **kwargs: pytest.fail("non-public CLI initialized quota"),
+    )
+    monkeypatch.setattr(
+        fetch_ad_library,
+        "guarded_request",
+        lambda *args, **kwargs: pytest.fail("non-public CLI dispatched network"),
+    )
+    with pytest.raises(SystemExit) as exit_status:
+        fetch_ad_library.main()
+    assert exit_status.value.code == 1
+    captured = capsys.readouterr()
+    assert "non-public" in captured.err and not captured.out
+    assert not output.parent.exists()
+
+
+def test_cli_resume_rejects_stored_internal_class_before_output_preflight(
+    tmp_path, monkeypatch, capsys
+):
+    checkpoint = tmp_path / "checkpoint.json"
+    _call_queue(monkeypatch, checkpoint, [Response(_page(_ad("ad-1")))])
+    saved = json.loads(checkpoint.read_text(encoding="utf-8"))
+    saved["filters"]["privacy_class"] = "internal"
+    saved["fingerprint"] = fetch_ad_library._fingerprint(saved["filters"])
+    saved["advertisers"][0]["artifact"]["data_lifecycle"]["classification"] = "internal"
+    checkpoint.write_text(json.dumps(saved), encoding="utf-8")
+    previous_bytes = checkpoint.read_bytes()
+    output = tmp_path / "absent" / "ads.json"
+
+    monkeypatch.setattr(
+        sys, "argv", [
+            "fetch_ad_library.py", "--countries", "DE", "--search-page-ids", "page-1",
+            "--checkpoint", str(checkpoint), "--resume", "--privacy-class", "public",
+            "--output", str(output),
+        ],
+    )
+    monkeypatch.setenv("META_AD_LIBRARY_TOKEN", "fixture")
+    monkeypatch.setenv("CLAUDE_ADS_OUTPUT_ROOT", str(tmp_path))
+    monkeypatch.setattr(
+        fetch_ad_library,
+        "QuotaBudget",
+        lambda **kwargs: pytest.fail("stored internal CLI initialized quota"),
+    )
+    monkeypatch.setattr(
+        fetch_ad_library,
+        "guarded_request",
+        lambda *args, **kwargs: pytest.fail("stored internal CLI dispatched network"),
+    )
+    with pytest.raises(SystemExit) as exit_status:
+        fetch_ad_library.main()
+    assert exit_status.value.code == 1
+    captured = capsys.readouterr()
+    assert "non-public" in captured.err and not captured.out
+    assert not output.parent.exists()
+    assert checkpoint.read_bytes() == previous_bytes
+
+
+def test_direct_resume_rejects_stored_internal_before_creating_lock(
+    tmp_path, monkeypatch
+):
+    checkpoint = tmp_path / "checkpoint.json"
+    _call_queue(monkeypatch, checkpoint, [Response(_page(_ad("ad-1")))])
+    saved = json.loads(checkpoint.read_text(encoding="utf-8"))
+    saved["filters"]["privacy_class"] = "internal"
+    saved["fingerprint"] = fetch_ad_library._fingerprint(saved["filters"])
+    saved["advertisers"][0]["artifact"]["data_lifecycle"]["classification"] = "internal"
+    checkpoint.write_text(json.dumps(saved), encoding="utf-8")
+    previous_bytes = checkpoint.read_bytes()
+    lock = checkpoint.with_name(f".{checkpoint.name}.lock")
+    lock.unlink()
+
+    with pytest.raises(ValueError, match="non-public"):
+        _call_queue(monkeypatch, checkpoint, [], resume=True)
+    assert not lock.exists() and checkpoint.read_bytes() == previous_bytes
+
+
+@pytest.mark.parametrize("via_cli", [False, True])
+def test_resume_refuses_internal_artifact_with_unchanged_public_filter(
+    tmp_path, monkeypatch, capsys, via_cli
+):
+    checkpoint = tmp_path / "checkpoint.json"
+    initial, _ = _call_queue(monkeypatch, checkpoint, [Response(_page(_ad("ad-1")))])
+    assert initial["status"] == "exhausted"
+    saved = json.loads(checkpoint.read_text(encoding="utf-8"))
+    assert saved["filters"]["privacy_class"] == "public"
+    saved["advertisers"][0]["artifact"]["data_lifecycle"]["classification"] = "internal"
+    checkpoint.write_text(json.dumps(saved), encoding="utf-8")
+    previous_bytes = checkpoint.read_bytes()
+    output = tmp_path / "absent" / "ads.json"
+
+    if via_cli:
+        monkeypatch.setattr(
+            sys, "argv", [
+                "fetch_ad_library.py", "--countries", "DE", "--search-page-ids", "page-1",
+                "--checkpoint", str(checkpoint), "--resume", "--privacy-class", "public",
+                "--output", str(output),
+            ],
+        )
+        monkeypatch.setenv("META_AD_LIBRARY_TOKEN", "fixture")
+        monkeypatch.setenv("CLAUDE_ADS_OUTPUT_ROOT", str(tmp_path))
+        monkeypatch.setattr(
+            fetch_ad_library, "QuotaBudget",
+            lambda **kwargs: pytest.fail("internal artifact initialized quota"),
+        )
+        with pytest.raises(SystemExit) as exit_status:
+            fetch_ad_library.main()
+        assert exit_status.value.code == 1
+        captured = capsys.readouterr()
+        assert "checkpoint" in captured.err and str(tmp_path) not in captured.err
+        assert not captured.out and not output.parent.exists()
+    else:
+        with pytest.raises(ValueError, match="checkpoint.*lifecycle"):
+            _call_queue(monkeypatch, checkpoint, [], resume=True)
+    assert checkpoint.read_bytes() == previous_bytes
+
+
+def test_resume_rejects_mixed_collector_artifact_and_lifecycle_versions(
+    tmp_path, monkeypatch
+):
+    checkpoint = tmp_path / "checkpoint.json"
+    _call_queue(monkeypatch, checkpoint, [Response(_page(_ad("ad-1")))])
+    saved = json.loads(checkpoint.read_text(encoding="utf-8"))
+    saved["advertisers"][0]["artifact"]["schema_version"] = "1.0.0"
+    checkpoint.write_text(json.dumps(saved), encoding="utf-8")
+    previous_bytes = checkpoint.read_bytes()
+    with pytest.raises(ValueError, match="checkpoint.*version"):
+        _call_queue(monkeypatch, checkpoint, [], resume=True)
+    assert checkpoint.read_bytes() == previous_bytes
+
+
+def test_historical_public_v1_checkpoint_remains_resumable(tmp_path, monkeypatch):
+    checkpoint = tmp_path / "checkpoint.json"
+    _call_queue(monkeypatch, checkpoint, [Response(_page(_ad("ad-1")))])
+    saved = json.loads(checkpoint.read_text(encoding="utf-8"))
+    artifact = saved["advertisers"][0]["artifact"]
+    artifact["schema_version"] = "1.0.0"
+    lifecycle = artifact["data_lifecycle"]
+    lifecycle["schema_version"] = "1.0.0"
+    lifecycle["retention"]["mode"] = "ephemeral"
+    lifecycle["encryption"] = {
+        "at_rest": "not-applicable",
+        "in_transit": "not-applicable",
+        "evidence_refs": [],
+    }
+    lifecycle["deletion"]["status"] = "scheduled"
+    del lifecycle["deletion"]["scheduler_receipt_locator"]
+    checkpoint.write_text(json.dumps(saved), encoding="utf-8")
+    previous_bytes = checkpoint.read_bytes()
+
+    resumed, calls = _call_queue(monkeypatch, checkpoint, [], resume=True)
+    assert resumed["status"] == "exhausted" and calls == []
+    assert resumed["advertisers"][0]["artifact"]["schema_version"] == "1.0.0"
+    assert checkpoint.read_bytes() == previous_bytes
+
+
 def test_cli_corrupt_checkpoint_is_sanitized_error_without_dispatch(
     tmp_path, monkeypatch, capsys
 ):
     checkpoint = tmp_path / "checkpoint.json"
-    checkpoint.write_text("invalid-json")
+    checkpoint.write_text("invalid-json access_token=fixture-secret")
     monkeypatch.setenv("META_AD_LIBRARY_TOKEN", "fixture")
     monkeypatch.setenv("CLAUDE_ADS_OUTPUT_ROOT", str(tmp_path))
     monkeypatch.setattr(
@@ -504,7 +792,71 @@ def test_cli_corrupt_checkpoint_is_sanitized_error_without_dispatch(
     with pytest.raises(SystemExit) as caught:
         fetch_ad_library.main()
     assert caught.value.code == 1
-    assert "Error:" in capsys.readouterr().err
+    assert "fixture-secret" not in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    "snapshot_url",
+    [
+        "https://example.com/render_ad/?id=1&access_token=fixture-secret",
+        (
+            "https://example.com/render_ad/?id="
+            "%5Cu007b%5Cu0022access_token%5Cu0022%5Cu003a"
+            "%5Cu0022fixture-secret%5Cu0022%5Cu007d"
+        ),
+    ],
+)
+@pytest.mark.parametrize("via_cli", [False, True])
+def test_legacy_checkpoint_cannot_reemit_credential_on_exhausted_resume(
+    tmp_path, monkeypatch, capsys, via_cli, snapshot_url
+):
+    checkpoint = tmp_path / "checkpoint.json"
+    _call_queue(monkeypatch, checkpoint, [Response(_page(_ad("ad-1")))])
+    state = json.loads(checkpoint.read_text(encoding="utf-8"))
+    assert state["advertisers"][0]["status"] == "exhausted"
+    state["advertisers"][0]["artifact"]["observations"][0]["snapshot_url"] = (
+        snapshot_url
+    )
+    checkpoint.write_text(json.dumps(state), encoding="utf-8")
+    previous_bytes = checkpoint.read_bytes()
+    monkeypatch.setattr(
+        fetch_ad_library,
+        "guarded_request",
+        lambda *args, **kwargs: pytest.fail(
+            "credential checkpoint dispatched a request"
+        ),
+    )
+
+    if via_cli:
+        output = tmp_path / "resumed.json"
+        monkeypatch.setenv("META_AD_LIBRARY_TOKEN", "fixture")
+        monkeypatch.setenv("CLAUDE_ADS_OUTPUT_ROOT", str(tmp_path))
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            [
+                "fetch_ad_library.py",
+                "--countries",
+                "DE",
+                "--search-page-ids",
+                "page-1",
+                "--checkpoint",
+                str(checkpoint),
+                "--resume",
+                "--output",
+                str(output),
+            ],
+        )
+        with pytest.raises(SystemExit) as exit_status:
+            fetch_ad_library.main()
+        assert exit_status.value.code == 1
+        assert not output.exists()
+        assert "fixture-secret" not in capsys.readouterr().err
+    else:
+        with pytest.raises(ValueError, match="checkpoint.*snapshot") as failure:
+            _call_queue(monkeypatch, checkpoint, [], resume=True)
+        assert "fixture-secret" not in str(failure.value)
+    assert checkpoint.read_bytes() == previous_bytes
 
 
 def test_checkpoint_creation_rechecks_existence_after_lock(tmp_path, monkeypatch):
@@ -524,6 +876,7 @@ def test_checkpoint_creation_rechecks_existence_after_lock(tmp_path, monkeypatch
 def test_final_page_quota_stop_defers_remaining_advertisers(tmp_path, monkeypatch):
     from ad_library_quota import QuotaBudget
 
+    checkpoint = tmp_path / "checkpoint.json"
     calls = []
 
     def transport(*args, **kwargs):
@@ -537,15 +890,132 @@ def test_final_page_quota_stop_defers_remaining_advertisers(tmp_path, monkeypatc
         token="fixture",
         countries=["DE"],
         search_page_ids="page-1,page-2",
-        checkpoint_path=tmp_path / "checkpoint.json",
+        checkpoint_path=checkpoint,
         quota_budget=QuotaBudget(tmp_path / "quota.json", clock=lambda: 1000),
     )
     assert len(calls) == 1
     assert [entry["status"] for entry in result["advertisers"]] == [
-        "quota-deferred",
+        "exhausted",
         "queued",
     ]
     assert result["status"] == "quota-deferred"
+    persisted = json.loads(checkpoint.read_text(encoding="utf-8"))
+    first = persisted["advertisers"][0]
+    assert first == result["advertisers"][0]
+    assert first["status"] == "exhausted"
+    assert first["next_cursor"] is None
+    assert first["artifact"]["observation_count"] == 1
+    assert first["quota_stop_reason"] is not None
+
+    resume_calls = []
+
+    def resume_transport(*args, **kwargs):
+        assert kwargs["params"]["search_page_ids"] == "page-2"
+        resume_calls.append(kwargs)
+        return Response(_page(_ad("ad-2", page_id="page-2")))
+
+    monkeypatch.setattr(fetch_ad_library, "guarded_request", resume_transport)
+    resumed = fetch_ad_library.collect_advertiser_queue(
+        token="fixture",
+        countries=["DE"],
+        search_page_ids="page-1,page-2",
+        checkpoint_path=checkpoint,
+        resume=True,
+        quota_budget=RecordingBudget(),
+    )
+    assert len(resume_calls) == 1
+    assert [entry["status"] for entry in resumed["advertisers"]] == [
+        "exhausted",
+        "exhausted",
+    ]
+    assert resumed["status"] == "exhausted"
+
+
+@pytest.mark.parametrize(
+    ("usage_header", "expected_reason"),
+    [
+        (None, "usage-unavailable"),
+        ("not-json", "usage-invalid"),
+        ('{"call_count": 100}', "usage-threshold"),
+    ],
+    ids=["absent", "malformed", "high"],
+)
+def test_terminal_page_is_exhausted_under_any_usage_signal(
+    tmp_path, monkeypatch, usage_header, expected_reason
+):
+    from ad_library_quota import QuotaBudget
+
+    headers = {"X-App-Usage": usage_header} if usage_header else {}
+    monkeypatch.setattr(
+        fetch_ad_library,
+        "guarded_request",
+        lambda *args, **kwargs: Response(_page(_ad("ad-1")), headers=headers),
+    )
+    result = fetch_ad_library.search_ad_library(
+        token="fixture",
+        countries=["DE"],
+        search_page_ids="page-1",
+        quota_budget=QuotaBudget(tmp_path / "quota.json", clock=lambda: 1000),
+    )
+    assert result["status"] == "exhausted"
+    assert [ad["id"] for ad in result["ads"]] == ["ad-1"]
+    assert result["next_cursor"] is None
+    assert result["quota_stop_reason"] == expected_reason
+    assert result["retry_at"] == 4600.0
+
+
+def test_cursor_page_with_quota_stop_stays_deferred_on_stored_cursor(
+    tmp_path, monkeypatch
+):
+    from ad_library_quota import QuotaBudget
+
+    next_url = f"{fetch_ad_library.ENDPOINT}?after=cursor-9"
+    monkeypatch.setattr(
+        fetch_ad_library,
+        "guarded_request",
+        lambda *args, **kwargs: Response(
+            _page(_ad("ad-1"), next_url=next_url),
+            headers={"X-App-Usage": '{"call_count": 100}'},
+        ),
+    )
+    result = fetch_ad_library.search_ad_library(
+        token="fixture",
+        countries=["DE"],
+        search_page_ids="page-1",
+        quota_budget=QuotaBudget(tmp_path / "quota.json", clock=lambda: 1000),
+    )
+    assert result["status"] == "quota-deferred"
+    assert result["next_cursor"] == "cursor-9"
+    assert result["quota_stop_reason"] == "usage-threshold"
+    assert result["retry_at"] == 4600.0
+    assert [ad["id"] for ad in result["ads"]] == ["ad-1"]
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        ["not-an-object"],
+        {"data": "not-a-list"},
+        {"data": [_ad("ad-1"), "invalid-row"]},
+        {"data": [_ad("ad-1")], "paging": "not-a-dict"},
+    ],
+    ids=["non-object", "non-list-data", "invalid-ad-row", "invalid-paging"],
+)
+def test_malformed_payload_stays_failed_not_terminal(monkeypatch, payload):
+    monkeypatch.setattr(
+        fetch_ad_library,
+        "guarded_request",
+        lambda *args, **kwargs: Response(payload),
+    )
+    result = fetch_ad_library.search_ad_library(
+        token="fixture",
+        countries=["DE"],
+        search_page_ids="page-1",
+        quota_budget=RecordingBudget(),
+    )
+    assert result["status"] == "failed"
+    assert result["next_cursor"] is None
+    assert result["quota_stop_reason"] is None
 
 
 @pytest.mark.parametrize("status_code,error_code", [(401, 1), (400, 190)])

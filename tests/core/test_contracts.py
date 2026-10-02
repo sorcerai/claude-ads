@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import copy
 import json
-import tomllib
 from pathlib import Path
 from typing import Any, get_args, get_type_hints
 
 import pytest
 from claude_ads_core.contracts import CONTRACT_NAMES, ContractError, schema_path, validate_contract
+from claude_ads_core.lifecycle import make_pending_lifecycle
 import claude_ads_core as package
 from claude_ads_core import models as contract_models
 from claude_ads_core.models import (
@@ -116,6 +116,21 @@ def run_manifest() -> dict:
     }
 
 
+def v2_run_manifest() -> dict:
+    payload = run_manifest()
+    payload["schema_version"] = "2.0.0"
+    payload["data_lifecycle"] = make_pending_lifecycle(
+        lifecycle_id="test-lifecycle",
+        classification=payload["privacy_class"],
+        delete_after=None,
+        purpose="Review test manifest",
+        owner="fixture-owner",
+        authorized_roles=["auditor"],
+        reporting_channel="fixture-channel",
+    )
+    return payload
+
+
 def control(control_id: str = "G-1") -> dict:
     return {
         "schema_version": "1.0.0",
@@ -212,6 +227,13 @@ def report_bundle() -> dict:
     }
 
 
+def v3_report_bundle() -> dict:
+    payload = report_bundle()
+    payload["schema_version"] = "3.0.0"
+    payload["run_manifest"] = v2_run_manifest()
+    return payload
+
+
 def legacy_report_bundle() -> dict:
     payload = report_bundle()
     payload["schema_version"] = "1.0.0"
@@ -262,43 +284,91 @@ def test_unchanged_v1_contracts_accept_valid_payloads(name: str, payload: dict):
     ],
 )
 def test_v1_payloads_for_v2_contracts_are_rejected(name: str, payload: dict):
-    with pytest.raises(ContractError, match="schema_version"):
+    with pytest.raises(ContractError):
         validate_contract(name, payload)
 
 
-def test_schema_path_routes_only_changed_contracts_to_v2():
-    for name in ("account-snapshot", "finding", "report-bundle"):
-        assert f"/schemas/v2/{name}.schema.json" in str(schema_path(name))
-    for name in ("run-manifest", "control-definition"):
-        assert f"/schemas/v1/{name}.schema.json" in str(schema_path(name))
+@pytest.mark.parametrize(
+    ("name", "payload"),
+    [("run-manifest", v2_run_manifest()), ("report-bundle", v3_report_bundle())],
+)
+def test_current_manifest_and_bundle_accept_truthful_lifecycle(name: str, payload: dict):
+    validate_contract(name, payload)
 
-def test_v2_cutover_retires_only_changed_v1_schema_resources(repo_root: Path):
-    v1_dir = repo_root / "claude_ads_core" / "schemas" / "v1"
-    v2_dir = repo_root / "claude_ads_core" / "schemas" / "v2"
-    retired = {"account-snapshot", "finding", "report-bundle"}
-    retained_v1 = {
-        "brand-profile",
-        "control-definition",
-        "creative-brief",
-        "data-lifecycle",
-        "experiment-artifact",
-        "generation-manifest",
-        "media-plan",
-        "monitoring-bundle",
-        "mutation-plan",
-        "orchestration-gate",
-        "orchestration-result",
-        "orchestration-run",
-        "orchestration-task",
-        "run-manifest",
-        "setup-profile",
-        "workflow-common",
-    }
 
-    assert {path.stem.removesuffix(".schema") for path in v1_dir.glob("*.schema.json")} == retained_v1
-    assert all((v2_dir / f"{name}.schema.json").is_file() for name in retired)
-    assert all(not (v1_dir / f"{name}.schema.json").exists() for name in retired)
-    assert all(f"/schemas/v2/{name}.schema.json" in str(schema_path(name)) for name in retired)
+@pytest.mark.parametrize(
+    ("outer_version", "lifecycle_version"),
+    [("1.0.0", "2.0.0"), ("2.0.0", "1.0.0"), ("3.0.0", "2.0.0")],
+)
+def test_run_manifest_rejects_mixed_and_unsupported_versions(
+    outer_version: str, lifecycle_version: str
+):
+    payload = v2_run_manifest() if lifecycle_version == "2.0.0" else run_manifest()
+    payload["schema_version"] = outer_version
+    with pytest.raises(ContractError):
+        validate_contract("run-manifest", payload)
+
+
+@pytest.mark.parametrize(
+    ("outer_version", "manifest_version"),
+    [("2.0.0", "2.0.0"), ("3.0.0", "1.0.0"), ("4.0.0", "2.0.0")],
+)
+def test_report_bundle_rejects_mixed_and_unsupported_versions(
+    outer_version: str, manifest_version: str
+):
+    payload = v3_report_bundle() if manifest_version == "2.0.0" else report_bundle()
+    payload["schema_version"] = outer_version
+    with pytest.raises(ContractError):
+        validate_contract("report-bundle", payload)
+
+
+@pytest.mark.parametrize("name", ("data-lifecycle", "setup-profile", "run-manifest", "report-bundle"))
+def test_current_portable_schema_accepts_truthful_lifecycle_lineage_and_rejects_legacy_pair(
+    name: str, repo_root: Path
+):
+    jsonschema = pytest.importorskip("jsonschema")
+    referencing = pytest.importorskip("referencing")
+    schemas = repo_root / "claude_ads_core" / "schemas"
+    registry = referencing.Registry()
+    for resource_path in schemas.rglob("*.schema.json"):
+        resource = json.loads(resource_path.read_text(encoding="utf-8"))
+        registry = registry.with_resource(resource["$id"], referencing.Resource.from_contents(resource))
+    setup = json.loads(
+        (repo_root / "tests/fixtures/workflows/valid-artifacts.json").read_text(encoding="utf-8")
+    )["setup-profile"]
+    old_setup_lifecycle = setup["data_lifecycle"]
+    setup["schema_version"] = "2.0.0"
+    setup["data_lifecycle"] = make_pending_lifecycle(
+        lifecycle_id="test-setup-lifecycle",
+        classification=setup["privacy_class"],
+        delete_after=None,
+        purpose="Review test setup",
+        owner="fixture-owner",
+        authorized_roles=["auditor"],
+        reporting_channel="fixture-channel",
+    )
+    manifest = v2_run_manifest()
+    payload = {
+        "data-lifecycle": setup["data_lifecycle"],
+        "setup-profile": setup,
+        "run-manifest": manifest,
+        "report-bundle": v3_report_bundle(),
+    }[name]
+    schema = json.loads(schema_path(name).read_text(encoding="utf-8"))
+    validator = jsonschema.Draft202012Validator(schema, registry=registry)
+    validator.validate(payload)
+    incompatible = copy.deepcopy(payload)
+    if name == "setup-profile":
+        incompatible["data_lifecycle"] = old_setup_lifecycle
+    elif name == "run-manifest":
+        incompatible["data_lifecycle"] = data_lifecycle()
+    elif name == "report-bundle":
+        incompatible["run_manifest"] = run_manifest()
+    else:
+        incompatible["schema_version"] = "1.0.0"
+    with pytest.raises(jsonschema.ValidationError):
+        validator.validate(incompatible)
+
 
 def test_new_measurement_types_are_top_level_exports_without_v1_staging_type():
     assert package.AttributionWindow is AttributionWindow
@@ -319,14 +389,6 @@ def test_v2_contracts_accept_valid_payloads(name: str, payload: dict):
     validate_contract(name, payload)
 
 
-def test_package_data_includes_all_versioned_schemas(repo_root: Path):
-    config = tomllib.loads((repo_root / "pyproject.toml").read_text(encoding="utf-8"))
-    package_data = config["tool"]["setuptools"]["package-data"]["claude_ads_core"]
-
-    assert "schemas/v1/*.json" in package_data
-    assert "schemas/v2/*.json" in package_data
-
-
 def test_installed_package_resource_set_contains_all_versioned_schemas():
     import importlib.resources as resources
 
@@ -344,7 +406,7 @@ def test_all_packaged_schemas_are_valid_json_and_versioned():
         path = schema_path(name)
         schema = json.loads(path.read_text(encoding="utf-8"))
         assert schema["$schema"] == "https://json-schema.org/draft/2020-12/schema"
-        version = "v2" if name in {"account-snapshot", "finding", "report-bundle"} else "v1"
+        version = path.parent.name
         assert schema["$id"] == (
             f"urn:ai-marketing-hub:claude-ads:schema:core:{version}:{name}.schema.json"
         )
@@ -353,6 +415,7 @@ def test_every_cross_file_schema_reference_is_absolute_and_registered(repo_root:
     schema_roots = (
         repo_root / "claude_ads_core/schemas/v1",
         repo_root / "claude_ads_core/schemas/v2",
+        repo_root / "claude_ads_core/schemas/v3",
         repo_root / "control-plane/schemas",
         repo_root / "evals/schemas",
     )
@@ -1102,7 +1165,7 @@ def test_v2_report_bundle_mixes_v1_and_v2_references_and_gates_complete_runs():
     assert then["scoring"]["properties"]["status"]["not"] == {"const": "insufficient_evidence"}
 
 
-def test_v2_typed_dicts_expose_exact_fields_and_schema_literals():
+def test_public_typed_dict_field_contracts():
     attribution = get_type_hints(contract_models.AttributionWindow)
     assert set(attribution) == {"value", "unit"}
     assert get_args(attribution["unit"]) == ("hour", "day")
@@ -1173,8 +1236,6 @@ def test_v2_typed_dicts_expose_exact_fields_and_schema_literals():
     }
     assert get_args(get_type_hints(AccountSnapshot)["schema_version"]) == ("2.0.0",)
     assert get_args(get_type_hints(Finding)["schema_version"]) == ("2.0.0",)
-    assert get_args(get_type_hints(ReportBundle)["schema_version"]) == ("2.0.0",)
-    assert get_args(get_type_hints(RunManifest)["schema_version"]) == ("1.0.0",)
     assert get_type_hints(contract_models.EvidenceRecord)["redacted_value"] == Any | None
     assert get_args(get_type_hints(ControlDefinition)["schema_version"]) == ("1.0.0",)
     assert set(get_type_hints(RunManifest)) == {

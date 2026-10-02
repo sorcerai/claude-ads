@@ -14,6 +14,7 @@ from urllib.parse import urlsplit
 
 
 SCHEMA_VERSION = "1.0.0"
+LIFECYCLE_V2_SCHEMA_VERSION = "2.0.0"
 PLATFORMS = {
     "google", "meta", "youtube", "linkedin", "tiktok", "microsoft",
     "apple", "amazon", "reddit", "pinterest", "snapchat", "x",
@@ -159,9 +160,14 @@ def _id(value: Any, path: str) -> str:
     return _string(value, path, pattern=r"[A-Za-z0-9][A-Za-z0-9._-]*")
 
 
-def _base(payload: Mapping[str, Any], artifact_type: str) -> None:
-    if payload["schema_version"] != SCHEMA_VERSION:
-        raise WorkflowContractError(f"$.schema_version must equal {SCHEMA_VERSION!r}")
+def _base(
+    payload: Mapping[str, Any],
+    artifact_type: str,
+    accepted_versions: Sequence[str] = (SCHEMA_VERSION,),
+) -> None:
+    if payload["schema_version"] not in accepted_versions:
+        expected = " or ".join(repr(v) for v in accepted_versions)
+        raise WorkflowContractError(f"$.schema_version must equal {expected}")
     if payload["artifact_type"] != artifact_type:
         raise WorkflowContractError(f"$.artifact_type must equal {artifact_type!r}")
     _id(payload["run_id"], "$.run_id")
@@ -240,8 +246,92 @@ def _validate_data_lifecycle_at(value: Any, path: str) -> Mapping[str, Any]:
     return doc
 
 
+def _validate_data_lifecycle_v2_at(value: Any, path: str) -> Mapping[str, Any]:
+    required = (
+        "schema_version", "lifecycle_id", "classification", "retention",
+        "encryption", "access", "deletion", "incident",
+    )
+    doc = _exact(value, path, required)
+    if doc["schema_version"] != LIFECYCLE_V2_SCHEMA_VERSION:
+        raise WorkflowContractError(f"{path}.schema_version must equal {LIFECYCLE_V2_SCHEMA_VERSION!r}")
+    _id(doc["lifecycle_id"], f"{path}.lifecycle_id")
+    classification = _enum(doc["classification"], f"{path}.classification", PRIVACY_CLASSES)
+
+    retention = _exact(
+        doc["retention"], f"{path}.retention",
+        ("minimum_seconds", "mode", "delete_after", "purpose", "exception_reason"),
+    )
+    _integer(retention["minimum_seconds"], f"{path}.retention.minimum_seconds", minimum=0)
+    mode = _enum(
+        retention["mode"],
+        f"{path}.retention.mode",
+        {"ephemeral", "operator-defined", "policy-defined", "exception", "unassigned"},
+    )
+    delete_after = retention["delete_after"]
+    if delete_after is not None:
+        _datetime(delete_after, f"{path}.retention.delete_after")
+    if mode == "unassigned" and delete_after is not None:
+        raise WorkflowContractError(f"{path}.retention.unassigned mode requires a null delete_after")
+    if mode not in {"unassigned", "exception"} and delete_after is None:
+        raise WorkflowContractError(f"{path}.retention.mode requires a delete_after")
+    _string(retention["purpose"], f"{path}.retention.purpose")
+    exception_reason = _nullable_string(retention["exception_reason"], f"{path}.retention.exception_reason")
+    if classification != "public" and mode not in {"exception", "unassigned"} and delete_after is None:
+        raise WorkflowContractError(f"{path}.retention.delete_after is required for non-public data")
+    if mode == "exception" and not exception_reason:
+        raise WorkflowContractError(f"{path}.retention.exception_reason is required for an exception")
+
+    encryption = _exact(doc["encryption"], f"{path}.encryption", ("at_rest", "in_transit", "evidence_refs"))
+    at_rest = _enum(encryption["at_rest"], f"{path}.encryption.at_rest", {"unknown", "verified", "not-applicable"})
+    in_transit = _enum(encryption["in_transit"], f"{path}.encryption.in_transit", {"unknown", "verified", "not-applicable"})
+    encryption_evidence = _strings(encryption["evidence_refs"], f"{path}.encryption.evidence_refs")
+    if (at_rest == "verified" or in_transit == "verified") and not encryption_evidence:
+        raise WorkflowContractError(f"{path}.encryption verified controls require evidence")
+
+    access = _exact(doc["access"], f"{path}.access", ("owner", "authorized_roles", "access_log_locator"))
+    _string(access["owner"], f"{path}.access.owner")
+    _strings(access["authorized_roles"], f"{path}.access.authorized_roles", minimum=1)
+    if access["access_log_locator"] is not None:
+        _relative_path_v2(access["access_log_locator"], f"{path}.access.access_log_locator")
+
+    deletion = _exact(
+        doc["deletion"], f"{path}.deletion",
+        ("status", "method", "verification_required", "verification_artifact_locator", "scheduler_receipt_locator"),
+    )
+    deletion_status = _enum(deletion["status"], f"{path}.deletion.status", {"pending", "scheduled", "verified", "exception"})
+    _string(deletion["method"], f"{path}.deletion.method")
+    if not _bool(deletion["verification_required"], f"{path}.deletion.verification_required"):
+        raise WorkflowContractError(f"{path}.deletion.verification_required must be true")
+    verification_locator = deletion["verification_artifact_locator"]
+    if verification_locator is not None:
+        _relative_path_v2(verification_locator, f"{path}.deletion.verification_artifact_locator")
+    scheduler_locator = deletion["scheduler_receipt_locator"]
+    if scheduler_locator is not None:
+        _relative_path_v2(scheduler_locator, f"{path}.deletion.scheduler_receipt_locator")
+    if deletion_status == "scheduled" and scheduler_locator is None:
+        raise WorkflowContractError(f"{path}.deletion.scheduled status requires a scheduler receipt")
+    if deletion_status == "verified" and verification_locator is None:
+        raise WorkflowContractError(f"{path}.deletion.verified status requires a verification artifact")
+
+    incident = _exact(doc["incident"], f"{path}.incident", ("owner", "reporting_channel", "status", "record_locator"))
+    _string(incident["owner"], f"{path}.incident.owner")
+    _string(incident["reporting_channel"], f"{path}.incident.reporting_channel")
+    incident_status = _enum(incident["status"], f"{path}.incident.status", {"not-triggered", "open", "contained", "resolved"})
+    if incident["record_locator"] is not None:
+        _relative_path_v2(incident["record_locator"], f"{path}.incident.record_locator")
+    if incident_status != "not-triggered" and incident["record_locator"] is None:
+        raise WorkflowContractError(f"{path}.incident.record_locator is required after an incident is triggered")
+    return doc
+
+
 def _validate_data_lifecycle(payload: Mapping[str, Any]) -> None:
-    _validate_data_lifecycle_at(payload, "$")
+    version = payload.get("schema_version")
+    if version == SCHEMA_VERSION:
+        _validate_data_lifecycle_at(payload, "$")
+    elif version == LIFECYCLE_V2_SCHEMA_VERSION:
+        _validate_data_lifecycle_v2_at(payload, "$")
+    else:
+        raise WorkflowContractError("$.schema_version must equal '1.0.0' or '2.0.0'")
 
 
 def _validate_setup(payload: Mapping[str, Any]) -> None:
@@ -251,8 +341,14 @@ def _validate_setup(payload: Mapping[str, Any]) -> None:
         "mutation_authority", "approver_ids", "assumptions", "data_lifecycle",
     )
     doc = _exact(payload, "$", required)
-    _base(doc, "setup-profile")
-    _validate_data_lifecycle_at(doc["data_lifecycle"], "$.data_lifecycle")
+    _base(doc, "setup-profile", accepted_versions=(SCHEMA_VERSION, LIFECYCLE_V2_SCHEMA_VERSION))
+    lifecycle = _object(doc["data_lifecycle"], "$.data_lifecycle")
+    if lifecycle.get("schema_version") != doc["schema_version"]:
+        raise WorkflowContractError("$.data_lifecycle.schema_version must match $.schema_version")
+    if doc["schema_version"] == SCHEMA_VERSION:
+        _validate_data_lifecycle_at(lifecycle, "$.data_lifecycle")
+    else:
+        _validate_data_lifecycle_v2_at(lifecycle, "$.data_lifecycle")
     business = _exact(doc["business"], "$.business", ("name", "business_model", "geographies", "regulated_categories"))
     _string(business["name"], "$.business.name")
     _string(business["business_model"], "$.business.business_model")
@@ -442,6 +538,13 @@ def _validate_generation(payload: Mapping[str, Any]) -> None:
 def _relative_path(value: Any, path: str) -> str:
     text = _string(value, path)
     if text.startswith(("/", "\\")) or "\\" in text or any(part in {"", ".", ".."} for part in text.split("/")):
+        raise WorkflowContractError(f"{path} must be a contained POSIX relative path")
+    return text
+
+
+def _relative_path_v2(value: Any, path: str) -> str:
+    text = _relative_path(value, path)
+    if "\x00" in text:
         raise WorkflowContractError(f"{path} must be a contained POSIX relative path")
     return text
 

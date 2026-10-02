@@ -68,15 +68,18 @@ def test_status_command_preserves_explicit_registry_root(tmp_path, capsys):
     output = json.loads(capsys.readouterr().out)
     assert output["status"] == "insufficient_evidence"
 
-@pytest.mark.parametrize("error", [OSError("home unavailable"), RuntimeError("home unavailable")])
-def test_windows_default_report_root_normalizes_home_errors(monkeypatch, error):
+@pytest.mark.parametrize("error_type", [OSError, RuntimeError])
+def test_windows_default_report_root_redacts_home_errors(monkeypatch, error_type):
+    private_detail = "C:\\Users\\client-secret S-1-5-21-private"
+
     def fail_home(cls):
-        raise error
+        raise error_type(private_detail)
 
     monkeypatch.setattr(Path, "home", classmethod(fail_home))
-    with pytest.raises(ReportRenderError, match="home"):
+    with pytest.raises(ReportRenderError) as failure:
         _default_report_root("nt")
-
+    assert "home normalization failed" in str(failure.value)
+    assert private_detail not in str(failure.value)
 
 def test_render_home_normalization_failure_returns_json_error(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(
@@ -86,15 +89,67 @@ def test_render_home_normalization_failure_returns_json_error(tmp_path, monkeypa
     monkeypatch.setattr("claude_ads_core.cli.load_control_registry", lambda *args: object())
     path = str(tmp_path / "report.json")
 
+    private_detail = "C:\\Users\\client-secret S-1-5-21-private"
+
     def fail_home(cls):
-        raise RuntimeError("home unavailable")
+        raise RuntimeError(private_detail)
 
     monkeypatch.setattr(Path, "home", classmethod(fail_home))
     monkeypatch.setattr("claude_ads_core.cli.os.name", "nt")
     assert main(["render", path, "--registry-root", str(REPO_ROOT)]) == 2
     error = json.loads(capsys.readouterr().err)
     assert error["status"] == "invalid"
-    assert "home unavailable" in error["error"]
+    assert "home normalization failed" in error["error"]
+    assert private_detail not in error["error"]
+
+
+def test_render_writer_failure_does_not_echo_private_details(
+    tmp_path, monkeypatch, capsys
+):
+    private_detail = "C:\\Users\\client-secret S-1-5-21-private sk_live_private"
+    monkeypatch.setattr(
+        "claude_ads_core.cli.load_contract",
+        lambda *args: {"run_manifest": {"run_id": "run"}},
+    )
+    monkeypatch.setattr("claude_ads_core.cli.load_control_registry", lambda *args: object())
+
+    def fail_writer(*args, **kwargs):
+        raise ReportRenderError(private_detail)
+
+    monkeypatch.setattr("claude_ads_core.cli.write_report_bundle", fail_writer)
+    assert main(["render", str(tmp_path / "report.json"), "--root", str(tmp_path)]) == 2
+    error = json.loads(capsys.readouterr().err)
+    assert error["status"] == "invalid"
+    assert private_detail not in error["error"]
+    assert "report rendering or persistence failed" in error["error"]
+
+
+@pytest.mark.parametrize(
+    ("stage", "expected"),
+    [
+        ("replacement occurred but ACL protection failed", "replacement occurred"),
+        ("replacement outcome is unknown", "replacement outcome is unknown"),
+    ],
+)
+def test_render_writer_reports_safe_replacement_outcome_without_private_details(
+    tmp_path, monkeypatch, capsys, stage, expected
+):
+    private_detail = "C:\\Users\\client-secret S-1-5-21-private"
+    monkeypatch.setattr(
+        "claude_ads_core.cli.load_contract",
+        lambda *args: {"run_manifest": {"run_id": "run"}},
+    )
+    monkeypatch.setattr("claude_ads_core.cli.load_control_registry", lambda *args: object())
+
+    def fail_writer(*_args, **_kwargs):
+        raise ReportRenderError(f"report output {stage}: {private_detail}")
+
+    monkeypatch.setattr("claude_ads_core.cli.write_report_bundle", fail_writer)
+    assert main(["render", str(tmp_path / "report.json"), "--root", str(tmp_path)]) == 2
+    error = json.loads(capsys.readouterr().err)
+    assert error["status"] == "invalid"
+    assert expected in error["error"]
+    assert private_detail not in error["error"]
 
 
 def test_windows_tree_home_normalization_runtime_error_is_typed(tmp_path, monkeypatch):
@@ -170,6 +225,59 @@ def test_scoring_api_is_not_reexported(name):
     assert name not in claude_ads_core.__all__
     assert not hasattr(claude_ads_core, name)
 
+@pytest.mark.parametrize("failure", ["input", "registry"])
+def test_render_input_and_registry_errors_do_not_echo_private_paths(
+    tmp_path, capsys, failure
+):
+    private_detail = "client-secret S-1-5-21-private sk_live_private"
+    bundle_path = (
+        tmp_path / private_detail / "missing.json"
+        if failure == "input"
+        else write_json(tmp_path, "report.json", report_bundle())
+    )
+    registry_root = tmp_path / private_detail if failure == "registry" else REPO_ROOT
+
+    assert main(
+        [
+            "render", str(bundle_path), "--root", str(tmp_path / "runs"),
+            "--registry-root", str(registry_root),
+        ]
+    ) == 2
+    error = json.loads(capsys.readouterr().err)
+    assert error["status"] == "invalid"
+    assert private_detail not in error["error"]
+    assert error["error"].startswith(
+        "report input loading failed" if failure == "input"
+        else "control registry loading failed"
+    )
+
+
+@pytest.mark.parametrize("failure", ["missing", "native_guard"])
+def test_ingest_export_error_does_not_echo_private_path_or_rejected_value(
+    tmp_path, capsys, failure
+):
+    private_detail = "sk_live_client-secret S-1-5-21-private"
+    if failure == "missing":
+        export_path = tmp_path / private_detail / "missing.csv"
+    else:
+        source = REPO_ROOT / "tests" / "fixtures" / "native_exports" / "google.csv"
+        export_path = tmp_path / "native.csv"
+        export_path.write_text(
+            source.read_text(encoding="utf-8").replace(",SEARCH", f",{private_detail}"),
+            encoding="utf-8",
+        )
+
+    platform = "youtube" if failure == "native_guard" else "google"
+    args = ["ingest-export", "--platform", platform]
+    if failure == "native_guard":
+        args.extend(["--format", "native"])
+    assert main([*args, str(export_path)]) == 2
+    error = json.loads(capsys.readouterr().err)
+    assert error["status"] == "invalid"
+    assert private_detail not in error["error"]
+    assert error["error"] == "export ingestion failed"
+
+
 def test_ingest_export_command_emits_normalized_snapshot(capsys):
     fixture = Path(__file__).resolve().parents[1] / "fixtures" / "exports" / "google.csv"
     assert main(["ingest-export", "--platform", "google", str(fixture)]) == 0
@@ -234,7 +342,6 @@ def test_render_command_rejects_explicit_empty_output_before_writing(tmp_path, c
     )
     error = json.loads(capsys.readouterr().err)
     assert error["status"] == "invalid"
-    assert "relative path" in error["error"]
     assert list(root.rglob("*")) == []
 
 

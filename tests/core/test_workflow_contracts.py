@@ -8,7 +8,8 @@ from pathlib import Path
 
 import pytest
 
-from claude_ads_core.contracts import CONTRACT_NAMES, ContractError, schema_path, validate_contract
+from claude_ads_core.contracts import CONTRACT_NAMES, ContractError, validate_contract
+from claude_ads_core.lifecycle import make_pending_lifecycle
 from claude_ads_core.orchestration import OrchestrationError, OrchestrationStore, evaluate_artifact_gate
 
 
@@ -29,18 +30,6 @@ INTEGER_SCHEMA_FIELDS = (
     ("generation-manifest", ("outputs", 0, "width"), 1),
     ("generation-manifest", ("outputs", 0, "height"), 1),
 )
-DATA_LIFECYCLE_REFERENCE_CONTRACTS = {
-    "run-manifest",
-    "setup-profile",
-    "brand-profile",
-    "media-plan",
-    "creative-brief",
-    "generation-manifest",
-    "monitoring-bundle",
-    "experiment-artifact",
-    "mutation-plan",
-    "orchestration-run",
-}
 
 
 def _set_path(payload: dict, path: tuple[str | int, ...], value) -> None:
@@ -50,52 +39,62 @@ def _set_path(payload: dict, path: tuple[str | int, ...], value) -> None:
     target[path[-1]] = value
 
 
-def _declared_integer_fields(repo_root: Path) -> set[tuple[str, tuple[str | int, ...], int]]:
-    declared: set[tuple[str, tuple[str | int, ...], int]] = set()
-    for contract in CONTRACT_NAMES:
-        if contract in {"account-snapshot", "control-definition", "finding", "report-bundle", "run-manifest"}:
-            continue
-        schema = json.loads(schema_path(contract).read_text(encoding="utf-8"))
-
-        def walk(node, path=()):
-            if not isinstance(node, dict):
-                return
-            if node.get("type") == "integer":
-                declared.add((contract, path, node.get("minimum")))
-            properties = node.get("properties", {})
-            if isinstance(properties, dict):
-                for name, child in properties.items():
-                    walk(child, (*path, name))
-            items = node.get("items")
-            if isinstance(items, dict):
-                walk(items, (*path, 0))
-
-        walk(schema)
-    return declared
 
 
-def test_all_workflow_fixtures_validate_and_have_strict_schemas(workflow_fixtures):
+def test_all_workflow_fixtures_validate(workflow_fixtures):
     for fixture_name, payload in workflow_fixtures.items():
         contract = _contract_name(fixture_name)
         assert contract in CONTRACT_NAMES
         validate_contract(contract, payload)
-        schema = json.loads(schema_path(contract).read_text(encoding="utf-8"))
-        assert schema["$schema"] == "https://json-schema.org/draft/2020-12/schema"
-        assert schema["additionalProperties"] is False
-        assert set(schema["required"]) == set(schema["properties"])
 
 
-def test_integer_parity_inventory_covers_every_workflow_orchestration_schema_field(repo_root):
-    assert _declared_integer_fields(repo_root) == set(INTEGER_SCHEMA_FIELDS)
-    lifecycle_refs = set()
-    for contract in CONTRACT_NAMES:
-        schema = json.loads(schema_path(contract).read_text(encoding="utf-8"))
-        lifecycle = schema.get("properties", {}).get("data_lifecycle", {})
-        if lifecycle.get("$ref") == (
-            "urn:ai-marketing-hub:claude-ads:schema:core:v1:data-lifecycle.schema.json"
-        ):
-            lifecycle_refs.add(contract)
-    assert lifecycle_refs == DATA_LIFECYCLE_REFERENCE_CONTRACTS
+@pytest.fixture(scope="module")
+def portable_workflow_schemas(repo_root):
+    jsonschema = pytest.importorskip("jsonschema")
+    referencing = pytest.importorskip("referencing")
+    schemas = repo_root / "claude_ads_core" / "schemas"
+    registry = referencing.Registry()
+    for path in schemas.rglob("*.schema.json"):
+        schema = json.loads(path.read_text(encoding="utf-8"))
+        registry = registry.with_resource(schema["$id"], referencing.Resource.from_contents(schema))
+    return jsonschema, registry, schemas
+
+
+def test_historical_workflow_schemas_reject_unknown_and_missing_fields(
+    workflow_fixtures, portable_workflow_schemas
+):
+    jsonschema, registry, schemas = portable_workflow_schemas
+    for fixture_name, payload in workflow_fixtures.items():
+        contract = _contract_name(fixture_name)
+        major = payload["schema_version"].split(".", 1)[0]
+        schema = json.loads(
+            (schemas / f"v{major}" / f"{contract}.schema.json").read_text(encoding="utf-8")
+        )
+        validator = jsonschema.Draft202012Validator(schema, registry=registry)
+        validator.validate(payload)
+        unexpected = {**payload, "unreviewed_extension": "fixture"}
+        with pytest.raises(jsonschema.ValidationError):
+            validator.validate(unexpected)
+        missing_version = {key: value for key, value in payload.items() if key != "schema_version"}
+        with pytest.raises(jsonschema.ValidationError):
+            validator.validate(missing_version)
+
+
+@pytest.mark.parametrize(("fixture_name", "path", "minimum"), INTEGER_SCHEMA_FIELDS)
+def test_historical_portable_workflow_integer_boundaries(
+    workflow_fixtures, portable_workflow_schemas, fixture_name, path, minimum
+):
+    jsonschema, registry, schemas = portable_workflow_schemas
+    contract = _contract_name(fixture_name)
+    schema = json.loads((schemas / "v1" / f"{contract}.schema.json").read_text(encoding="utf-8"))
+    validator = jsonschema.Draft202012Validator(schema, registry=registry)
+    for value in (True, False, minimum + 0.5, minimum - 1):
+        payload = copy.deepcopy(workflow_fixtures[fixture_name])
+        _set_path(payload, path, value)
+        with pytest.raises(jsonschema.ValidationError):
+            validator.validate(payload)
+
+
 
 
 @pytest.mark.parametrize(("fixture_name", "path", "minimum"), INTEGER_SCHEMA_FIELDS)
@@ -235,6 +234,344 @@ def test_non_public_lifecycle_requires_encryption_and_deletion_deadline(workflow
     lifecycle["retention"]["delete_after"] = None
     with pytest.raises(ContractError, match="delete_after is required"):
         validate_contract("data-lifecycle", lifecycle)
+
+
+def test_v2_lifecycle_discloses_unknown_controls_without_inventing_retention(workflow_fixtures):
+    lifecycle = copy.deepcopy(workflow_fixtures["data-lifecycle"])
+    lifecycle["schema_version"] = "2.0.0"
+    lifecycle["retention"]["mode"] = "unassigned"
+    lifecycle["retention"]["delete_after"] = None
+    lifecycle["encryption"] = {
+        "at_rest": "unknown",
+        "in_transit": "unknown",
+        "evidence_refs": [],
+    }
+    lifecycle["deletion"]["status"] = "pending"
+    lifecycle["deletion"]["method"] = "file-removal"
+    lifecycle["deletion"]["scheduler_receipt_locator"] = None
+    validate_contract("data-lifecycle", lifecycle)
+
+
+@pytest.mark.parametrize(
+    ("status", "locator"),
+    (("scheduled", "scheduler_receipt_locator"), ("verified", "verification_artifact_locator")),
+)
+def test_v2_lifecycle_requires_status_receipts(workflow_fixtures, status, locator):
+    lifecycle = copy.deepcopy(workflow_fixtures["data-lifecycle"])
+    lifecycle["schema_version"] = "2.0.0"
+    lifecycle["encryption"] = {"at_rest": "unknown", "in_transit": "unknown", "evidence_refs": []}
+    lifecycle["deletion"]["status"] = status
+    lifecycle["deletion"]["scheduler_receipt_locator"] = None
+    lifecycle["deletion"][locator] = None
+    with pytest.raises(ContractError, match="requires a"):
+        validate_contract("data-lifecycle", lifecycle)
+
+
+def test_v2_lifecycle_requires_verification(workflow_fixtures):
+    lifecycle = copy.deepcopy(workflow_fixtures["data-lifecycle"])
+    lifecycle["schema_version"] = "2.0.0"
+    lifecycle["encryption"] = {"at_rest": "unknown", "in_transit": "unknown", "evidence_refs": []}
+    lifecycle["deletion"]["status"] = "pending"
+    lifecycle["deletion"]["scheduler_receipt_locator"] = None
+    lifecycle["deletion"]["verification_required"] = False
+    with pytest.raises(ContractError, match="verification_required must be true"):
+        validate_contract("data-lifecycle", lifecycle)
+
+
+def test_v2_lifecycle_rejects_unassigned_deadline_and_unknown_version(workflow_fixtures):
+    lifecycle = copy.deepcopy(workflow_fixtures["data-lifecycle"])
+    lifecycle["schema_version"] = "2.0.0"
+    lifecycle["retention"]["mode"] = "unassigned"
+    lifecycle["retention"]["delete_after"] = None
+    lifecycle["encryption"] = {"at_rest": "unknown", "in_transit": "unknown", "evidence_refs": []}
+    lifecycle["deletion"]["status"] = "pending"
+    lifecycle["deletion"]["scheduler_receipt_locator"] = None
+    invalid_deadline = copy.deepcopy(lifecycle)
+    invalid_deadline["retention"]["delete_after"] = "2026-07-12T16:00:00Z"
+    with pytest.raises(ContractError, match="unassigned"):
+        validate_contract("data-lifecycle", invalid_deadline)
+    invalid_mode = copy.deepcopy(lifecycle)
+    invalid_mode["retention"]["mode"] = "operator-defined"
+    with pytest.raises(ContractError, match="requires a delete_after"):
+        validate_contract("data-lifecycle", invalid_mode)
+    unsupported = copy.deepcopy(lifecycle)
+    unsupported["schema_version"] = "3.0.0"
+    with pytest.raises(ContractError, match="schema_version"):
+        validate_contract("data-lifecycle", unsupported)
+
+
+def test_make_pending_lifecycle_is_truthful_when_retention_is_unassigned():
+    pending = make_pending_lifecycle(
+        lifecycle_id="lifecycle-case",
+        classification="internal",
+        delete_after=None,
+        purpose="In-memory review",
+        owner="operator",
+        authorized_roles=["operator"],
+        reporting_channel="security@operator",
+    )
+    assert pending["retention"]["mode"] == "unassigned"
+    assert pending["retention"]["delete_after"] is None
+    assert pending["encryption"] == {"at_rest": "unknown", "in_transit": "unknown", "evidence_refs": []}
+    assert pending["deletion"]["status"] == "pending"
+    validate_contract("data-lifecycle", pending)
+
+
+@pytest.mark.parametrize("field", ("at_rest", "in_transit"))
+def test_v2_verified_encryption_requires_evidence(field):
+    pending = make_pending_lifecycle(
+        lifecycle_id="lifecycle-unverified",
+        classification="internal",
+        delete_after=None,
+        purpose="In-memory review",
+        owner="operator",
+        authorized_roles=["operator"],
+        reporting_channel="security@operator",
+    )
+    pending["encryption"][field] = "verified"
+    with pytest.raises(ContractError, match="verified controls require evidence"):
+        validate_contract("data-lifecycle", pending)
+
+
+@pytest.mark.parametrize("roles", ("admin", b"admin"))
+def test_make_pending_lifecycle_rejects_scalar_roles(roles):
+    with pytest.raises(TypeError):
+        make_pending_lifecycle(
+            lifecycle_id="lifecycle-roles",
+            classification="internal",
+            delete_after=None,
+            purpose="In-memory review",
+            owner="operator",
+            authorized_roles=roles,
+            reporting_channel="security@operator",
+        )
+
+
+def test_make_pending_lifecycle_accepts_tuple_roles():
+    pending = make_pending_lifecycle(
+        lifecycle_id="lifecycle-tuple",
+        classification="internal",
+        delete_after=None,
+        purpose="In-memory review",
+        owner="operator",
+        authorized_roles=("operator", "reviewer"),
+        reporting_channel="security@operator",
+    )
+    assert pending["access"]["authorized_roles"] == ["operator", "reviewer"]
+
+
+@pytest.fixture(scope="module")
+def v2_lifecycle_validator(repo_root):
+    jsonschema = pytest.importorskip("jsonschema")
+    referencing = pytest.importorskip("referencing")
+    schemas = repo_root / "claude_ads_core" / "schemas"
+    lifecycle_schema = json.loads((schemas / "v2" / "data-lifecycle.schema.json").read_text())
+    common_schema = json.loads((schemas / "v1" / "workflow-common.schema.json").read_text())
+    registry = referencing.Registry().with_resource(
+        common_schema["$id"], referencing.Resource.from_contents(common_schema)
+    )
+    return (
+        jsonschema.Draft202012Validator(lifecycle_schema, registry=registry),
+        jsonschema.ValidationError,
+    )
+
+
+def test_v2_json_schema_rejects_unsubstantiated_verified_encryption(v2_lifecycle_validator):
+    validator, validation_error = v2_lifecycle_validator
+    pending = make_pending_lifecycle(
+        lifecycle_id="lifecycle-unverified",
+        classification="internal",
+        delete_after=None,
+        purpose="In-memory review",
+        owner="operator",
+        authorized_roles=["operator"],
+        reporting_channel="security@operator",
+    )
+    pending["encryption"]["at_rest"] = "verified"
+    with pytest.raises(validation_error):
+        validator.validate(pending)
+
+
+@pytest.mark.parametrize("field", ("at_rest", "in_transit"))
+@pytest.mark.parametrize("blank", (" ", "\n"))
+def test_v2_portable_and_runtime_contracts_reject_blank_encryption_evidence(
+    v2_lifecycle_validator, field, blank
+):
+    validator, validation_error = v2_lifecycle_validator
+    pending = make_pending_lifecycle(
+        lifecycle_id="lifecycle-blank-evidence",
+        classification="internal",
+        delete_after=None,
+        purpose="In-memory review",
+        owner="operator",
+        authorized_roles=["operator"],
+        reporting_channel="security@operator",
+    )
+    pending["encryption"][field] = "verified"
+    pending["encryption"]["evidence_refs"] = [blank]
+    with pytest.raises(ContractError):
+        validate_contract("data-lifecycle", pending)
+    with pytest.raises(validation_error):
+        validator.validate(pending)
+
+
+@pytest.mark.parametrize(
+    ("section", "locator_field", "status"),
+    (
+        ("access", "access_log_locator", None),
+        ("deletion", "scheduler_receipt_locator", "scheduled"),
+        ("deletion", "verification_artifact_locator", "verified"),
+        ("incident", "record_locator", "open"),
+    ),
+)
+@pytest.mark.parametrize(
+    "locator", ("receipts/./job", "receipts//job", "receipts/job/", "receipts/\x00job")
+)
+def test_v2_portable_and_runtime_contracts_reject_malformed_locators(
+    v2_lifecycle_validator, section, locator_field, status, locator
+):
+    validator, validation_error = v2_lifecycle_validator
+    pending = make_pending_lifecycle(
+        lifecycle_id="lifecycle-receipt",
+        classification="internal",
+        delete_after=None,
+        purpose="In-memory review",
+        owner="operator",
+        authorized_roles=["operator"],
+        reporting_channel="security@operator",
+    )
+    if status is not None:
+        pending[section]["status"] = status
+    pending[section][locator_field] = locator
+    with pytest.raises(ContractError):
+        validate_contract("data-lifecycle", pending)
+    with pytest.raises(validation_error):
+        validator.validate(pending)
+
+
+@pytest.fixture()
+def v2_pending_lifecycle():
+    return make_pending_lifecycle(
+        lifecycle_id="lifecycle-conditional",
+        classification="internal",
+        delete_after=None,
+        purpose="In-memory review",
+        owner="operator",
+        authorized_roles=["operator"],
+        reporting_channel="security@operator",
+    )
+
+
+@pytest.mark.parametrize(
+    ("classification", "mode"),
+    (("internal", "operator-defined"), ("confidential", "policy-defined")),
+)
+def test_v2_nonpublic_assigned_retention_requires_deadline(
+    v2_lifecycle_validator, v2_pending_lifecycle, classification, mode
+):
+    validator, validation_error = v2_lifecycle_validator
+    v2_pending_lifecycle["classification"] = classification
+    v2_pending_lifecycle["retention"]["mode"] = mode
+    with pytest.raises(ContractError):
+        validate_contract("data-lifecycle", v2_pending_lifecycle)
+    with pytest.raises(validation_error):
+        validator.validate(v2_pending_lifecycle)
+
+
+@pytest.mark.parametrize("reason", (None, " ", "\n"))
+def test_v2_retention_exception_requires_nonblank_reason(
+    v2_lifecycle_validator, v2_pending_lifecycle, reason
+):
+    validator, validation_error = v2_lifecycle_validator
+    v2_pending_lifecycle["retention"]["mode"] = "exception"
+    v2_pending_lifecycle["retention"]["exception_reason"] = reason
+    with pytest.raises(ContractError):
+        validate_contract("data-lifecycle", v2_pending_lifecycle)
+    with pytest.raises(validation_error):
+        validator.validate(v2_pending_lifecycle)
+
+
+def test_v2_retention_exception_allows_null_deadline(
+    v2_lifecycle_validator, v2_pending_lifecycle
+):
+    validator, _ = v2_lifecycle_validator
+    v2_pending_lifecycle["retention"]["mode"] = "exception"
+    v2_pending_lifecycle["retention"]["exception_reason"] = "legal hold"
+    validate_contract("data-lifecycle", v2_pending_lifecycle)
+    validator.validate(v2_pending_lifecycle)
+
+
+@pytest.mark.parametrize("status", ("open", "contained", "resolved"))
+def test_v2_triggered_incident_requires_record(
+    v2_lifecycle_validator, v2_pending_lifecycle, status
+):
+    validator, validation_error = v2_lifecycle_validator
+    v2_pending_lifecycle["incident"]["status"] = status
+    with pytest.raises(ContractError):
+        validate_contract("data-lifecycle", v2_pending_lifecycle)
+    with pytest.raises(validation_error):
+        validator.validate(v2_pending_lifecycle)
+
+
+def test_v1_lifecycle_still_rejects_unknown_encryption(workflow_fixtures):
+    lifecycle = copy.deepcopy(workflow_fixtures["data-lifecycle"])
+    lifecycle["encryption"]["at_rest"] = "unknown"
+    with pytest.raises(ContractError):
+        validate_contract("data-lifecycle", lifecycle)
+
+
+@pytest.fixture()
+def v2_setup_profile(workflow_fixtures):
+    profile = copy.deepcopy(workflow_fixtures["setup-profile"])
+    profile["schema_version"] = "2.0.0"
+    profile["data_lifecycle"] = make_pending_lifecycle(
+        lifecycle_id="lifecycle-setup",
+        classification=profile["privacy_class"],
+        delete_after=None,
+        purpose="In-memory setup",
+        owner="operator",
+        authorized_roles=["operator"],
+        reporting_channel="security@operator",
+    )
+    return profile
+
+
+def test_setup_profile_versions_require_matching_lifecycle(workflow_fixtures, v2_setup_profile):
+    v1_setup = workflow_fixtures["setup-profile"]
+    validate_contract("setup-profile", v1_setup)
+    validate_contract("setup-profile", v2_setup_profile)
+    for outer, nested in (
+        (v1_setup, v2_setup_profile["data_lifecycle"]),
+        (v2_setup_profile, v1_setup["data_lifecycle"]),
+    ):
+        with pytest.raises(ContractError):
+            validate_contract("setup-profile", {**outer, "data_lifecycle": nested})
+    with pytest.raises(ContractError):
+        validate_contract("setup-profile", {**v2_setup_profile, "schema_version": "3.0.0"})
+    brand = copy.deepcopy(workflow_fixtures["brand-profile"])
+    brand["data_lifecycle"] = v2_setup_profile["data_lifecycle"]
+    with pytest.raises(ContractError):
+        validate_contract("brand-profile", brand)
+
+
+def test_v2_setup_profile_portable_schema_pairs_v2_lifecycle(
+    repo_root, workflow_fixtures, v2_setup_profile
+):
+    jsonschema = pytest.importorskip("jsonschema")
+    referencing = pytest.importorskip("referencing")
+    schemas = repo_root / "claude_ads_core" / "schemas"
+    setup_schema = json.loads((schemas / "v2" / "setup-profile.schema.json").read_text())
+    common_schema = json.loads((schemas / "v1" / "workflow-common.schema.json").read_text())
+    lifecycle_schema = json.loads((schemas / "v2" / "data-lifecycle.schema.json").read_text())
+    registry = referencing.Registry()
+    for schema in (common_schema, lifecycle_schema):
+        registry = registry.with_resource(schema["$id"], referencing.Resource.from_contents(schema))
+    validator = jsonschema.Draft202012Validator(setup_schema, registry=registry)
+    validator.validate(v2_setup_profile)
+    with pytest.raises(jsonschema.ValidationError):
+        validator.validate(
+            {**v2_setup_profile, "data_lifecycle": workflow_fixtures["setup-profile"]["data_lifecycle"]}
+        )
 
 
 def test_store_is_append_only_and_result_reruns_require_supersedes(tmp_path, workflow_fixtures):

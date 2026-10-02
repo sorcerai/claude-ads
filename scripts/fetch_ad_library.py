@@ -2,10 +2,10 @@
 """
 Search the Meta Ad Library (`ads_archive`) for public ad creative.
 
-Scope is set by Meta, not by this script. Per the official reference, "Ads that
-did not reach any location in the EU will only return if they are about social
-issues, elections or politics." A commercial competitor search therefore returns
-rows only when `--countries` includes an EU member state.
+Scope is set by Meta, not by this script. Outside the EU, a commercial
+competitor search returns only ads that also reached the EU or UK, plus
+political and issue ads. Non-EU results are therefore real but partial rather
+than a complete picture of that market.
 
 Usage:
     python fetch_ad_library.py --search-terms "project management" --countries DE,FR
@@ -36,10 +36,14 @@ from url_utils import (
     sanitize_error,
 )
 
+from claude_ads_core.lifecycle import make_pending_lifecycle
+from claude_ads_core.workflow_contracts import validate_workflow_contract
+
 # The planner and this client must agree on when an empty result is a coverage
 # limit rather than absence of ads, so the rule has exactly one definition.
 from claude_ads_core.competitor_fanout import (
     meta_coverage_note as scope_warning,
+    _strip_snapshot_credential,
     normalize_archived_ads,
 )
 
@@ -411,11 +415,15 @@ def search_ad_library(
                     (f"{result['warning']}; " if result.get("warning") else "")
                     + "Usage throttle threshold reached; quota budget requested a stop before further pagination."
                 )
-                result["status"] = "quota-deferred"
-                return result
-            elif next_cursor is None:
+            if next_cursor is None:
+                # A complete final page is terminal even when the quota budget
+                # asked for a stop on the same response; the stop still defers
+                # any later queued advertiser at the queue level.
                 result["status"] = "exhausted"
                 url = None
+            elif observation.get("stop_reason"):
+                result["status"] = "quota-deferred"
+                return result
             else:
                 url = ENDPOINT
                 page_params = dict(params)
@@ -556,6 +564,34 @@ def _load_checkpoint(path: Path) -> dict[str, Any]:
             )
         ):
             raise ValueError("corrupt checkpoint: raw artifact or invalid artifact")
+        if artifact is not None:
+            for observation in artifact["observations"]:
+                snapshot = observation.get("snapshot_url")
+                try:
+                    canonical = _strip_snapshot_credential(snapshot)
+                except ValueError:
+                    raise ValueError(
+                        "corrupt checkpoint: unsafe snapshot URL"
+                    ) from None
+                if canonical != snapshot:
+                    raise ValueError("corrupt checkpoint: noncanonical snapshot URL")
+            lifecycle = artifact.get("data_lifecycle")
+            if not isinstance(lifecycle, dict):
+                raise ValueError("corrupt checkpoint: invalid lifecycle")
+            version = artifact.get("schema_version")
+            if (
+                version not in {"1.0.0", "2.0.0"}
+                or lifecycle.get("schema_version") != version
+            ):
+                raise ValueError("corrupt checkpoint: artifact lifecycle version mismatch")
+            try:
+                validate_workflow_contract("data-lifecycle", lifecycle)
+            except (TypeError, ValueError):
+                raise ValueError("corrupt checkpoint: invalid lifecycle") from None
+            if lifecycle.get("classification") != filters.get("privacy_class"):
+                raise ValueError(
+                    "corrupt checkpoint: artifact lifecycle classification mismatch"
+                )
     return value
 
 
@@ -599,6 +635,7 @@ def _collect_advertiser_queue_unlocked(
     search_page_ids: str,
     checkpoint_path: str | os.PathLike[str],
     resume: bool = False,
+    _inherit_checkpoint_metadata: bool = False,
     search_terms: str | None = None,
     search_type: str = "KEYWORD_UNORDERED",
     ad_active_status: str = "ALL",
@@ -613,13 +650,26 @@ def _collect_advertiser_queue_unlocked(
     pacing_delay: float = DEFAULT_PACING_DELAY,
     sleep=time.sleep,
     quota_budget: Any | None = None,
-    run_id: str = "run-ad-library",
+    run_id: str | None = "run-ad-library",
     client_id: str = "default-client",
     purpose: str = "competitor_analysis",
     privacy_class: str = "public",
 ) -> dict[str, Any]:
     """Collect page IDs sequentially, checkpointing normalized evidence per page."""
     path = Path(checkpoint_path).expanduser()
+    state = _load_checkpoint(path) if resume else None
+    if state is not None and run_id is None:
+        run_id = state["filters"]["run_id"]
+    if _inherit_checkpoint_metadata:
+        checkpoint_filters = state["filters"] if state is not None else {}
+        if client_id is None:
+            client_id = checkpoint_filters.get("client_id", "default-client")
+        if purpose is None:
+            purpose = checkpoint_filters.get("purpose", "competitor_analysis")
+        if privacy_class is None:
+            privacy_class = checkpoint_filters.get("privacy_class", "public")
+    if privacy_class != "public":
+        raise ValueError("non-public Ad Library persistence requires verified controls")
     limit = min(_positive_int(limit), MAX_PAGE_LIMIT)
     max_pages = min(_positive_int(max_pages), MAX_PAGES_CEILING)
     page_ids = [item.strip() for item in search_page_ids.split(",") if item.strip()]
@@ -645,8 +695,7 @@ def _collect_advertiser_queue_unlocked(
         privacy_class=privacy_class,
     )
     fingerprint = _fingerprint(filters)
-    if resume:
-        state = _load_checkpoint(path)
+    if state is not None:
         if (
             state.get("fingerprint") != fingerprint
             or state.get("filters") != filters
@@ -768,17 +817,36 @@ def _collect_advertiser_queue_unlocked(
 
 
 def collect_advertiser_queue(
-    *, checkpoint_path: str | os.PathLike[str], resume: bool = False, **kwargs
+    *,
+    checkpoint_path: str | os.PathLike[str],
+    resume: bool = False,
+    _inherit_checkpoint_metadata: bool = False,
+    **kwargs,
 ):
+    if kwargs.get("privacy_class", "public") not in {None, "public"}:
+        raise ValueError("non-public Ad Library persistence requires verified controls")
+    if resume:
+        _inherit_checkpoint_metadata = True
+        for field in ("client_id", "purpose", "privacy_class"):
+            kwargs.setdefault(field, None)
     path = Path(checkpoint_path).expanduser()
+    # This preflight avoids creating a lock for stored non-public data.
+    # The collector reloads and checks the checkpoint again under the lock.
+    if resume:
+        state = _load_checkpoint(path)
+        if state["filters"].get("privacy_class") != "public":
+            raise ValueError("non-public Ad Library persistence requires verified controls")
+        if kwargs.get("run_id") is None:
+            kwargs["run_id"] = state["filters"]["run_id"]
     with _checkpoint_lock(path):
         if path.exists() and not resume:
             raise ValueError("checkpoint already exists; pass --resume to continue it")
-        if resume and kwargs.get("run_id") is None:
-            kwargs["run_id"] = _load_checkpoint(path)["filters"]["run_id"]
+        run_id = kwargs.pop("run_id", None if resume else "run-ad-library")
         return _collect_advertiser_queue_unlocked(
             checkpoint_path=path,
             resume=resume,
+            _inherit_checkpoint_metadata=_inherit_checkpoint_metadata,
+            run_id=run_id,
             **kwargs,
         )
 
@@ -791,7 +859,7 @@ def build_canonical_artifact(
     purpose: str,
     privacy_class: str = "public",
 ) -> dict[str, Any]:
-    """Fold raw public ad search results into one canonical competitor artifact.
+    """Fold raw ad search results into one canonical competitor artifact.
 
     Raw API payloads are never persisted directly. Every artifact binds run,
     client-purpose, retrieval timestamp, source digest, warning/error/usage, and
@@ -810,8 +878,18 @@ def build_canonical_artifact(
         provenance="ad-library-api",
     )
 
+    data_lifecycle = make_pending_lifecycle(
+        lifecycle_id=f"lifecycle-{run_id}",
+        classification=privacy_class,
+        delete_after=None,
+        purpose=purpose,
+        owner="competitor-research-agent",
+        authorized_roles=["research-worker", "conductor"],
+        reporting_channel="security-incident",
+    )
+
     return {
-        "schema_version": "1.0.0",
+        "schema_version": "2.0.0",
         "artifact_type": "competitor-observations",
         "run_id": run_id,
         "client_id": client_id,
@@ -832,44 +910,7 @@ def build_canonical_artifact(
             "quota_stop_reason": result.get("quota_stop_reason"),
         },
         "observation_count": len(normalized_observations),
-        "data_lifecycle": {
-            "schema_version": "1.0.0",
-            "lifecycle_id": f"lifecycle-{run_id}",
-            "classification": privacy_class,
-            "retention": {
-                "minimum_seconds": 0,
-                "mode": "operator-defined",
-                "delete_after": None,
-                "purpose": purpose,
-                "exception_reason": None,
-            },
-            "encryption": {
-                "at_rest": "verified"
-                if privacy_class != "public"
-                else "not-applicable",
-                "in_transit": "verified"
-                if privacy_class != "public"
-                else "not-applicable",
-                "evidence_refs": [],
-            },
-            "access": {
-                "owner": "competitor-research-agent",
-                "authorized_roles": ["research-worker", "conductor"],
-                "access_log_locator": None,
-            },
-            "deletion": {
-                "status": "scheduled",
-                "method": "file-removal",
-                "verification_required": False,
-                "verification_artifact_locator": None,
-            },
-            "incident": {
-                "owner": "security-owner",
-                "reporting_channel": "security-incident",
-                "status": "not-triggered",
-                "record_locator": None,
-            },
-        },
+        "data_lifecycle": data_lifecycle,
         "observations": normalized_observations,
     }
 
@@ -947,6 +988,21 @@ def _main():
 
     args = parser.parse_args()
 
+    if args.privacy_class is not None and args.privacy_class != "public":
+        raise ValueError("non-public Ad Library persistence requires verified controls")
+    if args.resume and not args.checkpoint:
+        raise ValueError("--resume requires --checkpoint")
+
+    checkpoint_path = None
+    checkpoint_filters = {}
+    if args.resume:
+        checkpoint_path = resolve_output_path(args.checkpoint, create_parent=False)
+        checkpoint_filters = _load_checkpoint(checkpoint_path)["filters"]
+        if checkpoint_filters.get("privacy_class") != "public":
+            raise ValueError(
+                "non-public Ad Library persistence requires verified controls"
+            )
+
     # Pre-flight validate output path before making any network calls
     output_path = None
     if args.output:
@@ -955,8 +1011,8 @@ def _main():
         except ValueError as exc:
             print(f"Error: {sanitize_error(exc)}", file=sys.stderr)
             sys.exit(1)
-    checkpoint_path = None
-    if args.checkpoint:
+
+    if args.checkpoint and not args.resume:
         try:
             checkpoint_path = resolve_output_path(args.checkpoint, create_parent=True)
         except ValueError as exc:
@@ -968,12 +1024,19 @@ def _main():
                 file=sys.stderr,
             )
             sys.exit(1)
-        if checkpoint_path.exists() and not args.resume:
+        if checkpoint_path.exists():
             print(
                 "Error: checkpoint exists; pass --resume to continue it.",
                 file=sys.stderr,
             )
             sys.exit(1)
+
+    if args.resume and output_path and checkpoint_path == output_path:
+        print(
+            "Error: --checkpoint and --output must be different paths.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
 
     token = os.environ.get("META_AD_LIBRARY_TOKEN")
     if not token:
@@ -988,30 +1051,8 @@ def _main():
     run_id = args.run_id or (
         None if args.resume else f"run-{date.today().strftime('%Y%m%d')}-ad-lib"
     )
-    checkpoint_filters = {}
-    if args.resume and checkpoint_path:
-        checkpoint_filters = _load_checkpoint(checkpoint_path)["filters"]
-    client_id = (
-        args.client_id
-        if args.client_id is not None
-        else checkpoint_filters.get("client_id", "default-client")
-    )
-    purpose = (
-        args.purpose
-        if args.purpose is not None
-        else checkpoint_filters.get("purpose", "competitor_analysis")
-    )
-    privacy_class = (
-        args.privacy_class
-        if args.privacy_class is not None
-        else checkpoint_filters.get("privacy_class", "public")
-    )
     quota_budget = QuotaBudget(hourly_limit=args.hourly_limit)
     fields = build_fields(args.include_political_fields, args.include_eu_fields)
-
-    if args.resume and not checkpoint_path:
-        print("Error: --resume requires --checkpoint.", file=sys.stderr)
-        sys.exit(1)
     if checkpoint_path:
         result = collect_advertiser_queue(
             token=token,
@@ -1030,16 +1071,17 @@ def _main():
             max_pages=args.max_pages,
             quota_budget=quota_budget,
             run_id=run_id,
-            client_id=client_id,
-            purpose=purpose,
-            privacy_class=privacy_class,
+            client_id=args.client_id,
+            purpose=args.purpose,
+            privacy_class=args.privacy_class,
+            _inherit_checkpoint_metadata=True,
         )
         payload = json.dumps(result, indent=2, ensure_ascii=False)
         if output_path:
             _atomic_write_json(output_path, result)
         else:
             print(payload)
-        if result["status"] in {"failed", "quota-deferred"}:
+        if result["status"] != "exhausted":
             sys.exit(1)
         return
 
@@ -1063,9 +1105,11 @@ def _main():
     canonical_artifact = build_canonical_artifact(
         result,
         run_id=run_id,
-        client_id=client_id,
-        purpose=purpose,
-        privacy_class=privacy_class,
+        client_id=args.client_id if args.client_id is not None else "default-client",
+        purpose=args.purpose if args.purpose is not None else "competitor_analysis",
+        privacy_class=args.privacy_class
+        if args.privacy_class is not None
+        else "public",
     )
     payload = json.dumps(canonical_artifact, indent=2, ensure_ascii=False)
     if output_path:
@@ -1078,6 +1122,7 @@ def _main():
         print(payload)
     if result.get("error"):
         print(f"Error: {result['error']}", file=sys.stderr)
+    if result.get("status") != "exhausted":
         sys.exit(1)
 
 

@@ -990,9 +990,9 @@
       "documents": [
         {
           "artifact_sha256s": [
-            "9fb4c81ebbb1ce9531cce37674bbc6f1360472bc18ca9a553ede278ef7276897"
+            "0cf3cae568d36aa9576b28dfb35f11328f1cb974ca7647d9475ebb86c75ac6e3"
           ],
-          "path": "urllib3-2.7.0.dist-info/licenses/LICENSE.txt",
+          "path": "urllib3-2.8.0.dist-info/licenses/LICENSE.txt",
           "sha256": "130e3a64d5fdd5d096a752694634a7d9df284469de86e5732100268041e3d686",
           "text": "MIT License\n\nCopyright (c) 2008-2020 Andrey Petrov and contributors.\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.\n"
         }
@@ -1006,9 +1006,9 @@
       "documents": [
         {
           "artifact_sha256s": [
-            "475951cfd917014de6d4d005caff48c6aa867e7e42b80cd5b16a0484a1609ee6"
+            "5043e55e38d2a2af2b2b871e869697b1f65dad5f8b4a3677961d04ceacf9c5fe"
           ],
-          "path": "weasyprint-69.0.dist-info/licenses/LICENSE",
+          "path": "weasyprint-70.0.dist-info/licenses/LICENSE",
           "sha256": "bfd14eccfa6100575460e685556b183399d4bd335904e3c9521b0116d21c54da",
           "text": "BSD 3-Clause License\n\nCopyright (c) 2011-2021, Simon Sapin and contributors.\nAll rights reserved.\n\nRedistribution and use in source and binary forms, with or without\nmodification, are permitted provided that the following conditions are met:\n\n* Redistributions of source code must retain the above copyright notice, this\n  list of conditions and the following disclaimer.\n\n* Redistributions in binary form must reproduce the above copyright notice,\n  this list of conditions and the following disclaimer in the documentation\n  and/or other materials provided with the distribution.\n\n* Neither the name of the copyright holder nor the names of its\n  contributors may be used to endorse or promote products derived from\n  this software without specific prior written permission.\n\nTHIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS \"AS IS\"\nAND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE\nIMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE\nDISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE\nFOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL\nDAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR\nSERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER\nCAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,\nOR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE\nOF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.\n"
         }
@@ -1848,12 +1848,12 @@
       ],
       "license_expression": "MIT",
       "license_provenance": {
-        "evidence_sha256": "a0375620087b0c3b6c4b6b1f6a694537acaac10bfb0e8ac856078648ffed4199",
+        "evidence_sha256": "5315e7401db3cacccd0c2ce5daf81f752a9cc3614b18c37f2b79930b7159ce2f",
         "kind": "publisher-metadata-review",
-        "metadata_url": "https://pypi.org/pypi/urllib3/2.7.0/json"
+        "metadata_url": "https://pypi.org/pypi/urllib3/2.8.0/json"
       },
       "name": "urllib3",
-      "purl": "pkg:pypi/urllib3@2.7.0",
+      "purl": "pkg:pypi/urllib3@2.8.0",
       "target_occurrences": [
         "runtime-linux-cp311",
         "runtime-linux-cp312",
@@ -1862,7 +1862,7 @@
         "runtime-windows-cp311",
         "runtime-windows-cp312"
       ],
-      "version": "2.7.0"
+      "version": "2.8.0"
     },
     {
       "bundled_notice_ids": [
@@ -1870,12 +1870,12 @@
       ],
       "license_expression": "BSD-3-Clause",
       "license_provenance": {
-        "evidence_sha256": "9c79175889f95067154aca5e2aba2d181bc2e04be096a49a4adaff8249b80e27",
+        "evidence_sha256": "5933657bdfcf2e349e1a352af7f4fb266913024960489b3120a40f396b9c391f",
         "kind": "publisher-metadata-review",
-        "metadata_url": "https://pypi.org/pypi/weasyprint/69.0/json"
+        "metadata_url": "https://pypi.org/pypi/weasyprint/70.0/json"
       },
       "name": "weasyprint",
-      "purl": "pkg:pypi/weasyprint@69.0",
+      "purl": "pkg:pypi/weasyprint@70.0",
       "target_occurrences": [
         "runtime-linux-cp311",
         "runtime-linux-cp312",
@@ -1884,7 +1884,7 @@
         "runtime-windows-cp311",
         "runtime-windows-cp312"
       ],
-      "version": "69.0"
+      "version": "70.0"
     },
     {
       "bundled_notice_ids": [
@@ -2287,7 +2287,7 @@
       "from": "weasyprint",
       "marker": null,
       "profile": "runtime",
-      "publisher_metadata_sha256": "9c79175889f95067154aca5e2aba2d181bc2e04be096a49a4adaff8249b80e27",
+      "publisher_metadata_sha256": "5933657bdfcf2e349e1a352af7f4fb266913024960489b3120a40f396b9c391f",
       "requirement": "Pillow>=9.1.0",
       "specifier": ">=9.1.0",
       "to": "pillow"
@@ -2297,7 +2297,7 @@
       "from": "weasyprint",
       "marker": null,
       "profile": "runtime",
-      "publisher_metadata_sha256": "9c79175889f95067154aca5e2aba2d181bc2e04be096a49a4adaff8249b80e27",
+      "publisher_metadata_sha256": "5933657bdfcf2e349e1a352af7f4fb266913024960489b3120a40f396b9c391f",
       "requirement": "Pyphen>=0.9.1",
       "specifier": ">=0.9.1",
       "to": "pyphen"
@@ -2307,7 +2307,7 @@
       "from": "weasyprint",
       "marker": null,
       "profile": "runtime",
-      "publisher_metadata_sha256": "9c79175889f95067154aca5e2aba2d181bc2e04be096a49a4adaff8249b80e27",
+      "publisher_metadata_sha256": "5933657bdfcf2e349e1a352af7f4fb266913024960489b3120a40f396b9c391f",
       "requirement": "cffi>=0.6",
       "specifier": ">=0.6",
       "to": "cffi"
@@ -2317,7 +2317,7 @@
       "from": "weasyprint",
       "marker": null,
       "profile": "runtime",
-      "publisher_metadata_sha256": "9c79175889f95067154aca5e2aba2d181bc2e04be096a49a4adaff8249b80e27",
+      "publisher_metadata_sha256": "5933657bdfcf2e349e1a352af7f4fb266913024960489b3120a40f396b9c391f",
       "requirement": "cssselect2>=0.8.0",
       "specifier": ">=0.8.0",
       "to": "cssselect2"
@@ -2329,7 +2329,7 @@
       "from": "weasyprint",
       "marker": null,
       "profile": "runtime",
-      "publisher_metadata_sha256": "9c79175889f95067154aca5e2aba2d181bc2e04be096a49a4adaff8249b80e27",
+      "publisher_metadata_sha256": "5933657bdfcf2e349e1a352af7f4fb266913024960489b3120a40f396b9c391f",
       "requirement": "fonttools[woff]>=4.59.2",
       "specifier": ">=4.59.2",
       "to": "fonttools"
@@ -2339,7 +2339,7 @@
       "from": "weasyprint",
       "marker": null,
       "profile": "runtime",
-      "publisher_metadata_sha256": "9c79175889f95067154aca5e2aba2d181bc2e04be096a49a4adaff8249b80e27",
+      "publisher_metadata_sha256": "5933657bdfcf2e349e1a352af7f4fb266913024960489b3120a40f396b9c391f",
       "requirement": "pydyf>=0.11.0",
       "specifier": ">=0.11.0",
       "to": "pydyf"
@@ -2349,7 +2349,7 @@
       "from": "weasyprint",
       "marker": null,
       "profile": "runtime",
-      "publisher_metadata_sha256": "9c79175889f95067154aca5e2aba2d181bc2e04be096a49a4adaff8249b80e27",
+      "publisher_metadata_sha256": "5933657bdfcf2e349e1a352af7f4fb266913024960489b3120a40f396b9c391f",
       "requirement": "tinycss2>=1.5.0",
       "specifier": ">=1.5.0",
       "to": "tinycss2"
@@ -2359,7 +2359,7 @@
       "from": "weasyprint",
       "marker": null,
       "profile": "runtime",
-      "publisher_metadata_sha256": "9c79175889f95067154aca5e2aba2d181bc2e04be096a49a4adaff8249b80e27",
+      "publisher_metadata_sha256": "5933657bdfcf2e349e1a352af7f4fb266913024960489b3120a40f396b9c391f",
       "requirement": "tinyhtml5>=2.0.0b1",
       "specifier": ">=2.0.0b1",
       "to": "tinyhtml5"
@@ -2423,19 +2423,19 @@
     {
       "name": "urllib3",
       "profile": "runtime",
-      "requirement": "urllib3>=2.6.3,<3.0.0",
+      "requirement": "urllib3<3.0.0,>=2.8.0",
       "source": "requirements.txt"
     },
     {
       "name": "weasyprint",
       "profile": "runtime",
-      "requirement": "weasyprint>=69.0,<70.0",
+      "requirement": "weasyprint<71.0,>=70.0",
       "source": "pyproject.toml#project.optional-dependencies.pdf"
     },
     {
       "name": "weasyprint",
       "profile": "runtime",
-      "requirement": "weasyprint>=69.0,<70.0",
+      "requirement": "weasyprint<71.0,>=70.0",
       "source": "requirements.txt"
     }
   ],
@@ -2443,7 +2443,7 @@
   "manifests": [
     {
       "path": "pyproject.toml",
-      "sha256": "bce4a8ab487cc30b83d9f2da0ad7d9c7ecb48232b0e27fa93a8d4a1976d0c5fc"
+      "sha256": "8d697ccf88154918de981cf8ecb843f39fd1a207e14dc1bc258540cf5cffd4c9"
     },
     {
       "path": "requirements-dev.lock",
@@ -2455,11 +2455,11 @@
     },
     {
       "path": "requirements.lock",
-      "sha256": "2a03a25739d160c6dad8a7c6414ee068b3bfa7b7d58a064a970769dd5110d162"
+      "sha256": "7ab68cadfb3f5a86cee81dc0816e234dcf1d1a76a027d66ce788db4778d9f75c"
     },
     {
       "path": "requirements.txt",
-      "sha256": "f21c4206684bfc51493c442b7a00e4fd3726e4ea8335d9ae8a634c63baf1d514"
+      "sha256": "6ede5a4dd8427a3d74c4ac976e418e8f5c548532a86417652b33767cf86a8682"
     }
   ],
   "resolution": {
@@ -2467,17 +2467,17 @@
     "index": "https://pypi.org/simple",
     "managed_lock_python_range": ">=3.11,<3.13",
     "policy": "One exact lowest-common version set with target-specific wheel hashes for glibc 2.27+/manylinux-compatible x86_64, macOS 11 arm64, and Windows amd64. Unlisted interpreters, libc families, platforms, and architectures fail closed.",
-    "reviewed_metadata_sha256": "fc5921c4e40550b6649b6dd4c5e0c052c943e5f29696b3536ed2634b4807acb8",
-    "source_date_epoch": 1788900903,
+    "reviewed_metadata_sha256": "45950f59ed511d8c9cabdde70016c71f6bd30a57e7e59d8617ce879fdf927260",
+    "source_date_epoch": 1790816542,
     "subject_binding": "Generated release SBOM binds the exact Git commit; this inventory binds all input manifests, normalized target resolver evidence, and third-party notices by SHA-256.",
     "supported_python_versions": [
       "3.11",
       "3.12"
     ],
     "target_evidence_class": "cross-target-pip-resolution-requiring-native-ci-confirmation",
-    "third_party_notices_sha256": "b90c38b4cce60c06c0090be31ee721d3482640923d9ff6f3c711c047317746d0"
+    "third_party_notices_sha256": "fc2a2953cd3d3bedca429d112fd3945eacb55b276fb540c346f645c92c7de51a"
   },
-  "resolved_at": "2026-09-08T20:55:03Z",
+  "resolved_at": "2026-10-01T01:02:22Z",
   "schema_version": "1.0.0",
   "targets": [
     {
@@ -2590,7 +2590,7 @@
       "platform_policy": "Exact lowest-common lock with target-selected PyPI wheels",
       "profile": "development",
       "python_version": "3.11",
-      "resolution_evidence_sha256": "e0364f900f1dd5bdd8bb64a45edd00522d4881d3babee05ba3860926e3fd75aa",
+      "resolution_evidence_sha256": "cbc3c115349f747c650c4d118bf6b11b7b235f2a7c23080781014af6902c089c",
       "resolver": "pip / PyPI"
     },
     {
@@ -2703,7 +2703,7 @@
       "platform_policy": "Exact lowest-common lock with target-selected PyPI wheels",
       "profile": "development",
       "python_version": "3.12",
-      "resolution_evidence_sha256": "05a998ae9151a4f2c4862c073a0728b6e8fd28e98b9d15f7f28a20b1edb57582",
+      "resolution_evidence_sha256": "d45e8a2c2e67351443b4cdcac3c8d59f45aed9229dec771659a7d7619bc959c5",
       "resolver": "pip / PyPI"
     },
     {
@@ -2816,7 +2816,7 @@
       "platform_policy": "Exact lowest-common lock with target-selected PyPI wheels",
       "profile": "development",
       "python_version": "3.11",
-      "resolution_evidence_sha256": "2f205870e1e168199e7a008bb202becd520156eeec114c74cfeaf13b526deb9e",
+      "resolution_evidence_sha256": "f8a16b0085d96a20cee35ede22df13a01a2316ed792e46288f3fb1587f634e0e",
       "resolver": "pip / PyPI"
     },
     {
@@ -2929,7 +2929,7 @@
       "platform_policy": "Exact lowest-common lock with target-selected PyPI wheels",
       "profile": "development",
       "python_version": "3.12",
-      "resolution_evidence_sha256": "59058ba4293f392940c5f6eceb361eebf7f091e944f24147daec21cca18e3f97",
+      "resolution_evidence_sha256": "068ef8d5743ca2abea371cfb92167b2e8b97e512793051ba7aefa540e74d68d5",
       "resolver": "pip / PyPI"
     },
     {
@@ -3053,7 +3053,7 @@
       "platform_policy": "Exact lowest-common lock with target-selected PyPI wheels",
       "profile": "development",
       "python_version": "3.11",
-      "resolution_evidence_sha256": "8f81a5a6d91811b435ecaaa6d9e6b6869aae6cb10735c170a97efa65df01eca1",
+      "resolution_evidence_sha256": "b0f9d3ee3ad99d64b3fb3f22b2400bb2995b7a8a0d758fa3a1a295ad4c0be37c",
       "resolver": "pip / PyPI"
     },
     {
@@ -3177,7 +3177,7 @@
       "platform_policy": "Exact lowest-common lock with target-selected PyPI wheels",
       "profile": "development",
       "python_version": "3.12",
-      "resolution_evidence_sha256": "5407344f45026be96e50391239098620914cc020ea03773628ebd8e0a43f34fc",
+      "resolution_evidence_sha256": "1accf1b2bf837e547b1895ad031ed969681ef6cdb452342a7fc8711449331708",
       "resolver": "pip / PyPI"
     },
     {
@@ -3505,25 +3505,25 @@
         },
         {
           "artifact": {
-            "filename": "urllib3-2.7.0-py3-none-any.whl",
-            "sha256": "9fb4c81ebbb1ce9531cce37674bbc6f1360472bc18ca9a553ede278ef7276897",
-            "url": "https://files.pythonhosted.org/packages/7f/3e/5db95bcf282c52709639744ca2a8b149baccf648e39c8cc87553df9eae0c/urllib3-2.7.0-py3-none-any.whl"
+            "filename": "urllib3-2.8.0-py3-none-any.whl",
+            "sha256": "0cf3cae568d36aa9576b28dfb35f11328f1cb974ca7647d9475ebb86c75ac6e3",
+            "url": "https://files.pythonhosted.org/packages/92/9d/c4e665119135114480843e7ab388fa94d8480650450e6f8e26b70d323a4c/urllib3-2.8.0-py3-none-any.whl"
           },
           "direct": true,
           "name": "urllib3",
-          "purl": "pkg:pypi/urllib3@2.7.0",
-          "version": "2.7.0"
+          "purl": "pkg:pypi/urllib3@2.8.0",
+          "version": "2.8.0"
         },
         {
           "artifact": {
-            "filename": "weasyprint-69.0-py3-none-any.whl",
-            "sha256": "475951cfd917014de6d4d005caff48c6aa867e7e42b80cd5b16a0484a1609ee6",
-            "url": "https://files.pythonhosted.org/packages/93/cb/208525c6bd5033d7b2589b55e07bec23d9c61bb00703cbaf20ef52c3811f/weasyprint-69.0-py3-none-any.whl"
+            "filename": "weasyprint-70.0-py3-none-any.whl",
+            "sha256": "5043e55e38d2a2af2b2b871e869697b1f65dad5f8b4a3677961d04ceacf9c5fe",
+            "url": "https://files.pythonhosted.org/packages/22/8b/0c53c869f29d3273536b896dd17f092549e34e35ffba4c7a60a6de1cb1c2/weasyprint-70.0-py3-none-any.whl"
           },
           "direct": true,
           "name": "weasyprint",
-          "purl": "pkg:pypi/weasyprint@69.0",
-          "version": "69.0"
+          "purl": "pkg:pypi/weasyprint@70.0",
+          "version": "70.0"
         },
         {
           "artifact": {
@@ -3554,7 +3554,7 @@
       "platform_policy": "Exact lowest-common lock with target-selected PyPI wheels",
       "profile": "runtime",
       "python_version": "3.11",
-      "resolution_evidence_sha256": "f48fb37add2c0923505098991e37837e4708d99d563ef93b3b1bd240675320ef",
+      "resolution_evidence_sha256": "cb0d0608a2e6e36a68ac4d31c834c42812bc4491a58be34454323e1e4c59e32a",
       "resolver": "pip / PyPI"
     },
     {
@@ -3882,25 +3882,25 @@
         },
         {
           "artifact": {
-            "filename": "urllib3-2.7.0-py3-none-any.whl",
-            "sha256": "9fb4c81ebbb1ce9531cce37674bbc6f1360472bc18ca9a553ede278ef7276897",
-            "url": "https://files.pythonhosted.org/packages/7f/3e/5db95bcf282c52709639744ca2a8b149baccf648e39c8cc87553df9eae0c/urllib3-2.7.0-py3-none-any.whl"
+            "filename": "urllib3-2.8.0-py3-none-any.whl",
+            "sha256": "0cf3cae568d36aa9576b28dfb35f11328f1cb974ca7647d9475ebb86c75ac6e3",
+            "url": "https://files.pythonhosted.org/packages/92/9d/c4e665119135114480843e7ab388fa94d8480650450e6f8e26b70d323a4c/urllib3-2.8.0-py3-none-any.whl"
           },
           "direct": true,
           "name": "urllib3",
-          "purl": "pkg:pypi/urllib3@2.7.0",
-          "version": "2.7.0"
+          "purl": "pkg:pypi/urllib3@2.8.0",
+          "version": "2.8.0"
         },
         {
           "artifact": {
-            "filename": "weasyprint-69.0-py3-none-any.whl",
-            "sha256": "475951cfd917014de6d4d005caff48c6aa867e7e42b80cd5b16a0484a1609ee6",
-            "url": "https://files.pythonhosted.org/packages/93/cb/208525c6bd5033d7b2589b55e07bec23d9c61bb00703cbaf20ef52c3811f/weasyprint-69.0-py3-none-any.whl"
+            "filename": "weasyprint-70.0-py3-none-any.whl",
+            "sha256": "5043e55e38d2a2af2b2b871e869697b1f65dad5f8b4a3677961d04ceacf9c5fe",
+            "url": "https://files.pythonhosted.org/packages/22/8b/0c53c869f29d3273536b896dd17f092549e34e35ffba4c7a60a6de1cb1c2/weasyprint-70.0-py3-none-any.whl"
           },
           "direct": true,
           "name": "weasyprint",
-          "purl": "pkg:pypi/weasyprint@69.0",
-          "version": "69.0"
+          "purl": "pkg:pypi/weasyprint@70.0",
+          "version": "70.0"
         },
         {
           "artifact": {
@@ -3931,7 +3931,7 @@
       "platform_policy": "Exact lowest-common lock with target-selected PyPI wheels",
       "profile": "runtime",
       "python_version": "3.12",
-      "resolution_evidence_sha256": "1fbd0ae681e01440d55bdffa46e337144e7aaaa14d1123be2c29d4a989f491f1",
+      "resolution_evidence_sha256": "43399d4f9c554d6d486727209311b94abd5651c5a8efaae9d2eb28c52bc5e8e1",
       "resolver": "pip / PyPI"
     },
     {
@@ -4259,25 +4259,25 @@
         },
         {
           "artifact": {
-            "filename": "urllib3-2.7.0-py3-none-any.whl",
-            "sha256": "9fb4c81ebbb1ce9531cce37674bbc6f1360472bc18ca9a553ede278ef7276897",
-            "url": "https://files.pythonhosted.org/packages/7f/3e/5db95bcf282c52709639744ca2a8b149baccf648e39c8cc87553df9eae0c/urllib3-2.7.0-py3-none-any.whl"
+            "filename": "urllib3-2.8.0-py3-none-any.whl",
+            "sha256": "0cf3cae568d36aa9576b28dfb35f11328f1cb974ca7647d9475ebb86c75ac6e3",
+            "url": "https://files.pythonhosted.org/packages/92/9d/c4e665119135114480843e7ab388fa94d8480650450e6f8e26b70d323a4c/urllib3-2.8.0-py3-none-any.whl"
           },
           "direct": true,
           "name": "urllib3",
-          "purl": "pkg:pypi/urllib3@2.7.0",
-          "version": "2.7.0"
+          "purl": "pkg:pypi/urllib3@2.8.0",
+          "version": "2.8.0"
         },
         {
           "artifact": {
-            "filename": "weasyprint-69.0-py3-none-any.whl",
-            "sha256": "475951cfd917014de6d4d005caff48c6aa867e7e42b80cd5b16a0484a1609ee6",
-            "url": "https://files.pythonhosted.org/packages/93/cb/208525c6bd5033d7b2589b55e07bec23d9c61bb00703cbaf20ef52c3811f/weasyprint-69.0-py3-none-any.whl"
+            "filename": "weasyprint-70.0-py3-none-any.whl",
+            "sha256": "5043e55e38d2a2af2b2b871e869697b1f65dad5f8b4a3677961d04ceacf9c5fe",
+            "url": "https://files.pythonhosted.org/packages/22/8b/0c53c869f29d3273536b896dd17f092549e34e35ffba4c7a60a6de1cb1c2/weasyprint-70.0-py3-none-any.whl"
           },
           "direct": true,
           "name": "weasyprint",
-          "purl": "pkg:pypi/weasyprint@69.0",
-          "version": "69.0"
+          "purl": "pkg:pypi/weasyprint@70.0",
+          "version": "70.0"
         },
         {
           "artifact": {
@@ -4308,7 +4308,7 @@
       "platform_policy": "Exact lowest-common lock with target-selected PyPI wheels",
       "profile": "runtime",
       "python_version": "3.11",
-      "resolution_evidence_sha256": "e6cf1552bf41594f37a7f7ff7a5f01653e386933ac07ce3d52a9367ebdb69d6f",
+      "resolution_evidence_sha256": "4819b04a4becb98423ea0b8ada5f7e4df3d2b3eb0a0b98e212078934c2aeb1bc",
       "resolver": "pip / PyPI"
     },
     {
@@ -4636,25 +4636,25 @@
         },
         {
           "artifact": {
-            "filename": "urllib3-2.7.0-py3-none-any.whl",
-            "sha256": "9fb4c81ebbb1ce9531cce37674bbc6f1360472bc18ca9a553ede278ef7276897",
-            "url": "https://files.pythonhosted.org/packages/7f/3e/5db95bcf282c52709639744ca2a8b149baccf648e39c8cc87553df9eae0c/urllib3-2.7.0-py3-none-any.whl"
+            "filename": "urllib3-2.8.0-py3-none-any.whl",
+            "sha256": "0cf3cae568d36aa9576b28dfb35f11328f1cb974ca7647d9475ebb86c75ac6e3",
+            "url": "https://files.pythonhosted.org/packages/92/9d/c4e665119135114480843e7ab388fa94d8480650450e6f8e26b70d323a4c/urllib3-2.8.0-py3-none-any.whl"
           },
           "direct": true,
           "name": "urllib3",
-          "purl": "pkg:pypi/urllib3@2.7.0",
-          "version": "2.7.0"
+          "purl": "pkg:pypi/urllib3@2.8.0",
+          "version": "2.8.0"
         },
         {
           "artifact": {
-            "filename": "weasyprint-69.0-py3-none-any.whl",
-            "sha256": "475951cfd917014de6d4d005caff48c6aa867e7e42b80cd5b16a0484a1609ee6",
-            "url": "https://files.pythonhosted.org/packages/93/cb/208525c6bd5033d7b2589b55e07bec23d9c61bb00703cbaf20ef52c3811f/weasyprint-69.0-py3-none-any.whl"
+            "filename": "weasyprint-70.0-py3-none-any.whl",
+            "sha256": "5043e55e38d2a2af2b2b871e869697b1f65dad5f8b4a3677961d04ceacf9c5fe",
+            "url": "https://files.pythonhosted.org/packages/22/8b/0c53c869f29d3273536b896dd17f092549e34e35ffba4c7a60a6de1cb1c2/weasyprint-70.0-py3-none-any.whl"
           },
           "direct": true,
           "name": "weasyprint",
-          "purl": "pkg:pypi/weasyprint@69.0",
-          "version": "69.0"
+          "purl": "pkg:pypi/weasyprint@70.0",
+          "version": "70.0"
         },
         {
           "artifact": {
@@ -4685,7 +4685,7 @@
       "platform_policy": "Exact lowest-common lock with target-selected PyPI wheels",
       "profile": "runtime",
       "python_version": "3.12",
-      "resolution_evidence_sha256": "80ec50b7f7e658ad2f18c49d0b22734e5f6704eb7f2694fdbe314f86c409d237",
+      "resolution_evidence_sha256": "8c4c5f0d486ad9159a14e90692e387904a9613c6f887c6339860604b985b7a1c",
       "resolver": "pip / PyPI"
     },
     {
@@ -5013,25 +5013,25 @@
         },
         {
           "artifact": {
-            "filename": "urllib3-2.7.0-py3-none-any.whl",
-            "sha256": "9fb4c81ebbb1ce9531cce37674bbc6f1360472bc18ca9a553ede278ef7276897",
-            "url": "https://files.pythonhosted.org/packages/7f/3e/5db95bcf282c52709639744ca2a8b149baccf648e39c8cc87553df9eae0c/urllib3-2.7.0-py3-none-any.whl"
+            "filename": "urllib3-2.8.0-py3-none-any.whl",
+            "sha256": "0cf3cae568d36aa9576b28dfb35f11328f1cb974ca7647d9475ebb86c75ac6e3",
+            "url": "https://files.pythonhosted.org/packages/92/9d/c4e665119135114480843e7ab388fa94d8480650450e6f8e26b70d323a4c/urllib3-2.8.0-py3-none-any.whl"
           },
           "direct": true,
           "name": "urllib3",
-          "purl": "pkg:pypi/urllib3@2.7.0",
-          "version": "2.7.0"
+          "purl": "pkg:pypi/urllib3@2.8.0",
+          "version": "2.8.0"
         },
         {
           "artifact": {
-            "filename": "weasyprint-69.0-py3-none-any.whl",
-            "sha256": "475951cfd917014de6d4d005caff48c6aa867e7e42b80cd5b16a0484a1609ee6",
-            "url": "https://files.pythonhosted.org/packages/93/cb/208525c6bd5033d7b2589b55e07bec23d9c61bb00703cbaf20ef52c3811f/weasyprint-69.0-py3-none-any.whl"
+            "filename": "weasyprint-70.0-py3-none-any.whl",
+            "sha256": "5043e55e38d2a2af2b2b871e869697b1f65dad5f8b4a3677961d04ceacf9c5fe",
+            "url": "https://files.pythonhosted.org/packages/22/8b/0c53c869f29d3273536b896dd17f092549e34e35ffba4c7a60a6de1cb1c2/weasyprint-70.0-py3-none-any.whl"
           },
           "direct": true,
           "name": "weasyprint",
-          "purl": "pkg:pypi/weasyprint@69.0",
-          "version": "69.0"
+          "purl": "pkg:pypi/weasyprint@70.0",
+          "version": "70.0"
         },
         {
           "artifact": {
@@ -5062,7 +5062,7 @@
       "platform_policy": "Exact lowest-common lock with target-selected PyPI wheels",
       "profile": "runtime",
       "python_version": "3.11",
-      "resolution_evidence_sha256": "9c035658692ef6000c1c1a6adca6bb1c03388e7c327244ad740e7316fc776d06",
+      "resolution_evidence_sha256": "08e4d9bd13a5063ed020258ee1e9748ccc9b6f873989e7b2b26a1afee11ba9c6",
       "resolver": "pip / PyPI"
     },
     {
@@ -5390,25 +5390,25 @@
         },
         {
           "artifact": {
-            "filename": "urllib3-2.7.0-py3-none-any.whl",
-            "sha256": "9fb4c81ebbb1ce9531cce37674bbc6f1360472bc18ca9a553ede278ef7276897",
-            "url": "https://files.pythonhosted.org/packages/7f/3e/5db95bcf282c52709639744ca2a8b149baccf648e39c8cc87553df9eae0c/urllib3-2.7.0-py3-none-any.whl"
+            "filename": "urllib3-2.8.0-py3-none-any.whl",
+            "sha256": "0cf3cae568d36aa9576b28dfb35f11328f1cb974ca7647d9475ebb86c75ac6e3",
+            "url": "https://files.pythonhosted.org/packages/92/9d/c4e665119135114480843e7ab388fa94d8480650450e6f8e26b70d323a4c/urllib3-2.8.0-py3-none-any.whl"
           },
           "direct": true,
           "name": "urllib3",
-          "purl": "pkg:pypi/urllib3@2.7.0",
-          "version": "2.7.0"
+          "purl": "pkg:pypi/urllib3@2.8.0",
+          "version": "2.8.0"
         },
         {
           "artifact": {
-            "filename": "weasyprint-69.0-py3-none-any.whl",
-            "sha256": "475951cfd917014de6d4d005caff48c6aa867e7e42b80cd5b16a0484a1609ee6",
-            "url": "https://files.pythonhosted.org/packages/93/cb/208525c6bd5033d7b2589b55e07bec23d9c61bb00703cbaf20ef52c3811f/weasyprint-69.0-py3-none-any.whl"
+            "filename": "weasyprint-70.0-py3-none-any.whl",
+            "sha256": "5043e55e38d2a2af2b2b871e869697b1f65dad5f8b4a3677961d04ceacf9c5fe",
+            "url": "https://files.pythonhosted.org/packages/22/8b/0c53c869f29d3273536b896dd17f092549e34e35ffba4c7a60a6de1cb1c2/weasyprint-70.0-py3-none-any.whl"
           },
           "direct": true,
           "name": "weasyprint",
-          "purl": "pkg:pypi/weasyprint@69.0",
-          "version": "69.0"
+          "purl": "pkg:pypi/weasyprint@70.0",
+          "version": "70.0"
         },
         {
           "artifact": {
@@ -5439,7 +5439,7 @@
       "platform_policy": "Exact lowest-common lock with target-selected PyPI wheels",
       "profile": "runtime",
       "python_version": "3.12",
-      "resolution_evidence_sha256": "20abafe7d79ad622b18217b25b5d2fd540025f88beb527499850b1e8d2c8badf",
+      "resolution_evidence_sha256": "4d390c117e9ec5c0e7eefa74308b535820c0cada19ef242e3faa15dc0366060d",
       "resolver": "pip / PyPI"
     }
   ]

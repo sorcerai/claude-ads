@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import re
 from typing import Any, Iterable, Mapping
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 SCHEMA_VERSION = "1.0.0"
 
@@ -135,7 +136,7 @@ def plan_slices(
             seen_cntry.add(c_str)
             dedup_countries.append(c_str)
 
-    sources = list(sources)
+    sources = list(dict.fromkeys(sources))
     if not dedup_competitors or not dedup_countries or not sources:
         raise ValueError("competitors, countries, and sources must each be non-empty")
 
@@ -152,15 +153,34 @@ def plan_slices(
     if unknown:
         raise ValueError(f"unknown source(s): {', '.join(unknown)}")
 
+    # Preserve existing IDs for unambiguous names. Reject collisions instead of
+    # silently assigning two independent workers the same artifact destination.
+    competitor_slugs: dict[str, str] = {}
+    for competitor in dedup_competitors:
+        slug = slugify(competitor)
+        if slug in competitor_slugs:
+            raise ValueError(
+                "competitor names collide after slug normalization; "
+                "supply distinct advertiser identifiers"
+            )
+        competitor_slugs[slug] = competitor
+
+    total_slices = len(sources) * len(competitor_slugs) * len(dedup_countries)
+    if total_slices > MAX_TOTAL_SLICES:
+        raise ValueError(
+            f"total planned slices exceed maximum budget ({total_slices} > {MAX_TOTAL_SLICES})"
+        )
+
     tasks: list[dict[str, Any]] = []
     for source in sources:
         profile = SOURCES[source]
-        for competitor in dedup_competitors:
+        source_slug = slugify(source)
+        for competitor_slug, competitor in competitor_slugs.items():
             for country in dedup_countries:
-                task_id = f"{run_id}.{slugify(source)}.{slugify(competitor)}.{country.upper()}"
+                task_id = f"{run_id}.{source_slug}.{competitor_slug}.{country}"
                 scope = [
                     f"Competitor: {competitor}",
-                    f"Country: {country.upper()}",
+                    f"Country: {country}",
                     f"Source: {profile['label']}",
                 ]
                 recovery = [
@@ -193,7 +213,7 @@ def plan_slices(
                         "role": "research-worker",
                         "objective": (
                             f"Collect observable paid-ad evidence for {competitor} in "
-                            f"{country.upper()} from {profile['label']}."
+                            f"{country} from {profile['label']}."
                         ),
                         "scope": scope,
                         "exclusions": [
@@ -221,10 +241,10 @@ def plan_slices(
                         "status": "queued",
                     }
                 )
-    if len(tasks) > MAX_TOTAL_SLICES:
-        raise ValueError(
-            f"total planned slices exceed maximum budget ({len(tasks)} > {MAX_TOTAL_SLICES})"
-        )
+    if len({task["task_id"] for task in tasks}) != len(tasks) or len(
+        {task["output_contract"]["destination"] for task in tasks}
+    ) != len(tasks):
+        raise ValueError("planned tasks collide on identity or output destination")
     return tasks
 
 
@@ -260,27 +280,97 @@ POLITICAL_ONLY_FIELDS = (
 PROVENANCE = ("ad-library-api", "operator-supplied")
 
 
-# The archive appends the caller's credential to every ad_snapshot_url it
-# returns. Today Meta sends the bare parameter name with no value, but that is
-# Meta's choice on the day, not a contract — and these observations get embedded
-# in other repositories, where a populated one would be committed. Strip it at
-# the point the row becomes an observation, so no downstream caller has to
-# remember. Found because adsinfra's committed-record guard test rejected an
-# overlay that carried it through from here.
-_CREDENTIAL_PARAM_RE = re.compile(r"([?&])access_token(=[^&]*)?(&|$)")
+# Snapshot locators are persisted downstream. Strip recognized credentials,
+# then accept only known public query fields: an unknown name could hide a
+# credential and must not be recorded. Fragments may also carry credentials.
+# This is locator sanitation, not network authorization or an SSRF boundary.
+_SNAPSHOT_CREDENTIAL_KEYS = frozenset({"key", "code"})
+_SNAPSHOT_CREDENTIAL_SUFFIXES = (
+    "token",
+    "secret",
+    "secretkey",
+    "signature",
+    "sig",
+    "credential",
+    "credentials",
+    "password",
+    "passwd",
+    "apikey",
+    "accesskey",
+    "keyid",
+    "privatekey",
+    "authorization",
+    "auth",
+    "assertion",
+    "verifier",
+)
+_SNAPSHOT_PUBLIC_QUERY_KEYS = frozenset({"id", "tag", "blank"})
+_INVALID_PERCENT_ESCAPE = re.compile(r"%(?![0-9A-Fa-f]{2})")
+_SNAPSHOT_QUERY_NAME = re.compile(r"[A-Za-z0-9_-]+")
+_SNAPSHOT_PUBLIC_VALUE = re.compile(r"[A-Za-z0-9._~-]*")
 
 
-def _strip_snapshot_credential(url: Any) -> Any:
-    """Return a snapshot URL with the credential parameter removed.
+def _is_snapshot_credential(normalized_key: str) -> bool:
+    return normalized_key in _SNAPSHOT_CREDENTIAL_KEYS or normalized_key.replace(
+        "_", ""
+    ).endswith(_SNAPSHOT_CREDENTIAL_SUFFIXES)
 
-    Non-strings pass through untouched: a missing ad_snapshot_url is None, and
-    turning that into "" would make an absent snapshot look like an empty one.
+
+def _strip_snapshot_credential(url: Any) -> str | None:
+    """Remove explicit locator credentials without echoing malformed input.
+
+    Missing locators stay absent; non-string values fail closed. Query names
+    are decoded once; ambiguous nested encoding and raw semicolon
+    separators are rejected rather than passed to a different URL parser.
     """
-    if not isinstance(url, str):
-        return url
-    return _CREDENTIAL_PARAM_RE.sub(
-        lambda match: match.group(1) if match.group(3) == "&" else "", url
-    )
+    if url is None:
+        return None
+    try:
+        if (
+            not isinstance(url, str)
+            or not url
+            or len(url) > 8192
+            or "\\" in url
+            or any(char.isspace() or ord(char) < 32 or ord(char) == 127 for char in url)
+            or _INVALID_PERCENT_ESCAPE.search(url) is not None
+        ):
+            raise ValueError
+        parsed = urlsplit(url)
+        if (
+            parsed.scheme not in {"http", "https"}
+            or not parsed.hostname
+            or "%" in parsed.hostname
+            or parsed.username is not None
+            or parsed.password is not None
+            or ";" in parsed.query
+        ):
+            raise ValueError
+        # Accessing port validates malformed and out-of-range port syntax.
+        _ = parsed.port
+        pairs = parse_qsl(parsed.query, keep_blank_values=True, max_num_fields=128)
+        # Decoded public values are scalar identifiers, not arbitrary encoded
+        # documents; escaped JSON, XML, whitespace and nested URLs fail closed.
+        safe_pairs = []
+        for key, value in pairs:
+            if _SNAPSHOT_QUERY_NAME.fullmatch(key) is None:
+                raise ValueError
+            normalized_key = key.casefold().replace("-", "_")
+            if _is_snapshot_credential(normalized_key):
+                continue
+            if (
+                normalized_key not in _SNAPSHOT_PUBLIC_QUERY_KEYS
+                or _SNAPSHOT_PUBLIC_VALUE.fullmatch(value) is None
+                or (normalized_key == "blank" and value)
+            ):
+                raise ValueError
+            safe_pairs.append((key, value))
+        return urlunsplit(
+            (parsed.scheme, parsed.netloc, parsed.path, urlencode(safe_pairs), "")
+        )
+    except ValueError:
+        raise ValueError(
+            "snapshot URL is invalid or contains ambiguous credentials"
+        ) from None
 
 
 def normalize_archived_ads(
@@ -330,7 +420,11 @@ def normalize_archived_ads(
             )
             descriptions = list(
                 ad.get("ad_creative_link_descriptions")
-                or ([ad["description"]] if "description" in ad and ad["description"] else [])
+                or (
+                    [ad["description"]]
+                    if "description" in ad and ad["description"]
+                    else []
+                )
             )
             captions = list(
                 ad.get("ad_creative_link_captions")
@@ -352,13 +446,17 @@ def normalize_archived_ads(
             or (disclosed if disclosed else None)
         )
 
-        advertiser = ad.get("page_name") or ad.get("advertiser") or ad.get("advertiser_name")
+        advertiser = (
+            ad.get("page_name") or ad.get("advertiser") or ad.get("advertiser_name")
+        )
         advertiser_page_id = (
             ad.get("page_id") or ad.get("advertiser_page_id") or ad.get("advertiser_id")
         )
-        snapshot_raw = (
-            ad.get("ad_snapshot_url") or ad.get("snapshot_url") or ad.get("source_url")
-        )
+        snapshot_raw = ad.get("ad_snapshot_url")
+        if snapshot_raw is None:
+            snapshot_raw = ad.get("snapshot_url")
+        if snapshot_raw is None:
+            snapshot_raw = ad.get("source_url")
         snapshot_url = _strip_snapshot_credential(snapshot_raw)
 
         publisher_platforms = list(
@@ -367,10 +465,15 @@ def normalize_archived_ads(
         )
         languages = list(ad.get("languages") or [])
         delivery_start = (
-            ad.get("ad_delivery_start_time") or ad.get("delivery_start") or ad.get("first_shown")
+            ad.get("ad_delivery_start_time")
+            or ad.get("delivery_start")
+            or ad.get("first_shown")
         )
         delivery_stop = (
-            ad.get("ad_delivery_stop_time") or ad.get("delivery_stop") or ad.get("last_shown") or None
+            ad.get("ad_delivery_stop_time")
+            or ad.get("delivery_stop")
+            or ad.get("last_shown")
+            or None
         )
 
         observation_id = f"{row_platform}-ad-library.{ad_id}"
@@ -399,7 +502,6 @@ def normalize_archived_ads(
 VISUAL_MEDIA_TYPES = ("single_image", "video", "carousel", "other")
 
 
-
 _RFC3339_RE = re.compile(
     r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$"
 )
@@ -408,6 +510,7 @@ _RFC3339_RE = re.compile(
 def _require_rfc3339(value: str) -> None:
     if not isinstance(value, str) or not _RFC3339_RE.match(value):
         raise ValueError(f"captured_at must be an RFC3339 timestamp, got {value!r}")
+
 
 def merge_operator_visuals(
     observations: Iterable[Mapping[str, Any]],
@@ -473,7 +576,9 @@ def _scripts(text: str) -> set[str]:
     }
 
 
-def mixed_script_advertisers(observations: Iterable[Mapping[str, Any]]) -> list[dict[str, Any]]:
+def mixed_script_advertisers(
+    observations: Iterable[Mapping[str, Any]],
+) -> list[dict[str, Any]]:
     """Flag advertiser names that blend Latin with a confusable alphabet.
 
     Substituting Cyrillic or Greek lookalikes into a brand name renders

@@ -28,12 +28,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   enters a URL, log line, or error string, and server-supplied paging cursors
   are re-validated against the Graph API host before that header is resent.
 * **Coverage disclosure before dispatch**: outside the EU the archive returns
-  only social issue, election, and political ads, so a commercial query
-  legitimately yields zero rows. The script warns first, because an unexplained
-  empty list reads as "this competitor runs no ads". Special ad categories get
-  a separate, weaker warning: the reference documents no geographic limit for
-  them either way, so their empty result is reported as unconfirmed coverage
-  rather than absence (CLM-0214).
+  commercial ads that also reached the EU or UK, plus social issue, election,
+  and political ads. Results are real but partial, so the script warns before
+  dispatch and does not treat a thin or empty result as market-wide absence.
+  Special ad categories follow the same geographic rule (CLM-0214).
 * **Tiered field sets**: political-only and UK/EU-only fields are opt-in via
   `--include-political-fields` and `--include-eu-fields`, keeping undisclosed
   fields out of the default request so an absent field is never mistaken for a
@@ -52,9 +50,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * **Competitor fanout planner** (`claude_ads_core/competitor_fanout.py`, CLI
   `plan-fanout`): emits one schema-valid `orchestration-task` packet per
   competitor x country x source. Every packet declares an empty `depends_on` and
-  a distinct single-writer destination, so slices are independent by
-  construction and no two workers can race a file; identical inputs yield
-  identical task IDs, keeping the supersedes chain meaningful across reruns.
+  a distinct single-writer destination, with source, competitor, and country in
+  its task identity; duplicate source IDs are removed and colliding competitor
+  slugs are rejected before dispatch. Identical valid inputs yield identical
+  task IDs, keeping the supersedes chain meaningful across reruns.
   `coverage_summary` refuses to call a fanout complete unless every slice
   returned `ok`, so a partial sweep cannot read as full coverage.
 * **Third credential-free source**: paid SERP comparison via
@@ -67,6 +66,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   under `untrusted_creative`, and undisclosed political metrics normalize to
   `None` rather than zero, so an undisclosed budget can never be read as a
   competitor spending nothing.
+  Snapshot locators are reduced to safe public scalar query fields, fragments
+  are removed, and malformed, unknown, structured, or non-string locators fail
+  closed; legacy checkpoints with noncanonical snapshot URLs cannot resume.
 * **Documented that Ad Library scraping is prohibited**, not merely
   discouraged: `facebook.com/robots.txt` ends in `User-agent: * / Disallow: /`
   and its header requires express written permission for automated collection.
@@ -89,6 +91,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   arm64 and Windows amd64 remain supported. Refreshes the exact binary-only
   locks and twelve target evidence records for `cryptography` 50.0.1 and Pillow
   12.3.0 without advisory exceptions or source-build fallback.
+
+* **Audited dependency refresh**: raises the hash-locked runtime minimums to
+  `urllib3` 2.8.0 and `WeasyPrint` 70.0 to address the reported security
+  advisories. Regenerates all twelve supported-target resolution records,
+  publisher-wheel license evidence, and the versioned native-runtime source.
+  The PDF export path is smoke-tested with the new wheels; this does not
+  establish native-library availability on every supported host.
 
 * **Scoped breaking v2 schema migration**: `AccountSnapshot`, `Finding`, and `ReportBundle`
   now use v2.0.0 contracts. `AccountSnapshot` requires `MeasurementContext`, and
@@ -129,6 +138,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   owns run and artifact registration, including manifest updates.
 
 ### Fixed
+
+* **Lifecycle defaults and private setup writes**: default v2 setup and public
+  audit emit unknown encryption, unassigned retention without a deadline, and
+  pending deletion without inventing verification. Explicit setup retention
+  remains operator-defined. Public-classified setup replaces a permissive file
+  atomically inside a validated private root; non-public persistence and
+  permissive output directories fail closed.
+
+* **Private audit/report/export errors**: CLI audit, render, and export-ingestion
+  failures now emit bounded stage descriptions rather than raw input paths,
+  registry errors, Windows ACL subprocess output, filesystem diagnostics, or
+  rejected export values. Render failures distinguish committed replacement from
+  unknown outcomes and direct operators to inspect the destination.
 
 * **Malformed Ad Library creative metadata**: rejects non-list text fields and
   non-string list entries before adding ads or advancing page/cursor state.

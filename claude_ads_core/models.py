@@ -86,7 +86,7 @@ class AdapterRecord(TypedDict):
 
 
 class RunManifest(TypedDict):
-    schema_version: Literal["1.0.0"]
+    schema_version: Literal["1.0.0", "2.0.0"]
     run_id: str
     started_at: str
     scopes: list[str]
@@ -166,7 +166,7 @@ class ScoringOutput(TypedDict):
     categories: list[CategoryScoreOutput]
 
 class ReportBundle(TypedDict):
-    schema_version: Literal["2.0.0"]
+    schema_version: Literal["2.0.0", "3.0.0"]
     run_manifest: RunManifest
     account_snapshot: AccountSnapshot
     control_definitions: list[ControlDefinition]

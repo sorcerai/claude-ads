@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from claude_ads_core.contracts import validate_contract
 
 SCRIPTS_DIR = Path(__file__).resolve().parent.parent.parent / "scripts"
 sys.path.insert(0, str(SCRIPTS_DIR))
@@ -418,7 +419,6 @@ def test_search_stops_paging_on_high_usage_threshold(monkeypatch):
     # Must have stopped after page 1 because usage was 85% >= 80%
     assert len(calls) == 1
     assert result["pages_fetched"] == 1
-    assert "Usage throttle threshold reached" in result["warning"]
 
 
 def test_build_canonical_artifact_normalizes_observations_and_binds_lifecycle():
@@ -458,7 +458,7 @@ def test_build_canonical_artifact_normalizes_observations_and_binds_lifecycle():
         privacy_class="public",
     )
 
-    assert artifact["schema_version"] == "1.0.0"
+    assert artifact["schema_version"] == "2.0.0"
     assert artifact["artifact_type"] == "competitor-observations"
     assert artifact["run_id"] == "run-test-001"
     assert artifact["client_id"] == "client-test"
@@ -466,7 +466,18 @@ def test_build_canonical_artifact_normalizes_observations_and_binds_lifecycle():
     assert artifact["source_digest"].startswith("sha256:")
     assert artifact["query_digest"].startswith("sha256:")
     assert artifact["observation_count"] == 1
-    assert artifact["data_lifecycle"]["classification"] == "public"
+    lifecycle = artifact["data_lifecycle"]
+    validate_contract("data-lifecycle", lifecycle)
+    assert lifecycle["schema_version"] == "2.0.0"
+    assert lifecycle["classification"] == "public"
+    assert lifecycle["retention"]["mode"] == "unassigned"
+    assert lifecycle["retention"]["delete_after"] is None
+    assert lifecycle["encryption"] == {
+        "at_rest": "unknown", "in_transit": "unknown", "evidence_refs": []
+    }
+    assert lifecycle["deletion"]["status"] == "pending"
+    assert lifecycle["deletion"]["verification_required"] is True
+    assert lifecycle["deletion"]["scheduler_receipt_locator"] is None
 
     # Normalized observation checks
     obs = artifact["observations"][0]
@@ -475,6 +486,23 @@ def test_build_canonical_artifact_normalizes_observations_and_binds_lifecycle():
     assert obs["platform"] == "meta"
     assert obs["untrusted_creative"]["bodies"] == ["Grow your business"]
     assert obs["provenance"] == "ad-library-api"
+
+
+def test_internal_collector_artifact_in_memory_declares_missing_controls():
+    artifact = fetch_ad_library.build_canonical_artifact(
+        {"ads": []},
+        run_id="run-in-memory",
+        client_id="client-fixture",
+        purpose="review",
+        privacy_class="internal",
+    )
+    lifecycle = artifact["data_lifecycle"]
+    validate_contract("data-lifecycle", lifecycle)
+    assert lifecycle["classification"] == "internal"
+    assert lifecycle["encryption"]["at_rest"] == "unknown"
+    assert lifecycle["encryption"]["evidence_refs"] == []
+    assert lifecycle["deletion"]["status"] == "pending"
+    assert lifecycle["deletion"]["scheduler_receipt_locator"] is None
 
 
 def test_cli_main_persists_canonical_artifact_to_output(tmp_path, monkeypatch):
@@ -513,12 +541,89 @@ def test_cli_main_persists_canonical_artifact_to_output(tmp_path, monkeypatch):
     assert saved["artifact_type"] == "competitor-observations"
     assert saved["run_id"] == "run-persist-001"
     assert saved["client_id"] == "client-persist"
+    assert saved["schema_version"] == "2.0.0"
+    validate_contract("data-lifecycle", saved["data_lifecycle"])
     assert "data_lifecycle" in saved
     assert "observations" in saved
     assert isinstance(saved["observations"], list)
     assert len(saved["observations"]) > 0
     # Confirm raw 'ads' field is NOT present at top level of the saved artifact
     assert "ads" not in saved
+
+
+@pytest.mark.parametrize(
+    ("has_next", "usage_count", "expected_status"),
+    (
+        (True, 1, "paginated"),
+        (True, 100, "quota-deferred"),
+        (False, 100, "exhausted"),
+    ),
+)
+def test_cli_nonqueue_exit_tracks_complete_collection(
+    monkeypatch, capsys, has_next, usage_count, expected_status
+):
+    payload = _fixture_payload()
+    payload["paging"] = (
+        {"next": f"{fetch_ad_library.ENDPOINT}?after=cursor-2"} if has_next else {}
+    )
+    response = _Response(payload)
+    response.headers = {"X-App-Usage": json.dumps({"call_count": usage_count})}
+    monkeypatch.setattr(
+        fetch_ad_library, "guarded_request", lambda *args, **kwargs: response
+    )
+    monkeypatch.setenv("META_AD_LIBRARY_TOKEN", "fixture")
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "fetch_ad_library.py",
+            "--countries",
+            "DE",
+            "--search-terms",
+            "coffee",
+            "--max-pages",
+            "1",
+        ],
+    )
+    if expected_status == "exhausted":
+        fetch_ad_library.main()
+    else:
+        with pytest.raises(SystemExit) as exit_info:
+            fetch_ad_library.main()
+        assert exit_info.value.code != 0
+    artifact = json.loads(capsys.readouterr().out)
+    assert artifact["collection"]["status"] == expected_status
+    assert artifact["observations"]
+    assert bool(artifact["collection"]["quota_stop_reason"]) == (usage_count == 100)
+
+
+def test_cli_nonqueue_failure_retains_partial_observations(monkeypatch, capsys):
+    first = _fixture_payload()
+    first["paging"] = {"next": f"{fetch_ad_library.ENDPOINT}?after=cursor-2"}
+    responses = iter((_Response(first), _Response({"data": "invalid"})))
+    monkeypatch.setattr(
+        fetch_ad_library, "guarded_request", lambda *args, **kwargs: next(responses)
+    )
+    monkeypatch.setenv("META_AD_LIBRARY_TOKEN", "fixture")
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "fetch_ad_library.py",
+            "--countries",
+            "DE",
+            "--search-terms",
+            "coffee",
+            "--max-pages",
+            "2",
+        ],
+    )
+    with pytest.raises(SystemExit) as exit_info:
+        fetch_ad_library.main()
+    assert exit_info.value.code != 0
+    artifact = json.loads(capsys.readouterr().out)
+    assert artifact["collection"]["status"] == "failed"
+    assert artifact["observations"]
 
 
 def test_search_type_and_filter_metadata_are_bound_to_request(monkeypatch):

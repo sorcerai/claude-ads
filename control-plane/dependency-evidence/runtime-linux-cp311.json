@@ -321,25 +321,25 @@
     },
     {
       "artifact": {
-        "filename": "urllib3-2.7.0-py3-none-any.whl",
-        "sha256": "9fb4c81ebbb1ce9531cce37674bbc6f1360472bc18ca9a553ede278ef7276897",
-        "url": "https://files.pythonhosted.org/packages/7f/3e/5db95bcf282c52709639744ca2a8b149baccf648e39c8cc87553df9eae0c/urllib3-2.7.0-py3-none-any.whl"
+        "filename": "urllib3-2.8.0-py3-none-any.whl",
+        "sha256": "0cf3cae568d36aa9576b28dfb35f11328f1cb974ca7647d9475ebb86c75ac6e3",
+        "url": "https://files.pythonhosted.org/packages/92/9d/c4e665119135114480843e7ab388fa94d8480650450e6f8e26b70d323a4c/urllib3-2.8.0-py3-none-any.whl"
       },
       "direct": true,
       "name": "urllib3",
-      "purl": "pkg:pypi/urllib3@2.7.0",
-      "version": "2.7.0"
+      "purl": "pkg:pypi/urllib3@2.8.0",
+      "version": "2.8.0"
     },
     {
       "artifact": {
-        "filename": "weasyprint-69.0-py3-none-any.whl",
-        "sha256": "475951cfd917014de6d4d005caff48c6aa867e7e42b80cd5b16a0484a1609ee6",
-        "url": "https://files.pythonhosted.org/packages/93/cb/208525c6bd5033d7b2589b55e07bec23d9c61bb00703cbaf20ef52c3811f/weasyprint-69.0-py3-none-any.whl"
+        "filename": "weasyprint-70.0-py3-none-any.whl",
+        "sha256": "5043e55e38d2a2af2b2b871e869697b1f65dad5f8b4a3677961d04ceacf9c5fe",
+        "url": "https://files.pythonhosted.org/packages/22/8b/0c53c869f29d3273536b896dd17f092549e34e35ffba4c7a60a6de1cb1c2/weasyprint-70.0-py3-none-any.whl"
       },
       "direct": true,
       "name": "weasyprint",
-      "purl": "pkg:pypi/weasyprint@69.0",
-      "version": "69.0"
+      "purl": "pkg:pypi/weasyprint@70.0",
+      "version": "70.0"
     },
     {
       "artifact": {
@@ -378,23 +378,23 @@
     "pip cross-target resolution used both manylinux_2_27_x86_64 and manylinux2014_x86_64 selectors so target-compatible Pillow manylinux_2_27 and Playwright manylinux1 wheels are both considered; selected target artifacts remain exact and require native CI confirmation."
   ],
   "platform_policy": "Exact lowest-common lock with target-selected PyPI wheels",
-  "resolved_at": "2026-09-08T20:55:03Z",
+  "resolved_at": "2026-10-01T01:02:22Z",
   "resolver": "pip / PyPI",
   "schema_version": "1.0.0",
-  "source_date_epoch": 1788900903,
+  "source_date_epoch": 1790816542,
   "source_environment": {
     "implementation_name": "cpython",
-    "implementation_version": "3.14.6",
+    "implementation_version": "3.12.8",
     "os_name": "posix",
     "platform_machine": "arm64",
     "platform_python_implementation": "CPython",
     "platform_release": "25.5.0",
     "platform_system": "Darwin",
     "platform_version": "Darwin Kernel Version 25.5.0: Mon Apr 27 20:41:12 PDT 2026; root:xnu-12377.121.6~2/RELEASE_ARM64_T6050",
-    "python_full_version": "3.14.6",
-    "python_version": "3.14",
+    "python_full_version": "3.12.8",
+    "python_version": "3.12",
     "sys_platform": "darwin"
   },
-  "source_pip_version": "26.1.2",
-  "source_report_sha256": "52ba23340325482beb03de7b644694e72c04658a76826c5c8feafe6bfbf32b88"
+  "source_pip_version": "26.2.1",
+  "source_report_sha256": "2f7584676e5e6b26ee9b408080d418524782e32f567832a193e80a426da9381b"
 }
