@@ -141,7 +141,12 @@ def generate_setup_profile(
         payload_bytes = (json.dumps(profile, indent=2, sort_keys=True) + "\n").encode("utf-8")
         try:
             atomic_write_report(target.parent, target.name, payload_bytes)
-        except ReportRenderError:
+        except ReportRenderError as exc:
+            if exc.destination_untouched:
+                raise SetupError(
+                    "setup profile persistence failed before replacement; "
+                    "destination unchanged"
+                ) from None
             raise SetupError(
                 "setup profile persistence outcome is uncertain; inspect destination"
             ) from None

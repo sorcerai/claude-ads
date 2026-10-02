@@ -90,8 +90,10 @@ def test_public_setup_rejects_permissive_parent_without_replacing_file(tmp_path)
     tmp_path.chmod(0o755)
     existing = tmp_path / "setup.json"
     existing.write_bytes(b"prior-private-content")
-    with pytest.raises(SetupError, match="persistence"):
+    with pytest.raises(SetupError, match="destination unchanged") as failure:
         generate_setup_profile(privacy_class="public", output_path=existing)
+    assert "uncertain" not in str(failure.value)
+    assert str(tmp_path) not in str(failure.value)
     assert existing.read_bytes() == b"prior-private-content"
 
 
@@ -103,8 +105,9 @@ def test_setup_fsync_failure_preserves_previous_bytes(tmp_path, monkeypatch):
         raise OSError("fixture blocked fsync")
 
     monkeypatch.setattr(os, "fsync", reject_fsync)
-    with pytest.raises(SetupError, match="persistence") as failure:
+    with pytest.raises(SetupError, match="destination unchanged") as failure:
         generate_setup_profile(privacy_class="public", output_path=output)
+    assert "uncertain" not in str(failure.value)
     assert "fixture blocked fsync" not in str(failure.value)
     assert output.read_bytes() == b"prior-private-content"
 
@@ -173,7 +176,7 @@ def test_setup_reports_uncertain_postreplacement_verification_without_private_de
 
     monkeypatch.setattr(os, "replace", replacement_then_verify)
     monkeypatch.setattr(os, "fsync", fail_after_replacement)
-    with pytest.raises(SetupError, match="uncertain|may have occurred") as failure:
+    with pytest.raises(SetupError, match="uncertain") as failure:
         generate_setup_profile(privacy_class="public", output_path=output)
     assert "fixture-private-verification-detail" not in str(failure.value)
     validate_workflow_contract("setup-profile", json.loads(output.read_text(encoding="utf-8")))

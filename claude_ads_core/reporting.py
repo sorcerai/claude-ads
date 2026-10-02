@@ -33,6 +33,12 @@ _POSIX_CAPABILITY_FUNCS = {
 class ReportRenderError(ValueError):
     """Raised when a report cannot be rendered or written safely."""
 
+    destination_untouched = False
+
+    def __init__(self, *args: object, destination_untouched: bool = False) -> None:
+        super().__init__(*args)
+        self.destination_untouched = destination_untouched
+
 
 class PDFDependencyError(ReportRenderError):
     """Raised when the optional PDF renderer is unavailable."""
@@ -827,7 +833,9 @@ def _atomic_write_posix(
     try:
         root_path = Path(root).absolute()
     except (OSError, RuntimeError) as exc:
-        raise ReportRenderError(f"report root normalization failed: {exc}") from exc
+        raise ReportRenderError(
+            f"report root normalization failed: {exc}", destination_untouched=True
+        ) from exc
 
     root_walk_fds: list[int] = []
     root_fd = None
@@ -1064,6 +1072,10 @@ def _atomic_write_posix(
                 else:
                     exc.add_note(f"temporary cleanup failed: {cleanup_error}")
         primary_error = normalize_error(exc)
+        if isinstance(primary_error, ReportRenderError):
+            primary_error.destination_untouched = not replace_called or (
+                not replace_returned and not outcome_unknown
+            )
     finally:
         for file_descriptor in reversed(opened_parent_fds):
             try:
@@ -1628,19 +1640,26 @@ def _atomic_write_windows(
     try:
         root_path = Path(root).expanduser().absolute()
     except (OSError, RuntimeError):
-        raise ReportRenderError("report root normalization failed") from None
+        raise ReportRenderError(
+            "report root normalization failed", destination_untouched=True
+        ) from None
     try:
         output_path = _validate_windows_tree(root_path, relative)
-    except ReportRenderError:
+    except ReportRenderError as exc:
+        exc.destination_untouched = True
         raise
     except OSError:
-        raise ReportRenderError("report output path validation failed") from None
+        raise ReportRenderError(
+            "report output path validation failed", destination_untouched=True
+        ) from None
     try:
         file_descriptor, temporary_name = tempfile.mkstemp(
             prefix=f".{output_path.name}.", dir=output_path.parent
         )
     except OSError:
-        raise ReportRenderError("report output temporary file failed") from None
+        raise ReportRenderError(
+            "report output temporary file failed", destination_untouched=True
+        ) from None
 
     temporary_path = Path(temporary_name)
     temporary_owned = True
@@ -1770,6 +1789,10 @@ def _atomic_write_windows(
             primary_error = ReportRenderError("report output operation failed")
         else:
             primary_error = exc
+        if isinstance(primary_error, ReportRenderError):
+            primary_error.destination_untouched = not replace_called or (
+                not replace_returned and not outcome_unknown
+            )
     if primary_error is not None:
         raise primary_error
     return output_path
@@ -1788,7 +1811,11 @@ def atomic_write_report(
 ) -> Path:
     """Atomically write report content beneath a safe root."""
 
-    _validate_report_destination(destination)
+    try:
+        _validate_report_destination(destination)
+    except ReportRenderError as exc:
+        exc.destination_untouched = True
+        raise
     expected_bytes = content if isinstance(content, bytes) else content.encode("utf-8")
     platform_name = _reporting_platform_name()
     if platform_name == "posix":
